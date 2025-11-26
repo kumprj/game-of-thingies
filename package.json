@@ -1,0 +1,23 @@
+{
+  "name": "game-of-thingies",
+  "version": "1.0.0",
+  "description": "A fun game with friends",
+  "main": "index.js",
+  "scripts": {
+    "dev": "concurrently \"npm run dev --prefix server\" \"npm start --prefix client\""
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kumprj/game-of-thingies.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/kumprj/game-of-thingies/issues"
+  },
+  "homepage": "https://github.com/kumprj/game-of-thingies#readme",
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}

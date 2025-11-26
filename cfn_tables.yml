@@ -1,0 +1,43 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: "NextAuth DynamoDB tables for User, Account, Session, and VerificationToken with required GSIs"
+
+Resources:
+
+  GamesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: Games
+      AttributeDefinitions:
+        - AttributeName: gameId
+          AttributeType: S
+        - AttributeName: gameOwner
+          AttributeType: S
+
+      KeySchema:
+        - AttributeName: gameId
+          KeyType: HASH
+        - AttributeName: gameOwner
+          KeyType: RANGE
+      BillingMode: PAY_PER_REQUEST
+
+  EntriesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: Entries
+      AttributeDefinitions:
+        - AttributeName: gameId
+          AttributeType: S
+        - AttributeName: entryId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: gameId
+          KeyType: HASH                  # Partition key
+        - AttributeName: entryId
+          KeyType: RANGE                 # Sort key
+      BillingMode: PAY_PER_REQUEST       # or use Provisioned with Read/Write specs
+
+Outputs:
+  UserTableName:
+    Value: !Ref GamesTable
+  AccountTableName:
+    Value: !Ref EntriesTable
