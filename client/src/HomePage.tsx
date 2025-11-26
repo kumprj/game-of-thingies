@@ -1,6 +1,6 @@
-import React, { useState } from "react";
+import React, {useState} from "react";
 import axios from "axios";
-import { useNavigate } from "react-router-dom";
+import {useNavigate} from "react-router-dom";
 
 // Set backend API base URL
 axios.defaults.baseURL = "http://localhost:3001";
@@ -8,12 +8,16 @@ axios.defaults.baseURL = "http://localhost:3001";
 export default function HomePage() {
   const [gameName, setGameName] = useState("");
   const navigate = useNavigate();
+  const [questionText, setQuestionText] = useState("");
+  const [joinGameId, setJoinGameId] = useState("");
+
 
   const createGame = async () => {
-    if (!gameName) return;
-    const { data } = await axios.post("/api/createGame", { name: gameName });
-    navigate(`${data.gameId}`);
+    if (!gameName || !questionText) return;
+    const {data} = await axios.post("/api/createGame", {name: gameName, question: questionText});
+    navigate(`/${data.gameId}`);
   };
+
 
   return (
       <div>
@@ -23,9 +27,37 @@ export default function HomePage() {
             onChange={(e) => setGameName(e.target.value)}
             placeholder="Enter game name"
         />
+        <input
+            value={questionText}
+            onChange={(e) => setQuestionText(e.target.value)}
+            placeholder="What question would you like to ask?"
+        />
+
         <button onClick={createGame} disabled={!gameName}>
           Create Game
         </button>
+        <div>
+          <h2>Join Existing Game</h2>
+          <input
+              value={joinGameId}
+              onChange={(e) => setJoinGameId(e.target.value.toUpperCase())} // uppercase optional
+              placeholder="Enter 4-letter game code"
+              maxLength={4}
+          />
+          <button
+              onClick={() => {
+                if (joinGameId.length === 4) {
+                  navigate(`/${joinGameId}`);
+                } else {
+                  alert("Please enter a valid 4-letter game code");
+                }
+              }}
+          >
+            Join Game
+          </button>
+        </div>
+
       </div>
+
   );
 }

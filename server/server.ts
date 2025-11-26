@@ -4,10 +4,10 @@ import cors from "cors";
 import {DynamoDBClient} from "@aws-sdk/client-dynamodb";
 import {
   DynamoDBDocumentClient,
+  GetCommand,
   PutCommand,
   QueryCommand,
-  UpdateCommand,
-  GetCommand
+  UpdateCommand
 } from "@aws-sdk/lib-dynamodb";
 
 const client = new DynamoDBClient({region: "us-east-1"});
@@ -17,20 +17,29 @@ const ddb = DynamoDBDocumentClient.from(client);
 const app = express();
 app.use(express.json());
 app.use(cors());
+app.use((req, res, next) => {
+  console.log('Incoming request:', req.method, req.url);
+  next();
+});
 
-// Utility to create random 4-letter game ID
 function randomGameId() {
-  return Math.random().toString(36).substring(2, 6).toUpperCase();
+  const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  let result = "";
+  for (let i = 0; i < 4; i++) {
+    const index = Math.floor(Math.random() * letters.length);
+    result += letters[index];
+  }
+  return result;
 }
 
 app.post('/api/createGame', async (req, res) => {
   const gameId = randomGameId();
-  const {name} = req.body;
+  const {name, question} = req.body;
   const createdAt = new Date().toISOString();
 
   await ddb.send(new PutCommand({
     TableName: 'Games',
-    Item: {gameId, gameOwner: name, createdAt}
+    Item: {gameId, gameOwner: name, question, createdAt}
   }));
 
   res.json({gameId});
@@ -72,9 +81,31 @@ app.post('/api/games/:gameId/start', async (req, res) => {
   res.json({started: true});
 });
 
+app.get('/api/games/:gameId', async (req, res) => {
+  console.log("got here")
+  console.log('req.params:', req.params);
+  const {gameId} = req.params;
+  console.log('Fetching game for gameId:', gameId);
+
+
+  try {
+    const result = await ddb.send(new GetCommand({
+      TableName: 'Games',
+      Key: {gameId}
+    }));
+    console.log("Result is ", result);
+    if (!result.Item) return res.status(404).json({error: 'Game not found'});
+    res.json(result.Item);
+  } catch (error) {
+    console.error('Error fetching game:', error);
+    console.log("gameId is", gameId);
+    res.status(500).json({error: 'Internal Server Error'});
+  }
+});
+
+
 app.get('/api/games/:gameId/entries', async (req, res) => {
   const {gameId} = req.params;
-  console.log("gameId", gameId);
   const result = await ddb.send(new QueryCommand({
     TableName: 'Entries',
     KeyConditionExpression: 'gameId = :g',
@@ -84,19 +115,50 @@ app.get('/api/games/:gameId/entries', async (req, res) => {
   res.json(result.Items ?? []); // ⬅️ send array only
 });
 
-// Guess API
 app.post('/api/games/:gameId/entries/:entryId/guess', async (req, res) => {
   const {gameId, entryId} = req.params;
   const {guesserName, guess} = req.body;
 
-  const entryResult = await ddb.send(new GetCommand({
-    TableName: 'Entries',
-    Key: {entryId}
-  }));
-  const item = entryResult.Item;
+  try {
+    // Get the entry
+    const entryResult = await ddb.send(new GetCommand({
+      TableName: 'Entries',
+      Key: {gameId, entryId}
+    }));
 
-  // const isCorrect = entryResult.Item.authorName === guess;
-  // res.json({isCorrect});
+    const item = entryResult.Item;
+    if (!item) {
+      return res.status(404).json({error: "Entry not found"});
+    }
+
+    const isCorrect = item.authorName === guess;
+
+    if (isCorrect) {
+      // Mark as guessed
+      await ddb.send(new UpdateCommand({
+        TableName: 'Entries',
+        Key: {gameId, entryId},
+        UpdateExpression: 'SET guessed = :val',
+        ExpressionAttributeValues: {':val': true}
+      }));
+
+      // Fetch the updated item
+      const updatedEntryResult = await ddb.send(new GetCommand({
+        TableName: 'Entries',
+        Key: {gameId, entryId}
+      }));
+
+      return res.json({
+        isCorrect,
+        entry: updatedEntryResult.Item
+      });
+    }
+
+    res.json({isCorrect});
+  } catch (err) {
+    console.error("Guess API error:", err);
+    res.status(500).json({error: "Internal Server Error"});
+  }
 });
 
 app.listen(3001, () => console.log('API server on port 3001'));

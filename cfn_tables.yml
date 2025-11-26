@@ -10,14 +10,10 @@ Resources:
       AttributeDefinitions:
         - AttributeName: gameId
           AttributeType: S
-        - AttributeName: gameOwner
-          AttributeType: S
 
       KeySchema:
         - AttributeName: gameId
           KeyType: HASH
-        - AttributeName: gameOwner
-          KeyType: RANGE
       BillingMode: PAY_PER_REQUEST
 
   EntriesTable:

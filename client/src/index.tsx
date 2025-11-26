@@ -11,7 +11,7 @@ root.render(
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<HomePage />} />
-          <Route path=":gameId" element={<StartGamePage />} />
+          <Route path="/:gameId" element={<StartGamePage />} />
         </Routes>
       </BrowserRouter>
     </React.StrictMode>
