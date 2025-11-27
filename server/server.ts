@@ -1,6 +1,7 @@
 import express from "express";
 import {v4 as uuidv4} from "uuid";
 import cors from "cors";
+import serverless from 'serverless-http';
 import {DynamoDBClient} from "@aws-sdk/client-dynamodb";
 import {
   DynamoDBDocumentClient,
@@ -202,3 +203,4 @@ app.post('/api/games/:gameId/entries/:entryId/guess', async (req, res) => {
 });
 
 app.listen(3001, () => console.log('API server on port 3001'));
+export const handler = serverless(app);

@@ -19,5 +19,8 @@
   "homepage": "https://github.com/kumprj/game-of-thingies#readme",
   "devDependencies": {
     "concurrently": "^9.2.1"
+  },
+  "dependencies": {
+    "serverless-http": "^4.0.0"
   }
 }
