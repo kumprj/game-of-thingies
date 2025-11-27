@@ -1,1 +1,43 @@
-{}
+{
+  "api": {
+    "api": {
+      "dependsOn": [
+        {
+          "attributes": [
+            "Name",
+            "Arn"
+          ],
+          "category": "function",
+          "resourceName": "gameofthingsApi"
+        }
+      ],
+      "providerPlugin": "awscloudformation",
+      "service": "API Gateway"
+    }
+  },
+  "function": {
+    "gameofthingsApi": {
+      "build": true,
+      "providerPlugin": "awscloudformation",
+      "service": "Lambda"
+    }
+  },
+  "parameters": {
+    "AMPLIFY_function_gameofthingsApi_deploymentBucketName": {
+      "usedBy": [
+        {
+          "category": "function",
+          "resourceName": "gameofthingsApi"
+        }
+      ]
+    },
+    "AMPLIFY_function_gameofthingsApi_s3Key": {
+      "usedBy": [
+        {
+          "category": "function",
+          "resourceName": "gameofthingsApi"
+        }
+      ]
+    }
+  }
+}

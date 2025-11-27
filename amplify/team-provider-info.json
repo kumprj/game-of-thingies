@@ -23,6 +23,17 @@
       "StackName": "amplify-gameofthings-prod-186dc",
       "StackId": "arn:aws:cloudformation:us-east-1:875660052076:stack/amplify-gameofthings-prod-186dc/e9be0a60-cbcf-11f0-9524-0affcf963363",
       "AmplifyAppId": "d2ykxqwcovktq0"
+    },
+    "categories": {
+      "function": {
+        "gameofthingsApi": {
+          "deploymentBucketName": "amplify-gameofthings-prod-186dc-deployment",
+          "s3Key": "amplify-builds/gameofthingsApi-7a537453414457794854-build.zip"
+        }
+      },
+      "api": {
+        "api": {}
+      }
     }
   }
 }
