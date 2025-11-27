@@ -23,7 +23,7 @@ export default function HomePage() {
   return (
       <div style={{textAlign: "center", marginTop: 40}}>
         <img src={logo} alt="Game of Things" style={{width: 120, marginBottom: 20}}/>
-        <h1>Game of Thinigies</h1>
+        <h1>Game of Things</h1>
         <input
             value={gameName}
             onChange={(e) => setGameName(e.target.value)}

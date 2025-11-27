@@ -174,7 +174,7 @@ export default function StartGamePage() {
   return (
 
       <div style={{textAlign: "center", marginBottom: 20}}>
-        <img src={logo} alt="Game of Thinigies" style={{width: 80}}/>
+        <img src={logo} alt="Game of Things" style={{width: 80}}/>
         <h2>{gameTitle ?? gameId}</h2>
         {gameId && (
             <p style={{color: "#3c3c4399", fontSize: 16, marginTop: -12, marginBottom: 28}}>
