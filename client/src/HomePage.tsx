@@ -1,6 +1,7 @@
 import React, {useState} from "react";
 import axios from "axios";
 import {useNavigate} from "react-router-dom";
+import logo from "../src/assets/logo.jpg";  // adjust path accordingly
 
 // Set backend API base URL
 axios.defaults.baseURL = "http://localhost:3001";
@@ -20,7 +21,8 @@ export default function HomePage() {
 
 
   return (
-      <div>
+      <div style={{textAlign: "center", marginTop: 40}}>
+        <img src={logo} alt="Game of Things" style={{width: 120, marginBottom: 20}}/>
         <h1>Game of Thinigies</h1>
         <input
             value={gameName}

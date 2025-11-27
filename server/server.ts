@@ -7,15 +7,16 @@ import {
   GetCommand,
   PutCommand,
   QueryCommand,
-  UpdateCommand
+  UpdateCommand,
+  DeleteCommand
 } from "@aws-sdk/lib-dynamodb";
 
 const client = new DynamoDBClient({region: "us-east-1"});
 const ddb = DynamoDBDocumentClient.from(client);
-
-
 const app = express();
-app.use(express.json());
+
+app.use(express.json());     // Parses JSON bodies
+// app.use(express.urlencoded({ extended: true }));  // Parses URL-encoded bodies
 app.use(cors());
 app.use((req, res, next) => {
   console.log('Incoming request:', req.method, req.url);
@@ -80,6 +81,45 @@ app.post('/api/games/:gameId/start', async (req, res) => {
 
   res.json({started: true});
 });
+app.post('/api/games/:gameId/reset', async (req, res) => {
+  const {gameId} = req.params;
+  const {question} = req.body;
+
+  try {
+    // 1. DELETE ALL existing entries for this game
+    const entriesData = await ddb.send(new QueryCommand({
+      TableName: 'Entries',
+      KeyConditionExpression: 'gameId = :g',
+      ExpressionAttributeValues: {':g': gameId}
+    }));
+
+    const deletePromises = (entriesData.Items || []).map(entry =>
+        ddb.send(new DeleteCommand({
+          TableName: 'Entries',
+          Key: {gameId: entry.gameId, entryId: entry.entryId}
+        }))
+    );
+    await Promise.all(deletePromises);
+    console.log(`Deleted ${deletePromises.length} old entries`);
+
+    // 2. Create FRESH game record
+    await ddb.send(new PutCommand({
+      TableName: 'Games',
+      Item: {
+        gameId,
+        question: question?.trim() || 'What is your favorite thing?',
+        createdAt: new Date().toISOString(),
+        gameOwner: 'default' // or from auth/session
+      }
+    }));
+
+    res.json({success: true, message: 'Game reset with fresh slate'});
+  } catch (error) {
+    console.error('Reset error:', error);
+    res.status(500).json({error: 'Failed to reset game'});
+  }
+});
+
 
 app.get('/api/games/:gameId', async (req, res) => {
   console.log("got here")
