@@ -4,7 +4,7 @@ import {useParams} from "react-router-dom";
 import logo from "../src/assets/logo.jpg";
 
 // Set backend API base URL
-axios.defaults.baseURL = "https://7ttlrj0215.execute-api.us-east-1.amazonaws.com/prod";
+axios.defaults.baseURL = "https://9ozslu6x6l.execute-api.us-east-1.amazonaws.com/dev";
 
 interface Entry {
   entryId: string;
