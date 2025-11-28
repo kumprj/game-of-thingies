@@ -27,9 +27,15 @@ app.post('/api/createGame', async (req, res) => {
     const gameId = randomGameId();
     const { name, question } = req.body;
     const createdAt = new Date().toISOString();
-    await ddb.send(new PutCommand({
+    await ddb.send(new UpdateCommand({
         TableName: 'Games',
-        Item: { gameId, gameOwner: name, question, createdAt }
+        Key: { gameId },
+        UpdateExpression: 'SET question = :q, createdAt = :c',
+        ExpressionAttributeValues: {
+            ':q': question || 'What is your favorite thing?',
+            ':c': createdAt
+        },
+        ReturnValues: 'ALL_NEW'
     }));
     res.json({ gameId });
 });
@@ -78,14 +84,15 @@ app.post('/api/games/:gameId/reset', async (req, res) => {
         })));
         await Promise.all(deletePromises);
         console.log(`Deleted ${deletePromises.length} old entries`);
-        // 2. Create FRESH game record
-        await ddb.send(new PutCommand({
+        await ddb.send(new UpdateCommand({
             TableName: 'Games',
-            Item: {
-                gameId,
-                question: question?.trim() || 'What is your favorite thing?',
-                createdAt: new Date().toISOString()
-            }
+            Key: { gameId },
+            UpdateExpression: 'SET question = :q, createdAt = :c, gameOwner = gameOwner',
+            ExpressionAttributeValues: {
+                ':q': question?.trim() || 'What is your favorite thing?',
+                ':c': new Date().toISOString()
+            },
+            ReturnValues: 'ALL_NEW'
         }));
         res.json({ success: true, message: 'Game reset with fresh slate' });
     }
