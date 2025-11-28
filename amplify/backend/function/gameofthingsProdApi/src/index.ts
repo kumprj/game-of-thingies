@@ -47,6 +47,7 @@ app.post('/api/createGame', async (req, res) => {
   res.json({gameId});
 });
 
+
 app.post('/api/games/:gameId/entries', async (req, res) => {
   const {gameId} = req.params;
   const {authorName, text} = req.body;
@@ -103,15 +104,17 @@ app.post('/api/games/:gameId/reset', async (req, res) => {
     await Promise.all(deletePromises);
     console.log(`Deleted ${deletePromises.length} old entries`);
 
-    // 2. Create FRESH game record
-    await ddb.send(new PutCommand({
+    await ddb.send(new UpdateCommand({
       TableName: 'Games',
-      Item: {
-        gameId,
-        question: question?.trim() || 'What is your favorite thing?',
-        createdAt: new Date().toISOString()
-      }
+      Key: {gameId},
+      UpdateExpression: 'SET question = :q, createdAt = :c, gameOwner = gameOwner',
+      ExpressionAttributeValues: {
+        ':q': question?.trim() || 'What is your favorite thing?',
+        ':c': new Date().toISOString()
+      },
+      ReturnValues: 'ALL_NEW'
     }));
+
 
     res.json({success: true, message: 'Game reset with fresh slate'});
   } catch (error) {
@@ -201,5 +204,5 @@ app.post('/api/games/:gameId/entries/:entryId/guess', async (req, res) => {
   }
 });
 
-// app.listen(3001, () => console.log('API server on port 3001'));
+app.listen(3001, () => console.log('API server on port 3001'));
 export const handler = serverless(app);
