@@ -224,7 +224,17 @@ export default function StartGamePage() {
                       {entry.text}
                     </button>
                 ) : (
-                    <span style={{filter: "blur(4px)"}}>{entry.text}</span>
+                    <span style={{
+                      filter: 'blur(4px)',
+                      color: 'rgba(0,0,0,0.2)',
+                      userSelect: 'none',
+                      textShadow: '0 0 2px rgba(0,0,0,0.1)',
+                      transition: 'filter 0.3s ease, color 0.3s ease'
+                    }}>
+                      {entry.text}
+                    </span>
+
+
                 )}
               </li>
           ))}
