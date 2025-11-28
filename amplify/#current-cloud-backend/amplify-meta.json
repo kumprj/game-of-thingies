@@ -1,0 +1,70 @@
+{
+  "providers": {
+    "awscloudformation": {
+      "AuthRoleName": "amplify-gameofthingies-dev-b755b-authRole",
+      "UnauthRoleArn": "arn:aws:iam::875660052076:role/amplify-gameofthingies-dev-b755b-unauthRole",
+      "AuthRoleArn": "arn:aws:iam::875660052076:role/amplify-gameofthingies-dev-b755b-authRole",
+      "Region": "us-east-1",
+      "DeploymentBucketName": "amplify-gameofthingies-dev-b755b-deployment",
+      "UnauthRoleName": "amplify-gameofthingies-dev-b755b-unauthRole",
+      "StackName": "amplify-gameofthingies-dev-b755b",
+      "StackId": "arn:aws:cloudformation:us-east-1:875660052076:stack/amplify-gameofthingies-dev-b755b/d21f7840-cbf1-11f0-b338-0affd594628b",
+      "AmplifyAppId": "d348rxe7ndsh7m"
+    }
+  },
+  "function": {
+    "gameofthingsProdApi": {
+      "build": true,
+      "providerPlugin": "awscloudformation",
+      "service": "Lambda",
+      "lastBuildTimeStamp": "2025-11-28T01:13:42.943Z",
+      "lastBuildType": "PROD",
+      "lastPackageTimeStamp": "2025-11-28T01:13:45.464Z",
+      "distZipFilename": "gameofthingsProdApi-494943556f7a4a4f3132-build.zip",
+      "s3Bucket": {
+        "deploymentBucketName": "amplify-gameofthingies-dev-b755b-deployment",
+        "s3Key": "amplify-builds/gameofthingsProdApi-494943556f7a4a4f3132-build.zip"
+      },
+      "providerMetadata": {
+        "s3TemplateURL": "https://s3.amazonaws.com/amplify-gameofthingies-dev-b755b-deployment/amplify-cfn-templates/function/gameofthingsProdApi-cloudformation-template.json",
+        "logicalId": "functiongameofthingsProdApi"
+      },
+      "lastPushTimeStamp": "2025-11-28T01:14:20.599Z",
+      "output": {
+        "LambdaExecutionRoleArn": "arn:aws:iam::875660052076:role/gameofthingiesLambdaRole397e1983-dev",
+        "Region": "us-east-1",
+        "Arn": "arn:aws:lambda:us-east-1:875660052076:function:gameofthingsProdApi-dev",
+        "Name": "gameofthingsProdApi-dev",
+        "LambdaExecutionRole": "gameofthingiesLambdaRole397e1983-dev"
+      },
+      "lastPushDirHash": "+LEjSksl+JLsvB/fZ0Ue+tflhUM="
+    }
+  },
+  "api": {
+    "prodGotApi": {
+      "service": "API Gateway",
+      "providerPlugin": "awscloudformation",
+      "dependsOn": [
+        {
+          "category": "function",
+          "resourceName": "gameofthingsProdApi",
+          "attributes": [
+            "Name",
+            "Arn"
+          ]
+        }
+      ],
+      "providerMetadata": {
+        "s3TemplateURL": "https://s3.amazonaws.com/amplify-gameofthingies-dev-b755b-deployment/amplify-cfn-templates/api/prodGotApi-cloudformation-template.json",
+        "logicalId": "apiprodGotApi"
+      },
+      "lastPushTimeStamp": "2025-11-28T01:14:20.339Z",
+      "output": {
+        "ApiName": "prodGotApi",
+        "RootUrl": "https://i7v5llgsek.execute-api.us-east-1.amazonaws.com/dev",
+        "ApiId": "i7v5llgsek"
+      },
+      "lastPushDirHash": "hob7U+FU6EVfH2Wo5U6FRbi/uyQ="
+    }
+  }
+}
