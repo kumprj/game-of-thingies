@@ -142,6 +142,7 @@ export default function StartGamePage() {
       setEntries([]);  // Clear immediately
       setGuessedEntryIds(new Set());
       setStarted(false);  // Back to entry submission mode
+      window.location.reload();
       // Game data will refresh via useEffect
     } catch (err) {
       console.error("Reset failed", err);
