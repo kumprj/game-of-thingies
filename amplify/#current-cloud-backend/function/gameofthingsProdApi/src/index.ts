@@ -109,8 +109,7 @@ app.post('/api/games/:gameId/reset', async (req, res) => {
       Item: {
         gameId,
         question: question?.trim() || 'What is your favorite thing?',
-        createdAt: new Date().toISOString(),
-        gameOwner: 'default' // or from auth/session
+        createdAt: new Date().toISOString()
       }
     }));
 
