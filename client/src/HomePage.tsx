@@ -27,7 +27,7 @@ export default function HomePage() {
         <input
             value={gameName}
             onChange={(e) => setGameName(e.target.value)}
-            placeholder="Enter game name"
+            placeholder="Enter a title for your game (this can be anything)"
         />
         <input
             value={questionText}
