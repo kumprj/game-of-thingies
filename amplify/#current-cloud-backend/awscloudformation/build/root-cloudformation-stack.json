@@ -205,7 +205,7 @@
         "TemplateURL": "https://s3.amazonaws.com/amplify-gameofthingies-dev-b755b-deployment/amplify-cfn-templates/function/gameofthingsProdApi-cloudformation-template.json",
         "Parameters": {
           "deploymentBucketName": "amplify-gameofthingies-dev-b755b-deployment",
-          "s3Key": "amplify-builds/gameofthingsProdApi-73516a50705043765569-build.zip",
+          "s3Key": "amplify-builds/gameofthingsProdApi-686f7030675355424d5a-build.zip",
           "env": "dev"
         }
       }
