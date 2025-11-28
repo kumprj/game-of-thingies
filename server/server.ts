@@ -71,24 +71,35 @@ app.post('/api/games/:gameId/entries', async (req, res) => {
 });
 
 app.post('/api/games/:gameId/start', async (req, res) => {
-  const {gameId} = req.params;
-  const entries = await ddb.send(new QueryCommand({
-    TableName: 'Entries',
-    KeyConditionExpression: 'gameId = :g',
-    ExpressionAttributeValues: {':g': gameId}
-  }));
+  const { gameId } = req.params;
 
-  for (const entry of entries.Items || []) {
-    await ddb.send(new UpdateCommand({
-      TableName: 'Entries',
-      Key: {gameId: gameId, entryId: entry.entryId},
-      UpdateExpression: 'set revealed = :r',
-      ExpressionAttributeValues: {':r': true}
+  try {
+    const result = await ddb.send(new UpdateCommand({
+      TableName: 'Games',
+      Key: { gameId },
+      UpdateExpression: 'SET started = :s',
+      ConditionExpression: 'attribute_not_exists(started) OR started = :f',
+      ExpressionAttributeValues: {
+        ':s': true,
+        ':f': false
+      },
+      ReturnValues: 'ALL_NEW'
     }));
-  }
 
-  res.json({started: true});
+    res.json({ success: true });
+  } catch (error) {
+    if (error === 'ConditionalCheckFailedException') {
+      // Game already started - force frontend refresh
+      res.status(409).json({
+        error: 'GAME_ALREADY_STARTED',
+        message: 'Game has already started by another player!'
+      });
+    } else {
+      res.status(500).json({ error: 'Failed to start game' });
+    }
+  }
 });
+
 app.post('/api/games/:gameId/reset', async (req, res) => {
   const {gameId} = req.params;
   const {question} = req.body;

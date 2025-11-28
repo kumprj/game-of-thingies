@@ -122,16 +122,30 @@ export default function StartGamePage() {
     }
   };
 
-  // Modified startGame to only start without new question
   const startGame = async () => {
+    if (!entries.length) {
+      setToast({message: 'Add some entries first!', type: 'error'});
+      return;
+    }
+
     try {
       await axios.post(`/api/games/${gameId}/start`);
       setStarted(true);
       fetchEntries();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error starting game", error);
+
+      // Force reload if game already started (409 from backend)
+      if (error.response?.status === 409) {
+        setToast({message: 'Game already started! Refreshing...', type: 'success'});
+        setTimeout(() => window.location.reload(), 1500);
+        return;
+      }
+
+      setToast({message: 'Failed to start game', type: 'error'});
     }
   };
+
 
   const startNewRound = async () => {
     try {
