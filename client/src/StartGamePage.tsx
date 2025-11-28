@@ -80,8 +80,10 @@ export default function StartGamePage() {
 
     try {
       const res = await axios.get(`/api/games/${gameId}/entries`);
-      setEntries(res.data || []);
-      if ((res.data || []).some((e: Entry) => e.revealed)) {
+      const shuffledEntries = res.data?.sort(() => Math.random() - 0.5) || [];
+      setEntries(shuffledEntries);
+
+      if (shuffledEntries.some((e: Entry) => e.revealed)) {
         setStarted(true);
       } else {
         setStarted(false);
