@@ -58,8 +58,35 @@ export default function HomePage() {
             Join Game
           </button>
         </div>
+        <div style={{
+          marginTop: 20,
+          padding: 16,
+          backgroundColor: '#f0f0f5',
+          borderRadius: 12,
+          maxWidth: 600,
+          marginLeft: 'auto',
+          marginRight: 'auto',
+          color: '#3c3c43'
+        }}>
+          <h3>How to Play</h3>
+          <p>
+            The game host will enter a game title (this can be anything), and a question prompt to
+            ask the room. When the host clicks Create Game, a
+            4-digit code will be generated for them to share with people to join the game. Then,
+            submit your answer along with your name.
+            Once everyone has submitted and the group is ready, the host will click to start the
+            game to reveal entries
+            shuffled randomly. Everyone else can refresh their device now to see the answers list!
+            Try to guess who wrote each entry—getting correct guesses earns points!
+            Once all guesses are made, a new question box will pop up to start a new round.
+          </p>
+          <p style={{fontSize: 14, color: '#6e6e73'}}>
+            Have fun and enjoy the Game of Things!
+          </p>
+        </div>
 
       </div>
+
 
   );
 }
