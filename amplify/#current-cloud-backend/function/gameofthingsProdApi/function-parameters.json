@@ -1,0 +1,21 @@
+{
+  "lambdaLayers": [],
+  "resourceName": "gameofthingsProdApi",
+  "handler": "index.handler",
+  "permissions": {
+    "storage": {
+      "Games": [
+        "read",
+        "write",
+        "update",
+        "delete"
+      ],
+      "Entries": [
+        "read",
+        "write",
+        "update",
+        "delete"
+      ]
+    }
+  }
+}
