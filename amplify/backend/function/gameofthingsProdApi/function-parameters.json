@@ -1,0 +1,6 @@
+{
+  "lambdaLayers": [],
+  "resourceName": "gameofthingsProdApi",
+  "handler": "index.handler",
+  "permissions": {}
+}

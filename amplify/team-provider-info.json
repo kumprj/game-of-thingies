@@ -1,0 +1,26 @@
+{
+  "dev": {
+    "awscloudformation": {
+      "AuthRoleName": "amplify-gameofthingies-dev-b755b-authRole",
+      "UnauthRoleArn": "arn:aws:iam::875660052076:role/amplify-gameofthingies-dev-b755b-unauthRole",
+      "AuthRoleArn": "arn:aws:iam::875660052076:role/amplify-gameofthingies-dev-b755b-authRole",
+      "Region": "us-east-1",
+      "DeploymentBucketName": "amplify-gameofthingies-dev-b755b-deployment",
+      "UnauthRoleName": "amplify-gameofthingies-dev-b755b-unauthRole",
+      "StackName": "amplify-gameofthingies-dev-b755b",
+      "StackId": "arn:aws:cloudformation:us-east-1:875660052076:stack/amplify-gameofthingies-dev-b755b/d21f7840-cbf1-11f0-b338-0affd594628b",
+      "AmplifyAppId": "d348rxe7ndsh7m"
+    },
+    "categories": {
+      "function": {
+        "gameofthingsProdApi": {
+          "deploymentBucketName": "amplify-gameofthingies-dev-b755b-deployment",
+          "s3Key": "amplify-builds/gameofthingsProdApi-5538675677454e357446-build.zip"
+        }
+      },
+      "api": {
+        "prodGotApi": {}
+      }
+    }
+  }
+}
