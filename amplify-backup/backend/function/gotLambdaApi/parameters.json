@@ -1,4 +1,0 @@
-{
-  "functionName": "gotLambdaApi",
-  "handler": "dist/index.handler"
-}
