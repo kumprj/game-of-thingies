@@ -16,3 +16,10 @@ applications:
       cache:
         paths:
           - node_modules/**/*
+###
+#To build the backend, update server.ts file
+#copy to /Users/robertkump/Documents/Projects/game-of-thingies/amplify/backend/function/gameofthingsProdApi/src/index.ts
+# Enable const handler...
+# Comment out app.listen
+#Run npm run build
+#amplify push

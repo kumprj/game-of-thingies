@@ -1,7 +1,7 @@
 {
   "dependencies": {
-    "@aws-sdk/client-dynamodb": "^3.936.0",
-    "@aws-sdk/lib-dynamodb": "^3.936.0",
+    "@aws-sdk/client-dynamodb": "^3.940.0",
+    "@aws-sdk/lib-dynamodb": "^3.940.0",
     "cors": "^2.8.5",
     "express": "^5.1.0",
     "uuid": "^13.0.0"
@@ -12,7 +12,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc --noEmit false",
     "start": "node dist/server.js",
     "dev": "ts-node server.ts"
   },

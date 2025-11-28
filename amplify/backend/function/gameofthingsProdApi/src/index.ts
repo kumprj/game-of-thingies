@@ -202,5 +202,5 @@ app.post('/api/games/:gameId/entries/:entryId/guess', async (req, res) => {
   }
 });
 
-app.listen(3001, () => console.log('API server on port 3001'));
-// export const handler = serverless(app);
+// app.listen(3001, () => console.log('API server on port 3001'));
+export const handler = serverless(app);
