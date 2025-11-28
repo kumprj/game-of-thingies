@@ -4,7 +4,7 @@ import {useParams} from "react-router-dom";
 import logo from "../src/assets/logo.jpg";
 
 // Set backend API base URL
-axios.defaults.baseURL = "https://i7v5llgsek.execute-api.us-east-1.amazonaws.com/dev";
+axios.defaults.baseURL = process.env.API_ENDPOINT;
 
 interface Entry {
   entryId: string;
@@ -80,8 +80,10 @@ export default function StartGamePage() {
 
     try {
       const res = await axios.get(`/api/games/${gameId}/entries`);
-      setEntries(res.data || []);
-      if ((res.data || []).some((e: Entry) => e.revealed)) {
+      const shuffledEntries = res.data?.sort(() => Math.random() - 0.5) || [];
+      setEntries(shuffledEntries);
+
+      if (shuffledEntries.some((e: Entry) => e.revealed)) {
         setStarted(true);
       } else {
         setStarted(false);

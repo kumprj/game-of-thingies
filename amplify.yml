@@ -8,6 +8,8 @@ applications:
             - npm ci
         build:
           commands:
+            - env | grep API_ENDPOINT
+            - echo "API_ENDPOINT=$API_ENDPOINT" > .env
             - npm run build
       artifacts:
         baseDirectory: build

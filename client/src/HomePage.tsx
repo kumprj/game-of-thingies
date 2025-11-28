@@ -4,7 +4,7 @@ import {useNavigate} from "react-router-dom";
 import logo from "../src/assets/logo.jpg";  // adjust path accordingly
 
 // Set backend API base URL
-axios.defaults.baseURL = "https://i7v5llgsek.execute-api.us-east-1.amazonaws.com/dev";
+axios.defaults.baseURL = process.env.API_ENDPOINT;
 
 export default function HomePage() {
   const [gameName, setGameName] = useState("");
