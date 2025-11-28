@@ -110,11 +110,10 @@ app.post('/api/games/:gameId/reset', async (req, res) => {
     await Promise.all(deletePromises);
     console.log(`Deleted ${deletePromises.length} old entries`);
 
-    // 2. Create FRESH game record - UPSERT (preserves existing fields)
     await ddb.send(new UpdateCommand({
       TableName: 'Games',
       Key: {gameId},
-      UpdateExpression: 'SET question = :q, createdAt = :c',
+      UpdateExpression: 'SET question = :q, createdAt = :c, gameOwner = gameOwner',
       ExpressionAttributeValues: {
         ':q': question?.trim() || 'What is your favorite thing?',
         ':c': new Date().toISOString()
