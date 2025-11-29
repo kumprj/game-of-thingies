@@ -32,6 +32,14 @@ resource "aws_iam_role_policy" "cleanup_policy" {
         "dynamodb:DeleteItem"
       ]
       Resource = "arn:aws:dynamodb:us-east-1:875660052076:table/Games"  # Update ARN
+    },{
+        Effect = "Allow"
+        Action = [
+          "dynamodb:GetItem",
+          "dynamodb:PutItem",
+          "dynamodb:DeleteItem"
+        ]
+        Resource = "arn:aws:dynamodb:us-east-1:875660052076:table/terraform-lock"
     }, {
       Effect = "Allow"
       Action = [
@@ -47,15 +55,15 @@ resource "aws_iam_role_policy" "cleanup_policy" {
 # Lambda function
 data "archive_file" "cleanup_zip" {
   type        = "zip"
-  output_path = "cleanup_games.zip"
+  output_path = "cleanup-lambda.zip"
 
   source {
-    content  = file("${path.module}/cleanup_games/lambda_function.py")
+    content  = file("${path.module}/lambda_function.py")
     filename = "lambda_function.py"
   }
 }
 
-resource "aws_lambda_function" "cleanup_games" {
+resource "aws_lambda_function" "cleanup-lambda" {
   filename         = data.archive_file.cleanup_zip.output_path
   function_name    = "gameofthings-cleanup-old-games"
   role             = aws_iam_role.cleanup_role.arn
@@ -82,19 +90,19 @@ resource "aws_cloudwatch_event_rule" "cleanup_schedule" {
 # Event Target
 resource "aws_cloudwatch_event_target" "cleanup_target" {
   rule      = aws_cloudwatch_event_rule.cleanup_schedule.name
-  target_id = "cleanup-games-target"
-  arn       = aws_lambda_function.cleanup_games.arn
+  target_id = "cleanup-lambda-target"
+  arn       = aws_lambda_function.cleanup-lambda.arn
 }
 
 # Lambda permission for CloudWatch
 resource "aws_lambda_permission" "allow_cloudwatch" {
   statement_id       = "AllowExecutionFromCloudWatch"
   action             = "lambda:InvokeFunction"
-  function_name      = aws_lambda_function.cleanup_games.function_name
+  function_name      = aws_lambda_function.cleanup-lambda.function_name
   principal          = "events.amazonaws.com"
   source_arn         = aws_cloudwatch_event_rule.cleanup_schedule.arn
 }
 
 output "cleanup_lambda_arn" {
-  value = aws_lambda_function.cleanup_games.arn
+  value = aws_lambda_function.cleanup-lambda.arn
 }
