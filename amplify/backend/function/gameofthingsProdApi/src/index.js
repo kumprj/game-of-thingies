@@ -27,11 +27,28 @@ app.post('/api/createGame', async (req, res) => {
     const gameId = randomGameId();
     const { name, question } = req.body;
     const createdAt = new Date().toISOString();
-    await ddb.send(new PutCommand({
-        TableName: 'Games',
-        Item: { gameId, gameOwner: name, question, createdAt }
-    }));
-    res.json({ gameId });
+    try {
+        await ddb.send(new UpdateCommand({
+            TableName: 'Games',
+            Key: { gameId },
+            UpdateExpression: 'SET #q = :q, #c = :c, gameOwner = :go',
+            ExpressionAttributeNames: {
+                '#q': 'question',
+                '#c': 'createdAt'
+            },
+            ExpressionAttributeValues: {
+                ':q': question || 'What is your favorite thing?',
+                ':c': createdAt,
+                ':go': name // Sets gameOwner on first create
+            },
+            ReturnValues: 'ALL_NEW'
+        }));
+        res.json({ gameId });
+    }
+    catch (error) {
+        console.error('Create game failed:', error);
+        res.status(500).json({ error: 'Failed to create game' });
+    }
 });
 app.post('/api/games/:gameId/entries', async (req, res) => {
     const { gameId } = req.params;
@@ -47,20 +64,45 @@ app.post('/api/games/:gameId/entries', async (req, res) => {
 });
 app.post('/api/games/:gameId/start', async (req, res) => {
     const { gameId } = req.params;
-    const entries = await ddb.send(new QueryCommand({
-        TableName: 'Entries',
-        KeyConditionExpression: 'gameId = :g',
-        ExpressionAttributeValues: { ':g': gameId }
-    }));
-    for (const entry of entries.Items || []) {
-        await ddb.send(new UpdateCommand({
-            TableName: 'Entries',
-            Key: { gameId: gameId, entryId: entry.entryId },
-            UpdateExpression: 'set revealed = :r',
-            ExpressionAttributeValues: { ':r': true }
+    try {
+        const result = await ddb.send(new UpdateCommand({
+            TableName: 'Games',
+            Key: { gameId },
+            UpdateExpression: 'SET started = :s',
+            ConditionExpression: 'attribute_not_exists(started) OR started = :f',
+            ExpressionAttributeValues: {
+                ':s': true,
+                ':f': false
+            },
+            ReturnValues: 'ALL_NEW'
         }));
+        const entries = await ddb.send(new QueryCommand({
+            TableName: 'Entries',
+            KeyConditionExpression: 'gameId = :g',
+            ExpressionAttributeValues: { ':g': gameId }
+        }));
+        for (const entry of entries.Items || []) {
+            await ddb.send(new UpdateCommand({
+                TableName: 'Entries',
+                Key: { gameId: gameId, entryId: entry.entryId },
+                UpdateExpression: 'set revealed = :r',
+                ExpressionAttributeValues: { ':r': true }
+            }));
+        }
+        res.json({ success: true });
     }
-    res.json({ started: true });
+    catch (err) {
+        if (err.name === 'ConditionalCheckFailedException') {
+            // Game already started - force frontend refresh
+            res.status(409).json({
+                error: 'GAME_ALREADY_STARTED',
+                message: 'Game has already started by another player!'
+            });
+        }
+        else {
+            res.status(500).json({ error: 'Failed to start game' });
+        }
+    }
 });
 app.post('/api/games/:gameId/reset', async (req, res) => {
     const { gameId } = req.params;
@@ -81,10 +123,11 @@ app.post('/api/games/:gameId/reset', async (req, res) => {
         await ddb.send(new UpdateCommand({
             TableName: 'Games',
             Key: { gameId },
-            UpdateExpression: 'SET question = :q, createdAt = :c, gameOwner = gameOwner',
+            UpdateExpression: 'SET question = :q, createdAt = :c, gameOwner = gameOwner, started = :started',
             ExpressionAttributeValues: {
                 ':q': question?.trim() || 'What is your favorite thing?',
-                ':c': new Date().toISOString()
+                ':c': new Date().toISOString(),
+                ':started': false
             },
             ReturnValues: 'ALL_NEW'
         }));
@@ -165,5 +208,5 @@ app.post('/api/games/:gameId/entries/:entryId/guess', async (req, res) => {
         res.status(500).json({ error: "Internal Server Error" });
     }
 });
-app.listen(3001, () => console.log('API server on port 3001'));
+// app.listen(3001, () => console.log('API server on port 3001'));
 export const handler = serverless(app);

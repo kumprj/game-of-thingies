@@ -5,6 +5,8 @@ import logo from "../src/assets/logo.jpg";
 
 // Set backend API base URL
 axios.defaults.baseURL = "https://i7v5llgsek.execute-api.us-east-1.amazonaws.com/dev";
+// Local:
+// axios.defaults.baseURL = "http://localhost:3001";
 
 interface Entry {
   entryId: string;
@@ -29,6 +31,7 @@ export default function StartGamePage() {
     left: 0,
   });
   const buttonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const [showStartConfirm, setShowStartConfirm] = useState(false);
 
   // State for the entry currently being guessed (for modal)
   const [guessingEntry, setGuessingEntry] = useState<Entry | null>(null);
@@ -122,16 +125,31 @@ export default function StartGamePage() {
     }
   };
 
-  // Modified startGame to only start without new question
   const startGame = async () => {
+    if (!entries.length) {
+      setToast({message: 'Add some entries first!', type: 'error'});
+      return;
+    }
+
     try {
       await axios.post(`/api/games/${gameId}/start`);
       setStarted(true);
       fetchEntries();
-    } catch (error) {
+      console.log("got here");
+    } catch (error: any) {
       console.error("Error starting game", error);
+
+      // Force reload if game already started (409 from backend)
+      if (error.response?.status === 409) {
+        setToast({message: 'Game already started! Refreshing...', type: 'success'});
+        setTimeout(() => window.location.reload(), 1500);
+        return;
+      }
+
+      setToast({message: 'Failed to start game', type: 'error'});
     }
   };
+
 
   const startNewRound = async () => {
     try {
@@ -202,10 +220,34 @@ export default function StartGamePage() {
                   onChange={e => setAuthorName(e.target.value)}
                   placeholder="Your name"
               />
-              <button onClick={addEntry} disabled={!entryText || !authorName}>
-                Add Entry
-              </button>
-              <button onClick={startGame}>Start</button>
+              <div style={{display: 'flex', gap: 16, justifyContent: 'center', marginTop: 16}}>
+                <button
+                    onClick={addEntry}
+                    disabled={!entryText || !authorName}
+                    style={{
+                      flex: 1,
+                      maxWidth: 200,
+                      background: '#007aff'  // Blue for Add Entry
+                    }}
+                >
+                  Add Entry
+                </button>
+                <button
+                    onClick={() => setShowStartConfirm(true)}
+                    disabled={!entries.length || started}
+                    style={{
+                      flex: 1,
+                      maxWidth: 200,
+                      background: entries.length && !started ? '#34c759' : '#c7c7cc',  // Green OR Gray
+                      color: entries.length && !started ? 'white' : '#86868b',
+                      cursor: entries.length && !started ? 'pointer' : 'not-allowed'
+                    }}
+                >
+                  Start
+                </button>
+              </div>
+
+
             </div>
         )}
 
@@ -286,6 +328,74 @@ export default function StartGamePage() {
               >
                 Cancel
               </button>
+            </div>
+        )}
+        {showStartConfirm && (
+            <div style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(0,0,0,0.5)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 2000
+            }}>
+              <div style={{
+                background: 'white',
+                borderRadius: 20,
+                padding: 32,
+                maxWidth: 400,
+                textAlign: 'center',
+                boxShadow: '0 20px 40px rgba(0,0,0,0.2)'
+              }}>
+                <h3 style={{margin: '0 0 16px', fontSize: 24, fontWeight: 600}}>
+                  👥 Is everyone ready?
+                </h3>
+                <p style={{margin: '0 0 32px', color: '#3c3c43', fontSize: 16}}>
+                  Starting the game will reveal all entries for guessing. Once you press Start, tell
+                  everyone to refresh the page.
+                </p>
+                <div style={{display: 'flex', gap: 12, justifyContent: 'center'}}>
+                  <button
+                      onClick={() => {
+                        setShowStartConfirm(false);
+                        startGame();  // Proceed with start
+                      }}
+                      style={{
+                        flex: 1,
+                        background: '#34c759',
+                        color: 'white',
+                        padding: '14px 24px',
+                        borderRadius: 12,
+                        border: 'none',
+                        fontWeight: 600,
+                        fontSize: 16,
+                        cursor: 'pointer'
+                      }}
+                  >
+                    Yes, Start Game!
+                  </button>
+                  <button
+                      onClick={() => setShowStartConfirm(false)}
+                      style={{
+                        flex: 1,
+                        background: '#f2f2f7',
+                        color: '#007aff',
+                        padding: '14px 24px',
+                        borderRadius: 12,
+                        border: 'none',
+                        fontWeight: 600,
+                        fontSize: 16,
+                        cursor: 'pointer'
+                      }}
+                  >
+                    Wait, Not Yet
+                  </button>
+                </div>
+              </div>
             </div>
         )}
 

@@ -5,6 +5,8 @@ import logo from "../src/assets/logo.jpg";  // adjust path accordingly
 
 // Set backend API base URL
 axios.defaults.baseURL = "https://i7v5llgsek.execute-api.us-east-1.amazonaws.com/dev";
+// Local
+// axios.defaults.baseURL = "http://localhost:3001";
 
 export default function HomePage() {
   const [gameName, setGameName] = useState("");
