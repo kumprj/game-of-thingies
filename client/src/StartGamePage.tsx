@@ -525,7 +525,7 @@ export default function StartGamePage() {
                   fontSize: 16,
                   zIndex: 2000,
                   transform: 'translateX(100%)',
-                  animation: 'slideIn 0.3s ease-out forwards',
+                  animation: 'fadeScaleIn 0.4s ease-out forwards',
                 }}
             >
               {toast.message}
