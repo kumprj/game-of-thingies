@@ -162,3 +162,10 @@ amplifytools.xcconfig
 .secret-*
 **.sample
 #amplify-do-not-edit-end
+
+
+# Terraform
+# Add to .gitignore
+*.tfstate
+*.tfstate.*
+.terraform/
