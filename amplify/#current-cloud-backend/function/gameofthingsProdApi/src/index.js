@@ -67,8 +67,8 @@ app.post('/api/games/:gameId/start', async (req, res) => {
         }));
         res.json({ success: true });
     }
-    catch (error) {
-        if (error === 'ConditionalCheckFailedException') {
+    catch (err) {
+        if (err.name === 'ConditionalCheckFailedException') {
             // Game already started - force frontend refresh
             res.status(409).json({
                 error: 'GAME_ALREADY_STARTED',

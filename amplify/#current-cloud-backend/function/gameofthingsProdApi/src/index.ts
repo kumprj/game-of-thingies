@@ -71,12 +71,12 @@ app.post('/api/games/:gameId/entries', async (req, res) => {
 });
 
 app.post('/api/games/:gameId/start', async (req, res) => {
-  const { gameId } = req.params;
+  const {gameId} = req.params;
 
   try {
     const result = await ddb.send(new UpdateCommand({
       TableName: 'Games',
-      Key: { gameId },
+      Key: {gameId},
       UpdateExpression: 'SET started = :s',
       ConditionExpression: 'attribute_not_exists(started) OR started = :f',
       ExpressionAttributeValues: {
@@ -86,16 +86,16 @@ app.post('/api/games/:gameId/start', async (req, res) => {
       ReturnValues: 'ALL_NEW'
     }));
 
-    res.json({ success: true });
-  } catch (error) {
-    if (error === 'ConditionalCheckFailedException') {
+    res.json({success: true});
+  } catch (err: any) {
+    if (err.name === 'ConditionalCheckFailedException') {
       // Game already started - force frontend refresh
       res.status(409).json({
         error: 'GAME_ALREADY_STARTED',
         message: 'Game has already started by another player!'
       });
     } else {
-      res.status(500).json({ error: 'Failed to start game' });
+      res.status(500).json({error: 'Failed to start game'});
     }
   }
 });
