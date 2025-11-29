@@ -164,5 +164,9 @@ amplifytools.xcconfig
 #amplify-do-not-edit-end
 
 
-.terraform
-
+# Terraform
+# Add to .gitignore
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
