@@ -32,6 +32,9 @@ export default function StartGamePage() {
   });
   const buttonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const [showStartConfirm, setShowStartConfirm] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);        // For Start button
+  const [addEntryLoading, setAddEntryLoading] = useState(false);  // ← NEW for Add Entry
+
 
   // State for the entry currently being guessed (for modal)
   const [guessingEntry, setGuessingEntry] = useState<Entry | null>(null);
@@ -110,8 +113,10 @@ export default function StartGamePage() {
   };
 
   const addEntry = async () => {
-    if (started) return; // Prevent adding if game started
-    if (!entryText || !authorName) return;
+    if (started || !entryText || !authorName) return;
+
+    setAddEntryLoading(true);  // ← Start loading
+
     try {
       await axios.post(`/api/games/${gameId}/entries`, {
         authorName,
@@ -119,11 +124,16 @@ export default function StartGamePage() {
       });
       setEntryText("");
       setAuthorName("");
-      fetchEntries();
+      await fetchEntries();  // Refresh entries list
+      setToast({message: 'Entry added!', type: 'success'});
     } catch (error) {
       console.error("Error adding entry", error);
+      setToast({message: 'Failed to add entry', type: 'error'});
+    } finally {
+      setAddEntryLoading(false);  // ← Stop loading
     }
   };
+
 
   const startGame = async () => {
     if (!entries.length) {
@@ -131,15 +141,15 @@ export default function StartGamePage() {
       return;
     }
 
+    setIsLoading(true);  // ← Start loading
+
     try {
       await axios.post(`/api/games/${gameId}/start`);
       setStarted(true);
-      fetchEntries();
-      console.log("got here");
+      await fetchEntries();
     } catch (error: any) {
       console.error("Error starting game", error);
 
-      // Force reload if game already started (409 from backend)
       if (error.response?.status === 409) {
         setToast({message: 'Game already started! Refreshing...', type: 'success'});
         setTimeout(() => window.location.reload(), 1500);
@@ -147,7 +157,11 @@ export default function StartGamePage() {
       }
 
       setToast({message: 'Failed to start game', type: 'error'});
+    } finally {
+      setIsLoading(false);  // ← Stop loading
     }
+
+    setShowStartConfirm(false);  // Close confirmation modal
   };
 
 
@@ -209,47 +223,119 @@ export default function StartGamePage() {
         )}
 
         {!started && (
-            <div>
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 12,
+              alignItems: 'center',
+              marginTop: 16
+            }}>
+
+              {/* Your Entry Input */}
               <input
                   value={entryText}
                   onChange={e => setEntryText(e.target.value)}
                   placeholder="Your answer"
+                  disabled={isLoading || addEntryLoading}
+                  style={{
+                    width: '100%',
+                    maxWidth: 400,
+                    padding: '12px 16px',
+                    fontSize: 16,
+                    borderRadius: 12,
+                    border: '1px solid #d1d1d6'
+                  }}
               />
+
+              {/* Your Name Input */}
               <input
                   value={authorName}
                   onChange={e => setAuthorName(e.target.value)}
                   placeholder="Your name"
+                  disabled={isLoading || addEntryLoading}
+                  style={{
+                    width: '100%',
+                    maxWidth: 400,
+                    padding: '12px 16px',
+                    fontSize: 16,
+                    borderRadius: 12,
+                    border: '1px solid #d1d1d6'
+                  }}
               />
-              <div style={{display: 'flex', gap: 16, justifyContent: 'center', marginTop: 16}}>
+
+              {/* Buttons Row */}
+              <div style={{
+                display: 'flex',
+                gap: 16,
+                width: '100%',
+                maxWidth: 400,
+                justifyContent: 'center'
+              }}>
                 <button
                     onClick={addEntry}
-                    disabled={!entryText || !authorName}
+                    disabled={isLoading || addEntryLoading || !entryText || !authorName}
                     style={{
                       flex: 1,
-                      maxWidth: 200,
-                      background: '#007aff'  // Blue for Add Entry
+                      maxWidth: 140,
+                      background: addEntryLoading
+                          ? '#c7c7cc'
+                          : (entryText && authorName)
+                              ? '#007aff'
+                              : '#c7c7cc',
+                      color: addEntryLoading
+                          ? 'white'
+                          : (entryText && authorName)
+                              ? 'white'
+                              : '#86868b',
+                      opacity: (isLoading || addEntryLoading || !entryText || !authorName) ? 0.6 : 1,
+                      cursor: (isLoading || addEntryLoading || !entryText || !authorName) ? 'not-allowed' : 'pointer',
+                      padding: '14px 24px',
+                      borderRadius: 12,
+                      border: 'none',
+                      fontWeight: 600,
+                      fontSize: 16
                     }}
                 >
-                  Add Entry
+                  {addEntryLoading ? (
+                      <>
+                        <span style={{ /* spinner styles */}}/>
+                        Adding...
+                      </>
+                  ) : (
+                      'Add Answer'
+                  )}
                 </button>
+
                 <button
                     onClick={() => setShowStartConfirm(true)}
-                    disabled={!entries.length || started}
+                    disabled={!entries.length || started || isLoading}
                     style={{
                       flex: 1,
-                      maxWidth: 200,
-                      background: entries.length && !started ? '#34c759' : '#c7c7cc',  // Green OR Gray
-                      color: entries.length && !started ? 'white' : '#86868b',
-                      cursor: entries.length && !started ? 'pointer' : 'not-allowed'
+                      maxWidth: 140,
+                      background: entries.length && !started && !isLoading ? '#34c759' : '#c7c7cc',
+                      color: entries.length && !started && !isLoading ? 'white' : '#86868b',
+                      opacity: isLoading ? 0.6 : 1,
+                      cursor: isLoading ? 'not-allowed' : 'pointer',
+                      padding: '14px 24px',
+                      borderRadius: 12,
+                      border: 'none',
+                      fontWeight: 600,
+                      fontSize: 16
                     }}
                 >
-                  Start
+                  {isLoading ? (
+                      <>
+                        <span style={{ /* spinner styles */}}/>
+                        Starting...
+                      </>
+                  ) : (
+                      'Start'
+                  )}
                 </button>
               </div>
-
-
             </div>
         )}
+
 
         <ul>
           {entries.length === 0 && <li>No entries found</li>}
@@ -355,7 +441,8 @@ export default function StartGamePage() {
                   👥 Is everyone ready?
                 </h3>
                 <p style={{margin: '0 0 32px', color: '#3c3c43', fontSize: 16}}>
-                  Starting the game will reveal all entries for guessing. Once you press Start, tell
+                  Starting the game will reveal all answers and block folks from adding
+                  their answers. Once you press Start, tell
                   everyone to refresh the page.
                 </p>
                 <div style={{display: 'flex', gap: 12, justifyContent: 'center'}}>
