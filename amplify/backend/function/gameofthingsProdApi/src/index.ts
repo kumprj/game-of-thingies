@@ -39,18 +39,28 @@ app.post('/api/createGame', async (req, res) => {
   const {name, question} = req.body;
   const createdAt = new Date().toISOString();
 
-  await ddb.send(new UpdateCommand({
-    TableName: 'Games',
-    Key: {gameId},
-    UpdateExpression: 'SET question = :q, createdAt = :c',
-    ExpressionAttributeValues: {
-      ':q': question || 'What is your favorite thing?',
-      ':c': createdAt
-    },
-    ReturnValues: 'ALL_NEW'
-  }));
+  try {
+    await ddb.send(new UpdateCommand({
+      TableName: 'Games',
+      Key: {gameId},
+      UpdateExpression: 'SET #q = :q, #c = :c, gameOwner = :go',
+      ExpressionAttributeNames: {
+        '#q': 'question',
+        '#c': 'createdAt'
+      },
+      ExpressionAttributeValues: {
+        ':q': question || 'What is your favorite thing?',
+        ':c': createdAt,
+        ':go': name  // Sets gameOwner on first create
+      },
+      ReturnValues: 'ALL_NEW'
+    }));
 
-  res.json({gameId});
+    res.json({gameId});
+  } catch (error) {
+    console.error('Create game failed:', error);
+    res.status(500).json({error: 'Failed to create game'});
+  }
 });
 
 
@@ -85,6 +95,20 @@ app.post('/api/games/:gameId/start', async (req, res) => {
       },
       ReturnValues: 'ALL_NEW'
     }));
+    const entries = await ddb.send(new QueryCommand({
+      TableName: 'Entries',
+      KeyConditionExpression: 'gameId = :g',
+      ExpressionAttributeValues: {':g': gameId}
+    }));
+
+    for (const entry of entries.Items || []) {
+      await ddb.send(new UpdateCommand({
+        TableName: 'Entries',
+        Key: {gameId: gameId, entryId: entry.entryId},
+        UpdateExpression: 'set revealed = :r',
+        ExpressionAttributeValues: {':r': true}
+      }));
+    }
 
     res.json({success: true});
   } catch (err: any) {
@@ -124,10 +148,11 @@ app.post('/api/games/:gameId/reset', async (req, res) => {
     await ddb.send(new UpdateCommand({
       TableName: 'Games',
       Key: {gameId},
-      UpdateExpression: 'SET question = :q, createdAt = :c, gameOwner = gameOwner',
+      UpdateExpression: 'SET question = :q, createdAt = :c, gameOwner = gameOwner, started = :started',
       ExpressionAttributeValues: {
         ':q': question?.trim() || 'What is your favorite thing?',
-        ':c': new Date().toISOString()
+        ':c': new Date().toISOString(),
+        ':started': false
       },
       ReturnValues: 'ALL_NEW'
     }));
