@@ -511,7 +511,7 @@ export default function StartGamePage() {
         )}
         {toast && (
             <div
-                className="toast-notification"
+                className="toast-notificatio`n"
                 style={{
                   position: 'fixed',
                   top: 80,
