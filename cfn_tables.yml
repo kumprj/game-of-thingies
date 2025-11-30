@@ -2,7 +2,6 @@ AWSTemplateFormatVersion: '2010-09-09'
 Description: "NextAuth DynamoDB tables for User, Account, Session, and VerificationToken with required GSIs"
 
 Resources:
-
   GamesTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -10,7 +9,6 @@ Resources:
       AttributeDefinitions:
         - AttributeName: gameId
           AttributeType: S
-
       KeySchema:
         - AttributeName: gameId
           KeyType: HASH
@@ -31,9 +29,52 @@ Resources:
         - AttributeName: entryId
           KeyType: RANGE                 # Sort key
       BillingMode: PAY_PER_REQUEST       # or use Provisioned with Read/Write specs
+  PlayersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: Players
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: gameId
+          AttributeType: S
+        - AttributeName: playerSortKey
+          AttributeType: S
+        - AttributeName: playerId
+          AttributeType: S
+        - AttributeName: createdAt
+          AttributeType: S
+      KeySchema:
+        - AttributeName: gameId
+          KeyType: HASH
+        - AttributeName: playerSortKey
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: PlayerIdIndex
+          KeySchema:
+            - AttributeName: playerId
+              KeyType: HASH
+            - AttributeName: createdAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        Enabled: true
+        AttributeName: ttl
+
 
 Outputs:
-  UserTableName:
+  GamesTableName:
     Value: !Ref GamesTable
-  AccountTableName:
+  EntriesTableName:
     Value: !Ref EntriesTable
+  PlayersTableName:
+    Description: Name of the Players table
+    Value: !Ref PlayersTable
+    Export:
+      Name: !Sub '${AWS::StackName}-PlayersTableName'
+  PlayersTableArn:
+    Description: ARN of the Players table
+    Value: !GetAtt PlayersTable.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-PlayersTableArn'
+

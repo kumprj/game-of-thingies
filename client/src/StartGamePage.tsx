@@ -4,9 +4,9 @@ import {useParams} from "react-router-dom";
 import logo from "../src/assets/logo.jpg";
 
 // Set backend API base URL
-axios.defaults.baseURL = "https://i7v5llgsek.execute-api.us-east-1.amazonaws.com/dev";
+// axios.defaults.baseURL = "https://i7v5llgsek.execute-api.us-east-1.amazonaws.com/dev";
 // Local:
-// axios.defaults.baseURL = "http://localhost:3001";
+axios.defaults.baseURL = "http://localhost:3001";
 
 interface Entry {
   entryId: string;
@@ -124,7 +124,9 @@ export default function StartGamePage() {
       });
       setEntryText("");
       setAuthorName("");
-      await fetchEntries();  // Refresh entries list
+      console.log('🆕 POST success, calling fetchEntries...');
+      await fetchEntries();
+      console.log('✅ fetchEntries complete');
       setToast({message: 'Entry added!', type: 'success'});
     } catch (error) {
       console.error("Error adding entry", error);
@@ -146,7 +148,7 @@ export default function StartGamePage() {
     try {
       await axios.post(`/api/games/${gameId}/start`);
       setStarted(true);
-      await fetchEntries();
+      fetchEntries();
     } catch (error: any) {
       console.error("Error starting game", error);
 
