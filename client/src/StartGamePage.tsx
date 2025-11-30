@@ -1,5 +1,5 @@
-import React, {useRef, useState, useEffect} from "react";
 import axios from "axios";
+import React, {useRef, useState, useEffect, useCallback} from "react";
 import {useParams} from "react-router-dom";
 import logo from "../src/assets/logo.jpg";
 
@@ -24,7 +24,7 @@ export default function StartGamePage() {
   const [gameQuestion, setGameQuestion] = useState<string | null>(null);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [entryText, setEntryText] = useState("");
-  const [authorName, setAuthorName] = useState("");
+  const [authorName, setAuthorName] = useState("");           // Entry form name
   const [started, setStarted] = useState(false);
   const [bubblePosition, setBubblePosition] = useState<{ top: number; left: number }>({
     top: 0,
@@ -35,6 +35,8 @@ export default function StartGamePage() {
   const [isLoading, setIsLoading] = useState(false);        // For Start button
   const [addEntryLoading, setAddEntryLoading] = useState(false);  // ← NEW for Add Entry
 
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [players, setPlayers] = useState<any[]>([]);
 
   // State for the entry currently being guessed (for modal)
   const [guessingEntry, setGuessingEntry] = useState<Entry | null>(null);
@@ -73,10 +75,51 @@ export default function StartGamePage() {
   }, [gameId]);
 
   // Fetch entries
+  // useEffect(() => {
+  //   fetchEntries();
+  //   // eslint-disable-next-line
+  // }, [gameId]);
   useEffect(() => {
-    fetchEntries();
-    // eslint-disable-next-line
+    if (started) {
+      fetchEntries();
+      fetchPlayers();  // ← Add this
+    }
+  }, [gameId, started]);
+
+// Refresh players when entries change (guesses)
+  useEffect(() => {
+    if (started && entries.length > 0) {
+      const timer = setTimeout(fetchPlayers, 1000);  // Debounce
+      return () => clearTimeout(timer);
+    }
+  }, [entries, started]);
+
+// Load saved name on mount
+  useEffect(() => {
+    const savedName = localStorage.getItem(`gameofthings-${gameId}-name`);
+    if (savedName) {
+      setAuthorName(savedName);
+    }
   }, [gameId]);
+
+// Save name when changed
+  useEffect(() => {
+    if (authorName) {
+      localStorage.setItem(`gameofthings-${gameId}-name`, authorName);
+    }
+  }, [authorName, gameId]);
+
+  // Add this fetch function
+  const fetchPlayers = useCallback(async () => {
+    if (!gameId || !started) return;
+
+    try {
+      const res = await axios.get(`/api/games/${gameId}/players`);
+      setPlayers(res.data);
+    } catch (error) {
+      console.error('Failed to fetch players:', error);
+    }
+  }, [gameId, started]);
 
   const fetchEntries = async () => {
     if (!gameId) {
@@ -88,7 +131,7 @@ export default function StartGamePage() {
       const res = await axios.get(`/api/games/${gameId}/entries`);
       const shuffledEntries = res.data?.sort(() => Math.random() - 0.5) || [];
       setEntries(shuffledEntries);
-
+      // Keep your existing logic
       if (shuffledEntries.some((e: Entry) => e.revealed)) {
         setStarted(true);
       } else {
@@ -123,7 +166,7 @@ export default function StartGamePage() {
         text: entryText,
       });
       setEntryText("");
-      setAuthorName("");
+      // setAuthorName("");
       console.log('🆕 POST success, calling fetchEntries...');
       await fetchEntries();
       console.log('✅ fetchEntries complete');
@@ -185,13 +228,20 @@ export default function StartGamePage() {
 
   const guessAuthor = async (entryId: string, guess: string) => {
     try {
-      const {data} = await axios.post(`/api/games/${gameId}/entries/${entryId}/guess`, {
-        guesserName: authorName,
-        guess,
-      });
+      // ← ENCODE entryId to fix # character
+      const encodedEntryId = encodeURIComponent(entryId);
+      console.log('🔑 Original entryId:', entryId);
+      console.log('🔑 Encoded entryId:', encodedEntryId);
+
+      const {data} = await axios.post(
+          `/api/games/${gameId}/entries/${encodedEntryId}/guess`,
+          {
+            authorName: authorName || 'Anonymous',
+            guess,
+          }
+      );
 
       if (data.isCorrect && data.entry) {
-        // Update the guessed entry in entries state
         setEntries(prev =>
             prev.map(e => (e.entryId === data.entry.entryId ? data.entry : e))
         );
@@ -370,7 +420,6 @@ export default function StartGamePage() {
               </li>
           ))}
         </ul>
-
         {guessingEntry && (
             <div
                 className="guess-bubble"
@@ -400,7 +449,7 @@ export default function StartGamePage() {
                             }}
                             onClick={() => {
                               if (authorAllGuessed) return;
-                              guessAuthor(guessingEntry.entryId, name);
+                              guessAuthor(guessingEntry.entryId, authorName || 'Anonymous');
                               setGuessingEntry(null);
                             }}
                         >
@@ -417,123 +466,265 @@ export default function StartGamePage() {
                 Cancel
               </button>
             </div>
-        )}
-        {showStartConfirm && (
-            <div style={{
-              position: 'fixed',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              backgroundColor: 'rgba(0,0,0,0.5)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              zIndex: 2000
-            }}>
-              <div style={{
-                background: 'white',
-                borderRadius: 20,
-                padding: 32,
-                maxWidth: 400,
-                textAlign: 'center',
-                boxShadow: '0 20px 40px rgba(0,0,0,0.2)'
-              }}>
-                <h3 style={{margin: '0 0 16px', fontSize: 24, fontWeight: 600}}>
-                  👥 Is everyone ready?
-                </h3>
-                <p style={{margin: '0 0 32px', color: '#3c3c43', fontSize: 16}}>
-                  Starting the game will reveal all answers and block folks from adding
-                  their answers. Once you press Start, tell
-                  everyone to refresh the page.
-                </p>
-                <div style={{display: 'flex', gap: 12, justifyContent: 'center'}}>
-                  <button
-                      onClick={() => {
-                        setShowStartConfirm(false);
-                        startGame();  // Proceed with start
-                      }}
-                      style={{
-                        flex: 1,
-                        background: '#34c759',
-                        color: 'white',
-                        padding: '14px 24px',
-                        borderRadius: 12,
-                        border: 'none',
-                        fontWeight: 600,
-                        fontSize: 16,
-                        cursor: 'pointer'
-                      }}
-                  >
-                    Yes, Start Game!
-                  </button>
-                  <button
-                      onClick={() => setShowStartConfirm(false)}
-                      style={{
-                        flex: 1,
-                        background: '#f2f2f7',
-                        color: '#007aff',
-                        padding: '14px 24px',
-                        borderRadius: 12,
-                        border: 'none',
-                        fontWeight: 600,
-                        fontSize: 16,
-                        cursor: 'pointer'
-                      }}
-                  >
-                    Wait, Not Yet
-                  </button>
-                </div>
-              </div>
-            </div>
-        )}
-
-
-        {/* NEW Question Input shown after all guessed */}
-        {allGuessed && (
-            <div style={{marginTop: 30}}>
-              <input
-                  type="text"
-                  placeholder="Ask a new question?"
-                  value={newQuestion}
-                  onChange={e => setNewQuestion(e.target.value)}
-                  style={{
-                    padding: "12px 16px",
-                    fontSize: 16,
-                    width: "70%",
-                    borderRadius: 12,
-                    border: "1px solid #d1d1d6",
-                    marginRight: 12,
-                  }}
-              />
-              <button disabled={!newQuestion.trim()} onClick={startNewRound}>
-                Start New Round
-              </button>
-            </div>
-        )}
-        {toast && (
-            <div
-                className="toast-notification"
-                style={{
+        )
+        }
+        {
+            showStartConfirm && (
+                <div style={{
                   position: 'fixed',
-                  top: 80,
-                  right: 20,
-                  backgroundColor: toast.type === 'success' ? '#34c759' : '#ff3b30',
-                  color: 'white',
-                  padding: '12px 20px',
-                  borderRadius: 12,
-                  boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
-                  fontWeight: 600,
-                  fontSize: 16,
-                  zIndex: 2000,
-                  transform: 'translateX(100%)',
-                  animation: 'fadeScaleIn 0.4s ease-out forwards',
-                }}
-            >
-              {toast.message}
-            </div>
-        )}
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  backgroundColor: 'rgba(0,0,0,0.5)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  zIndex: 2000
+                }}>
+                  <div style={{
+                    background: 'white',
+                    borderRadius: 20,
+                    padding: 32,
+                    maxWidth: 400,
+                    textAlign: 'center',
+                    boxShadow: '0 20px 40px rgba(0,0,0,0.2)'
+                  }}>
+                    <h3 style={{margin: '0 0 16px', fontSize: 24, fontWeight: 600}}>
+                      👥 Is everyone ready?
+                    </h3>
+                    <p style={{margin: '0 0 32px', color: '#3c3c43', fontSize: 16}}>
+                      Starting the game will reveal all answers and block folks from adding
+                      their answers. Once you press Start, tell
+                      everyone to refresh the page.
+                    </p>
+                    <div style={{display: 'flex', gap: 12, justifyContent: 'center'}}>
+                      <button
+                          onClick={() => {
+                            setShowStartConfirm(false);
+                            startGame();  // Proceed with start
+                          }}
+                          style={{
+                            flex: 1,
+                            background: '#34c759',
+                            color: 'white',
+                            padding: '14px 24px',
+                            borderRadius: 12,
+                            border: 'none',
+                            fontWeight: 600,
+                            fontSize: 16,
+                            cursor: 'pointer'
+                          }}
+                      >
+                        Yes, Start Game!
+                      </button>
+                      <button
+                          onClick={() => setShowStartConfirm(false)}
+                          style={{
+                            flex: 1,
+                            background: '#f2f2f7',
+                            color: '#007aff',
+                            padding: '14px 24px',
+                            borderRadius: 12,
+                            border: 'none',
+                            fontWeight: 600,
+                            fontSize: 16,
+                            cursor: 'pointer'
+                          }}
+                      >
+                        Wait, Not Yet
+                      </button>
+                    </div>
+                  </div>
+                </div>
+            )
+        }
+
+        {/* Leaderboard Toggle - REPLACE your allGuessed section */
+        }
+        {
+            allGuessed && (
+                <div style={{marginTop: 30}}>
+                  {/* New Question */}
+                  <input
+                      type="text"
+                      placeholder="Ask a new question?"
+                      value={newQuestion}
+                      onChange={e => setNewQuestion(e.target.value)}
+                      style={{
+                        padding: "12px 16px",
+                        fontSize: 16,
+                        width: "70%",
+                        borderRadius: 12,
+                        border: "1px solid #d1d1d6",
+                        marginRight: 12,
+                      }}
+                  />
+                  <button disabled={!newQuestion.trim()} onClick={startNewRound}>
+                    Start New Round
+                  </button>
+
+                  {/* 🆕 TOGGLE-ABLE LEADERBOARD */}
+                  <div style={{marginTop: 20}}>
+                    <button
+                        onClick={() => setShowLeaderboard(!showLeaderboard)}
+                        style={{
+                          background: '#007aff',
+                          color: 'white',
+                          padding: '8px 16px',
+                          borderRadius: 20,
+                          border: 'none',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          marginBottom: 12
+                        }}
+                    >
+                      🏆 {showLeaderboard ? 'Hide' : 'Show'} Leaderboard
+                    </button>
+
+                    {showLeaderboard && players.length > 0 && (
+                        <div style={{
+                          background: '#f0f0f5',
+                          borderRadius: 16,
+                          padding: 24,
+                          maxWidth: 420,
+                          margin: '0 auto',
+                          boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+                        }}>
+                          <h4 style={{
+                            margin: '0 0 20px',
+                            textAlign: 'center',
+                            fontSize: 18,
+                            fontWeight: 700,
+                            color: '#1d1d1f'
+                          }}>
+                            🏆 Leaderboard
+                          </h4>
+
+                          {/* CURRENT ROUND */}
+                          <div style={{marginBottom: 20}}>
+                            <h5 style={{
+                              margin: '0 0 16px 0',
+                              fontSize: 15,
+                              color: '#34c759',
+                              fontWeight: 600,
+                              textTransform: 'uppercase',
+                              letterSpacing: 0.5
+                            }}>
+                              Current Round
+                            </h5>
+                            <div style={{
+                              background: 'white',
+                              borderRadius: 12,
+                              padding: 16,
+                              border: '1px solid #e5e5e7'
+                            }}>
+                              {players.slice(0, 5).map((player, index) => (
+                                  <div key={`round-${player.name}`} style={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    padding: '12px 0',
+                                    minHeight: 20  // Fixed height prevents cutting
+                                  }}>
+            <span style={{
+              fontWeight: 600,
+              fontSize: 16,
+              color: index === 0 ? '#34c759' : '#1d1d1f'  // Gold for #1
+            }}>
+              {index + 1}. {player.name}
+            </span>
+                                    <span style={{
+                                      background: index === 0 ? '#34c759' : '#e5e5e7',
+                                      color: index === 0 ? 'white' : '#1d1d1f',
+                                      padding: '6px 14px',
+                                      borderRadius: 16,
+                                      fontWeight: 700,
+                                      fontSize: 14,
+                                      minWidth: 50,
+                                      textAlign: 'center'
+                                    }}>
+              {player.roundPoints || 0}
+            </span>
+                                  </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* TOTAL LIFETIME */}
+                          <div>
+                            <h5 style={{
+                              margin: '0 0 16px 0',
+                              fontSize: 15,
+                              color: '#007aff',
+                              fontWeight: 600,
+                              textTransform: 'uppercase',
+                              letterSpacing: 0.5
+                            }}>
+                              Total Across All Rounds
+                            </h5>
+                            <div style={{
+                              background: 'white',
+                              borderRadius: 12,
+                              padding: 16,
+                              border: '1px solid #e5e5e7'
+                            }}>
+                              {players.slice(0, 5).map((player, index) => (
+                                  <div key={`total-${player.name}`} style={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    padding: '10px 0',
+                                    fontSize: 15,
+                                    opacity: 0.9
+                                  }}>
+                                    <span style={{color: '#3c3c43'}}>{player.name}</span>
+                                    <span style={{
+                                      color: '#007aff',
+                                      fontWeight: 700,
+                                      fontSize: 15
+                                    }}>
+              {player.totalPoints || 0} pts
+            </span>
+                                  </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                    )}
+
+
+                  </div>
+                </div>
+            )
+        }
+
+        {
+            toast && (
+                <div
+                    className="toast-notification"
+                    style={{
+                      position: 'fixed',
+                      top: 80,
+                      right: 20,
+                      backgroundColor: toast.type === 'success' ? '#34c759' : '#ff3b30',
+                      color: 'white',
+                      padding: '12px 20px',
+                      borderRadius: 12,
+                      boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
+                      fontWeight: 600,
+                      fontSize: 16,
+                      zIndex: 2000,
+                      transform: 'translateX(100%)',
+                      animation: 'fadeScaleIn 0.4s ease-out forwards',
+                    }}
+                >
+                  {toast.message}
+                </div>
+            )
+        }
 
       </div>
-  );
+  )
+      ;
 }

@@ -112,7 +112,7 @@ app.post('/api/games/:gameId/reset', async (req, res) => {
   const {question} = req.body;
 
   try {
-    // 1. DELETE ALL existing entries for this game
+    // 1. DELETE ALL existing entries
     const entriesData = await ddb.send(new QueryCommand({
       TableName: 'Entries',
       KeyConditionExpression: 'gameId = :g',
@@ -126,12 +126,13 @@ app.post('/api/games/:gameId/reset', async (req, res) => {
         }))
     );
     await Promise.all(deletePromises);
-    console.log(`Deleted ${deletePromises.length} old entries`);
+    console.log(`🗑️ Deleted ${deletePromises.length} old entries`);
 
+    // 2. Reset game question
     await ddb.send(new UpdateCommand({
       TableName: 'Games',
       Key: {gameId},
-      UpdateExpression: 'SET question = :q, createdAt = :c, gameOwner = gameOwner, started = :started',
+      UpdateExpression: 'SET question = :q, createdAt = :c, started = :started',
       ExpressionAttributeValues: {
         ':q': question?.trim() || 'What is your favorite thing?',
         ':c': new Date().toISOString(),
@@ -140,26 +141,36 @@ app.post('/api/games/:gameId/reset', async (req, res) => {
       ReturnValues: 'ALL_NEW'
     }));
 
-// In reset endpoint
-    await ddb.send(new UpdateCommand({
+    // 3. RESET roundPoints for ALL players (Query + BatchUpdate)
+    const playersData = await ddb.send(new QueryCommand({
       TableName: 'Players',
-      KeyConditionExpression: 'gameId = :gameId AND begins_with(playerSortKey, :prefix)',
+      KeyConditionExpression: 'gameId = :g AND begins_with(playerSortKey, :prefix)',
       ExpressionAttributeValues: {
-        ':gameId': gameId,
+        ':g': gameId,
         ':prefix': 'PLAYER#'
-      },
-      UpdateExpression: 'SET roundPoints = :zero',
-      ExpressionAttributeValues: {':zero': 0}
+      }
     }));
 
+    const playerResetPromises = (playersData.Items || []).map(player =>
+        ddb.send(new UpdateCommand({
+          TableName: 'Players',
+          Key: {
+            gameId: player.gameId,
+            playerSortKey: player.playerSortKey
+          },
+          UpdateExpression: 'SET roundPoints = :zero',
+          ExpressionAttributeValues: {':zero': 0}
+        }))
+    );
+    await Promise.all(playerResetPromises);
+    console.log(`🔄 Reset ${playerResetPromises.length} players' round points`);
 
-    res.json({success: true, message: 'Game reset with fresh slate'});
+    res.json({success: true, message: 'Game reset successfully!'});
   } catch (error) {
     console.error('Reset error:', error);
     res.status(500).json({error: 'Failed to reset game'});
   }
 });
-
 
 app.get('/api/games/:gameId', async (req, res) => {
   console.log("got here")
@@ -183,23 +194,16 @@ app.get('/api/games/:gameId', async (req, res) => {
   }
 });
 
-// ADD THIS - GET all entries for a game
+
 app.get('/api/games/:gameId/entries', async (req, res) => {
   const {gameId} = req.params;
-
-  try {
-    const result = await ddb.send(new QueryCommand({
-      TableName: 'Entries',
-      KeyConditionExpression: 'gameId = :g',
-      ExpressionAttributeValues: {':g': gameId}
-    }));
-
-    console.log(`📋 Fetched ${result.Items?.length || 0} entries for game ${gameId}`);
-    res.json(result.Items ?? []);  // Full entry objects!
-  } catch (error) {
-    console.error("Failed to fetch entries:", error);
-    res.status(500).json({error: 'Failed to fetch entries'});
-  }
+  const result = await ddb.send(new QueryCommand({
+    TableName: 'Entries',
+    KeyConditionExpression: 'gameId = :g',
+    ExpressionAttributeValues: {':g': gameId}
+  }));
+  console.log("Query items:", result.Items);
+  res.json(result.Items ?? []); // ⬅️ send array only
 });
 
 
@@ -250,25 +254,39 @@ app.post('/api/games/:gameId/entries', async (req, res) => {
 
 
 app.post('/api/games/:gameId/entries/:entryId/guess', async (req, res) => {
+  console.log('🎯 ROUTE HIT:', req.params, req.body);  // DEBUG
   const {gameId, entryId} = req.params;
-  const {guesserName, guess} = req.body;
+  const {authorName, guess} = req.body;
+
+  console.log(`🎯 GUESS REQUEST: gameId=${gameId}, entryId=${entryId}, authorName=${authorName}, guess=${guess}`);
 
   try {
+    // DEBUG: Log exact Key being queried
+    const lookupKey = {gameId, entryId};
+    console.log('🔍 Looking up Key:', JSON.stringify(lookupKey));
+
     // Get the entry
     const entryResult = await ddb.send(new GetCommand({
       TableName: 'Entries',
-      Key: {gameId, entryId}
+      Key: lookupKey
     }));
+
+    console.log('📋 Entry result:', entryResult.Item ? 'FOUND' : 'NOT FOUND');
 
     const item = entryResult.Item;
     if (!item) {
+      console.log('❌ Entry not found in DB with key:', lookupKey);
       return res.status(404).json({error: "Entry not found"});
     }
 
+    console.log('✅ Entry found:', item.authorName, item.text);
+
     const isCorrect = item.authorName === guess;
+    console.log('🎲 isCorrect:', isCorrect);
 
     if (isCorrect) {
       // Mark as guessed
+      console.log(`🏆 Awarded point to PLAYER#${authorName} in game ${gameId}`);
       await ddb.send(new UpdateCommand({
         TableName: 'Entries',
         Key: {gameId, entryId},
@@ -287,7 +305,7 @@ app.post('/api/games/:gameId/entries/:entryId/guess', async (req, res) => {
         TableName: 'Players',
         Key: {
           gameId,
-          playerSortKey: `PLAYER#${guesserName}`
+          playerSortKey: `PLAYER#${authorName}`
         },
         UpdateExpression: `
       SET 
@@ -310,7 +328,7 @@ app.post('/api/games/:gameId/entries/:entryId/guess', async (req, res) => {
     res.status(500).json({error: "Internal Server Error"});
   }
 });
-// ← ADD THIS: New leaderboard endpoint
+
 app.get('/api/games/:gameId/players', async (req, res) => {
   const {gameId} = req.params;
 
@@ -325,16 +343,22 @@ app.get('/api/games/:gameId/players', async (req, res) => {
       ProjectionExpression: 'playerSortKey, roundPoints, totalPoints, correctGuesses, entriesSubmitted'
     }));
 
+    // 🆕 FIX: Properly extract player names
     const players = (result.Items || []).map(item => ({
-      name: item.playerSortKey.replace('PLAYER#', ''),
-      roundPoints: item.roundPoints || 0,
-      totalPoints: item.totalPoints || 0,
-      correctGuesses: item.correctGuesses || 0,
-      entriesSubmitted: item.entriesSubmitted || 0
-    }));
+      name: item.playerSortKey.replace('PLAYER#', ''),  // "PLAYER#Robbie" → "Robbie"
+      roundPoints: Number(item.roundPoints) || 0,
+      totalPoints: Number(item.totalPoints) || 0,
+      correctGuesses: Number(item.correctGuesses) || 0,
+      entriesSubmitted: Number(item.entriesSubmitted) || 0
+    })).filter(player => player.name);  // Remove undefined names
 
-    res.json(players.sort((a: any, b: any) => b.roundPoints - a.roundPoints));
+    // Sort by roundPoints (descending)
+    const sortedPlayers = players.sort((a, b) => b.roundPoints - a.roundPoints);
+
+    console.log(`📊 Leaderboard for ${gameId}:`, sortedPlayers.map(p => `${p.name}: ${p.roundPoints}`));
+    res.json(sortedPlayers);
   } catch (error) {
+    console.error('Players query error:', error);
     res.status(500).json({error: 'Failed to fetch leaderboard'});
   }
 });
