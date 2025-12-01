@@ -12,27 +12,33 @@ export default function HomePage() {
   const [gameName, setGameName] = useState("");
   const [questionText, setQuestionText] = useState("");
   const [joinGameId, setJoinGameId] = useState("");
-  const [creatingGame, setCreatingGame] = useState(false);  // ← NEW loading state
+  const [creatingGame, setCreatingGame] = useState(false);
   const navigate = useNavigate();
 
   const createGame = async () => {
-    if (!gameName || !questionText) return;
+    if (!gameName.trim() || !questionText.trim()) return;
 
-    setCreatingGame(true);  // ← Start loading
+    setCreatingGame(true);
 
     try {
       const {data} = await axios.post("/api/createGame", {
-        name: gameName,
-        question: questionText
+        name: gameName.trim(),
+        question: questionText.trim()
       });
       navigate(`/${data.gameId}`);
     } catch (error) {
       console.error("Create game failed", error);
       alert("Failed to create game. Please try again.");
     } finally {
-      setCreatingGame(false);  // ← Stop loading
+      setCreatingGame(false);
     }
   };
+
+  const createDisabled = creatingGame || !gameName.trim() || !questionText.trim();
+
+  // Exactly 4 uppercase letters A–Z
+  const joinCodeValid = /^[A-Z]{4}$/.test(joinGameId);
+  const joinDisabled = creatingGame || !joinCodeValid;
 
   return (
       <div style={{textAlign: "center", marginTop: 40}}>
@@ -43,22 +49,22 @@ export default function HomePage() {
             value={gameName}
             onChange={(e) => setGameName(e.target.value)}
             placeholder="Enter a title for your game"
-            disabled={creatingGame}  // ← Disable during loading
+            disabled={creatingGame}
         />
         <input
             value={questionText}
             onChange={(e) => setQuestionText(e.target.value)}
             placeholder="What question would you like to ask?"
-            disabled={creatingGame}  // ← Disable during loading
+            disabled={creatingGame}
         />
 
         <button
             onClick={createGame}
-            disabled={!gameName || !questionText || creatingGame}
+            disabled={createDisabled}
             style={{
-              background: creatingGame ? '#c7c7cc' : '#007aff',
-              opacity: creatingGame ? 0.6 : 1,
-              cursor: creatingGame ? 'not-allowed' : 'pointer'
+              background: createDisabled ? '#c7c7cc' : '#007aff',
+              opacity: createDisabled ? 0.6 : 1,
+              cursor: createDisabled ? 'not-allowed' : 'pointer'
             }}
         >
           {creatingGame ? (
@@ -83,7 +89,6 @@ export default function HomePage() {
           )}
         </button>
 
-        {/* Rest of your JSX unchanged... */}
         <div>
           <h2>Join Existing Game</h2>
           <input
@@ -91,33 +96,39 @@ export default function HomePage() {
               onChange={(e) => setJoinGameId(e.target.value.toUpperCase())}
               placeholder="Enter 4-letter game code"
               maxLength={4}
-              disabled={creatingGame}  // ← Disable during loading
+              disabled={creatingGame}
           />
           <button
               onClick={() => {
-                if (joinGameId.length === 4) {
+                if (joinCodeValid) {
                   navigate(`/${joinGameId}`);
                 } else {
                   alert("Please enter a valid 4-letter game code");
                 }
               }}
-              disabled={creatingGame}  // ← Disable during loading
+              disabled={joinDisabled}
+              style={{
+                background: joinDisabled ? '#c7c7cc' : '#007aff',
+                opacity: joinDisabled ? 0.6 : 1,
+                cursor: joinDisabled ? 'not-allowed' : 'pointer'
+              }}
           >
             Join Game
           </button>
         </div>
 
-        {/* Instructions unchanged... */}
-        <div style={{
-          marginTop: 20,
-          padding: 16,
-          backgroundColor: '#f0f0f5',
-          borderRadius: 12,
-          maxWidth: 600,
-          marginLeft: 'auto',
-          marginRight: 'auto',
-          color: '#3c3c43'
-        }}>
+        <div
+            style={{
+              marginTop: 20,
+              padding: 16,
+              backgroundColor: '#f0f0f5',
+              borderRadius: 12,
+              maxWidth: 600,
+              marginLeft: 'auto',
+              marginRight: 'auto',
+              color: '#3c3c43'
+            }}
+        >
           <h3>How to Play</h3>
           <p>
             The game host will enter a game title (this can be anything), and a question prompt to
