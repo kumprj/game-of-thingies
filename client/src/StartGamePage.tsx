@@ -442,7 +442,7 @@ export default function StartGamePage() {
                 </h3>
                 <p style={{margin: '0 0 32px', color: '#3c3c43', fontSize: 16}}>
                   Starting the game will reveal all answers and block folks from adding
-                  their answers. Once you press Start, tell
+                  their answers. Once you press Start, read out all the prompts and then tell
                   everyone to refresh the page.
                 </p>
                 <div style={{display: 'flex', gap: 12, justifyContent: 'center'}}>
