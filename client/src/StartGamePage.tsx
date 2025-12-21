@@ -43,6 +43,9 @@ export default function StartGamePage() {
   // New question input state for starting a new round
   const [newQuestion, setNewQuestion] = useState("");
 
+  const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+
   // Check if all entries have been guessed
   const allGuessed = entries.length > 0 && entries.every(entry => entry.guessed);
 // Add these states after your existing state declarations
@@ -115,25 +118,35 @@ export default function StartGamePage() {
   const addEntry = async () => {
     if (started || !entryText || !authorName) return;
 
-    setAddEntryLoading(true);  // ← Start loading
+    setAddEntryLoading(true);
+
+    const startTime = Date.now();
 
     try {
       await axios.post(`/api/games/${gameId}/entries`, {
         authorName,
         text: entryText,
       });
+
       setEntryText("");
       setAuthorName("");
-      await fetchEntries();  // Refresh entries list
-      setToast({message: 'Entry added!', type: 'success'});
+      await fetchEntries();
+
+      const elapsed = Date.now() - startTime;
+      const remaining = 1000 - elapsed; // 2 seconds total
+      if (remaining > 0) {
+        await sleep(remaining);
+      }
+      setToast({message: "Entry added!", type: "success"});
     } catch (error) {
       console.error("Error adding entry", error);
-      setToast({message: 'Failed to add entry', type: 'error'});
+      setToast({message: "Failed to add entry", type: "error"});
     } finally {
-      setAddEntryLoading(false);  // ← Stop loading
+
+
+      setAddEntryLoading(false);
     }
   };
-
 
   const startGame = async () => {
     if (!entries.length) {
@@ -279,32 +292,47 @@ export default function StartGamePage() {
                       maxWidth: 140,
                       background: addEntryLoading
                           ? '#c7c7cc'
-                          : (entryText && authorName)
+                          : entryText && authorName
                               ? '#007aff'
                               : '#c7c7cc',
                       color: addEntryLoading
                           ? 'white'
-                          : (entryText && authorName)
+                          : entryText && authorName
                               ? 'white'
                               : '#86868b',
-                      opacity: (isLoading || addEntryLoading || !entryText || !authorName) ? 0.6 : 1,
-                      cursor: (isLoading || addEntryLoading || !entryText || !authorName) ? 'not-allowed' : 'pointer',
+                      opacity: isLoading || addEntryLoading || !entryText || !authorName ? 0.6 : 1,
+                      cursor: isLoading || addEntryLoading || !entryText || !authorName ? 'not-allowed' : 'pointer',
                       padding: '14px 24px',
                       borderRadius: 12,
                       border: 'none',
                       fontWeight: 600,
-                      fontSize: 16
+                      fontSize: 16,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 8,
                     }}
                 >
                   {addEntryLoading ? (
                       <>
-                        <span style={{ /* spinner styles */}}/>
-                        Adding...
+      <span
+          style={{
+            display: 'inline-block',
+            width: 16,
+            height: 16,
+            borderRadius: '50%',
+            border: '2px solid rgba(255,255,255,0.5)',
+            borderTopColor: 'white',
+            animation: 'spin 1s linear infinite',
+          }}
+      />
+                        Saving...
                       </>
                   ) : (
                       'Add Answer'
                   )}
                 </button>
+
 
                 <button
                     onClick={() => setShowStartConfirm(true)}
