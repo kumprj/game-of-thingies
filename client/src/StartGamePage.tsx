@@ -89,10 +89,17 @@ export default function StartGamePage() {
 
     try {
       const res = await axios.get(`/api/games/${gameId}/entries`);
-      const shuffledEntries = res.data?.sort(() => Math.random() - 0.5) || [];
-      setEntries(shuffledEntries);
 
-      if (shuffledEntries.some((e: Entry) => e.revealed)) {
+      const sortedEntries = (res.data ?? []).slice().sort(
+          (a: Entry, b: Entry) =>
+              a.text.localeCompare(b.text, undefined, {sensitivity: "base"})
+          // or use a.authorName.localeCompare(b.authorName, ...) to sort by name
+      );
+
+      setEntries(sortedEntries);
+
+
+      if (sortedEntries.some((e: Entry) => e.revealed)) {
         setStarted(true);
       } else {
         setStarted(false);
