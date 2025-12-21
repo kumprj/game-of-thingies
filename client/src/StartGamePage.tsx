@@ -79,6 +79,8 @@ export default function StartGamePage() {
 
   // Check if all entries have been guessed
   const allGuessed = entries.length > 0 && entries.every(entry => entry.guessed);
+  const [guessLoading, setGuessLoading] = useState(false);
+
 // Add these states after your existing state declarations
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
@@ -236,26 +238,29 @@ export default function StartGamePage() {
 
 
   const guessAuthor = async (entryId: string, guess: string) => {
+    setGuessLoading(true);
     try {
-      const {data} = await axios.post(`/api/games/${gameId}/entries/${entryId}/guess`, {
-        guesserName: authorName,
-        guess,
-      });
-
+      const {data} = await axios.post(
+          `/api/games/${gameId}/entries/${entryId}/guess`,
+          {guesserName: authorName, guess}
+      );
       if (data.isCorrect && data.entry) {
-        // Update the guessed entry in entries state
         setEntries(prev =>
             prev.map(e => (e.entryId === data.entry.entryId ? data.entry : e))
         );
         setGuessedEntryIds(prev => new Set(prev).add(entryId));
-        setToast({message: 'Correct!', type: 'success'});
+        setToast({message: "Correct!", type: "success"});
       } else {
-        setToast({message: 'AAAAANT. Wrong answer!', type: 'error'});
+        setToast({message: "AAAAANT. Wrong answer!", type: "error"});
       }
-    } catch (error) {
-      console.error("Error submitting guess", error);
+    } catch (err) {
+      console.error("Error submitting guess", err);
+    } finally {
+      setGuessLoading(false);
+      setGuessingEntry(null);  // close after result
     }
   };
+
 
   // Get list of unique author names for guessing
   const uniqueNames = Array.from(new Set(entries.map(e => e.authorName)));
@@ -524,11 +529,10 @@ export default function StartGamePage() {
                       const renderName = (name: string, disabled: boolean) => (
                           <li key={name}>
                             <button
-                                disabled={disabled || !guessingEntry}
+                                disabled={disabled || !guessingEntry || guessLoading}
                                 onClick={() => {
-                                  if (!guessingEntry || disabled) return;
+                                  if (!guessingEntry || disabled || guessLoading) return;
                                   guessAuthor(guessingEntry.entryId, name);
-                                  setGuessingEntry(null);
                                 }}
                                 style={{
                                   width: "75%",
@@ -536,10 +540,14 @@ export default function StartGamePage() {
                                   borderRadius: 12,
                                   border: "none",
                                   textAlign: "center",
-                                  backgroundColor: disabled ? "#e5e5ea" : "#007aff",
-                                  color: disabled ? "#8e8e93" : "white",
-                                  cursor: disabled ? "default" : "pointer",
+                                  backgroundColor:
+                                      disabled || guessLoading ? "#e5e5ea" : "#007aff",
+                                  color:
+                                      disabled || guessLoading ? "#8e8e93" : "white",
+                                  cursor:
+                                      disabled || guessLoading ? "default" : "pointer",
                                 }}
+
                             >
                               {name}
                             </button>
@@ -555,6 +563,33 @@ export default function StartGamePage() {
                     })()}
                   </ul>
                 </div>
+                {guessLoading && (
+                    <div
+                        style={{
+                          marginTop: 16,
+                          fontSize: 15,
+                          fontWeight: 600,
+                          color: "#007aff",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: 10,
+                        }}
+                    >
+                      <span
+                          style={{
+                            width: 18,
+                            height: 18,
+                            borderRadius: "50%",
+                            border: "2px solid rgba(0,122,255,0.3)",
+                            borderTopColor: "#007aff",
+                            animation: "spin 0.9s linear infinite",
+                          }}
+                      />
+                      Guessing...
+                    </div>
+                )}
+
 
                 <button
                     className="cancel-button"
@@ -638,7 +673,7 @@ export default function StartGamePage() {
         )}
 
         {allGuessed && (
-            <div style={{ marginTop: 30 }}>
+            <div style={{marginTop: 30}}>
               <input
                   type="text"
                   placeholder="Ask a new question?"
@@ -692,8 +727,6 @@ export default function StartGamePage() {
               </button>
             </div>
         )}
-
-
 
 
         <ul>
