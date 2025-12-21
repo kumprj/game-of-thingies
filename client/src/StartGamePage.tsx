@@ -35,6 +35,7 @@ export default function StartGamePage() {
   const [isLoading, setIsLoading] = useState(false);        // For Start button
   const [addEntryLoading, setAddEntryLoading] = useState(false);  // ← NEW for Add Entry
   const [showHowToPlay, setShowHowToPlay] = useState(false);
+  const [startNewRoundLoading, setStartNewRoundLoading] = useState(false);
 
 
   // State for the entry currently being guessed (for modal)
@@ -216,20 +217,23 @@ export default function StartGamePage() {
 
 
   const startNewRound = async () => {
+    setStartNewRoundLoading(true);
     try {
       await axios.post(`/api/games/${gameId}/reset`, {
-        question: newQuestion.trim()
+        question: newQuestion.trim(),
       });
       setNewQuestion("");
-      setEntries([]);  // Clear immediately
+      setEntries([]); // Clear immediately
       setGuessedEntryIds(new Set());
-      setStarted(false);  // Back to entry submission mode
-      window.location.reload();
-      // Game data will refresh via useEffect
+      setStarted(false); // Back to entry submission mode
+      window.location.reload(); // Game data will refresh via useEffect
     } catch (err) {
       console.error("Reset failed", err);
+    } finally {
+      setStartNewRoundLoading(false);
     }
   };
+
 
   const guessAuthor = async (entryId: string, guess: string) => {
     try {
@@ -272,28 +276,34 @@ export default function StartGamePage() {
         )}
 
         {started && (
-        <div style={{ flex: 1, display: "flex", justifyContent: "center", alignItems: "center", marginBottom: 16 }}>
-          <button
-              onClick={() => setShowHowToPlay(prev => !prev)}
-              aria-label="How to play"
-              style={{
-                width: 28,
-                height: 28,
-                borderRadius: "50%",
-                border: "none",
-                backgroundColor: "#e5e5ea",
-                color: "#007aff",
-                fontWeight: 700,
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                boxShadow: "0 1px 3px rgba(0,0,0,0.15)",
-              }}
-          >
-            i
-          </button>
-        </div>
+            <div style={{
+              flex: 1,
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              marginBottom: 16
+            }}>
+              <button
+                  onClick={() => setShowHowToPlay(prev => !prev)}
+                  aria-label="How to play"
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: "50%",
+                    border: "none",
+                    backgroundColor: "#e5e5ea",
+                    color: "#007aff",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.15)",
+                  }}
+              >
+                i
+              </button>
+            </div>
         )}
 
         {showHowToPlay && (
@@ -310,7 +320,8 @@ export default function StartGamePage() {
                 }}
             >
               <p style={{marginTop: 0, marginBottom: 8}}>
-                How to Play: Each person secretly writes an answer to the question and adds it to the list.
+                How to Play: Each person secretly writes an answer to the question and adds it to
+                the list.
               </p>
               <p style={{margin: 0, marginBottom: 8}}>
                 When the host starts the game, all answers are revealed. Taking turns, tap an answer
@@ -626,15 +637,14 @@ export default function StartGamePage() {
             </div>
         )}
 
-
-        {/* NEW Question Input shown after all guessed */}
         {allGuessed && (
-            <div style={{marginTop: 30}}>
+            <div style={{ marginTop: 30 }}>
               <input
                   type="text"
                   placeholder="Ask a new question?"
                   value={newQuestion}
                   onChange={e => setNewQuestion(e.target.value)}
+                  disabled={startNewRoundLoading}
                   style={{
                     padding: "12px 16px",
                     fontSize: 16,
@@ -644,15 +654,51 @@ export default function StartGamePage() {
                     marginRight: 12,
                   }}
               />
-              <button disabled={!newQuestion.trim()} onClick={startNewRound}>
-                Start New Round
+              <button
+                  disabled={!newQuestion.trim() || startNewRoundLoading}
+                  onClick={startNewRound}
+                  style={{
+                    background: startNewRoundLoading ? "#c7c7cc" : "#34c759",
+                    color: startNewRoundLoading ? "#86868b" : "white",
+                    padding: "12px 16px",
+                    borderRadius: 12,
+                    border: "none",
+                    fontWeight: 600,
+                    cursor: startNewRoundLoading ? "not-allowed" : "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8,
+                    whiteSpace: "nowrap",
+                  }}
+              >
+                {startNewRoundLoading ? (
+                    <>
+          <span
+              style={{
+                display: "inline-block",
+                width: 16,
+                height: 16,
+                borderRadius: "50%",
+                border: "2px solid rgba(255,255,255,0.5)",
+                borderTopColor: "white",
+                animation: "spin 1s linear infinite",
+              }}
+          />
+                      Starting...
+                    </>
+                ) : (
+                    "Start New Round"
+                )}
               </button>
             </div>
         )}
 
+
+
+
         <ul>
           {started && (
-              <p style={{ marginBottom: 12, fontWeight: 600, color: "#1d1d1f" }}>
+              <p style={{marginBottom: 12, fontWeight: 600, color: "#1d1d1f"}}>
                 Your Group's Answers:
               </p>
           )}
