@@ -44,6 +44,22 @@ export default function StartGamePage() {
   const [newQuestion, setNewQuestion] = useState("");
 
   const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+  // At the top of the page, show who has / hasn't been guessed yet
+  const guessedNames = Array.from(
+      new Set(
+          entries
+              .filter(e => e.guessed)
+              .map(e => e.authorName)
+      )
+  ).sort((a, b) => a.localeCompare(b));
+
+  const notGuessedNames = Array.from(
+      new Set(
+          entries
+              .filter(e => !e.guessed)
+              .map(e => e.authorName)
+      )
+  ).sort((a, b) => a.localeCompare(b));
 
 
   // Check if all entries have been guessed
@@ -230,17 +246,44 @@ export default function StartGamePage() {
 
       <div style={{textAlign: "center", marginBottom: 20}}>
         <img src={logo} alt="Game of Things" style={{width: 80}}/>
+        {/* Game title / ID / question */}
         <h2>{gameTitle ?? gameId}</h2>
         {gameId && (
-            <p style={{color: "#3c3c4399", fontSize: 16, marginTop: -12, marginBottom: 28}}>
+            <p style={{color: "#3c3c4399", fontSize: 14, marginTop: -8}}>
               Game ID: {gameId}
             </p>
         )}
         {gameQuestion && (
-            <p style={{color: "#3c3c4399", fontSize: 16, marginTop: -12, marginBottom: 28}}>
-              {gameQuestion}
-            </p>
+            <p style={{fontSize: 18, marginBottom: 20}}>{gameQuestion}</p>
         )}
+
+        {/* NEW: Guess status summary */}
+        {started && (
+            <div
+                style={{
+                  marginBottom: 20,
+                  padding: "10px 14px",
+                  borderRadius: 12,
+                  backgroundColor: "#f2f2f7",
+                  fontSize: 14,
+                  textAlign: "left",
+                  maxWidth: 600,
+                  marginInline: "auto",
+                }}
+            >
+              <div style={{marginBottom: 6}}>
+                <strong>Not yet guessed:</strong>{" "}
+                {notGuessedNames.length
+                    ? notGuessedNames.join(", ")
+                    : "Everyone has been guessed!"}
+              </div>
+              <div>
+                <strong>Already guessed:</strong>{" "}
+                {guessedNames.length ? guessedNames.join(", ") : "No one yet"}
+              </div>
+            </div>
+        )}
+
 
         {!started && (
             <div style={{
