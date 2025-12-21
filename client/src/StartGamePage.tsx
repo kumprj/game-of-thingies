@@ -26,14 +26,15 @@ export default function StartGamePage() {
   const [entryText, setEntryText] = useState("");
   const [authorName, setAuthorName] = useState("");
   const [started, setStarted] = useState(false);
-  const [bubblePosition, setBubblePosition] = useState<{ top: number; left: number }>({
-    top: 0,
-    left: 0,
-  });
+  // const [bubblePosition, setBubblePosition] = useState<{ top: number; left: number }>({
+  //   top: 0,
+  //   left: 0,
+  // });
   const buttonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const [showStartConfirm, setShowStartConfirm] = useState(false);
   const [isLoading, setIsLoading] = useState(false);        // For Start button
   const [addEntryLoading, setAddEntryLoading] = useState(false);  // ← NEW for Add Entry
+  const [showHowToPlay, setShowHowToPlay] = useState(false);
 
 
   // State for the entry currently being guessed (for modal)
@@ -42,7 +43,20 @@ export default function StartGamePage() {
 
   // New question input state for starting a new round
   const [newQuestion, setNewQuestion] = useState("");
+// sort so enabled (clickable) entries appear first, then fall back to text sort
+  const isEntryEnabled = (entry: Entry) =>
+      started && !entry.guessed && !(entry.revealed && guessedEntryIds.has(entry.entryId));
 
+  const sortedEntriesForDisplay = entries
+      .slice()
+      .sort((a, b) => {
+        const aEnabled = isEntryEnabled(a);
+        const bEnabled = isEntryEnabled(b);
+        if (aEnabled === bEnabled) {
+          return a.text.localeCompare(b.text, undefined, {sensitivity: "base"});
+        }
+        return aEnabled ? -1 : 1; // enabled first
+      });
   const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
   // At the top of the page, show who has / hasn't been guessed yet
   const guessedNames = Array.from(
@@ -127,15 +141,15 @@ export default function StartGamePage() {
 
   const onEntryClick = (entry: Entry) => {
     setGuessingEntry(entry);
-
-    const btn = buttonRefs.current[entry.entryId];
-    if (btn) {
-      const rect = btn.getBoundingClientRect();
-      setBubblePosition({
-        top: rect.top + window.scrollY,
-        left: rect.right + window.scrollX + 10,
-      });
-    }
+    //
+    // const btn = buttonRefs.current[entry.entryId];
+    // if (btn) {
+    //   const rect = btn.getBoundingClientRect();
+    //   setBubblePosition({
+    //     top: rect.top + window.scrollY,
+    //     left: rect.right + window.scrollX + 10,
+    //   });
+    // }
   };
 
   const addEntry = async () => {
@@ -256,6 +270,60 @@ export default function StartGamePage() {
         {gameQuestion && (
             <p style={{fontSize: 18, marginBottom: 20}}>{gameQuestion}</p>
         )}
+
+        {started && (
+        <div style={{ flex: 1, display: "flex", justifyContent: "center", alignItems: "center", marginBottom: 16 }}>
+          <button
+              onClick={() => setShowHowToPlay(prev => !prev)}
+              aria-label="How to play"
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: "50%",
+                border: "none",
+                backgroundColor: "#e5e5ea",
+                color: "#007aff",
+                fontWeight: 700,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.15)",
+              }}
+          >
+            i
+          </button>
+        </div>
+        )}
+
+        {showHowToPlay && (
+            <div
+                style={{
+                  maxWidth: 600,
+                  margin: "0 auto 20px auto",
+                  padding: "12px 16px",
+                  borderRadius: 12,
+                  backgroundColor: "#f2f2f7",
+                  fontSize: 14,
+                  color: "#3c3c43",
+                  lineHeight: 1.5,
+                }}
+            >
+              <p style={{marginTop: 0, marginBottom: 8}}>
+                How to Play: Each person secretly writes an answer to the question and adds it to the list.
+              </p>
+              <p style={{margin: 0, marginBottom: 8}}>
+                When the host starts the game, all answers are revealed. Taking turns, tap an answer
+                and
+                then choose who you think wrote it. If you're right, you go again!
+              </p>
+              <p style={{margin: 0}}>
+                Correct guesses mark that person as guessed. Keep going until everyone has
+                been guessed, then ask a new question and start a new round.
+              </p>
+            </div>
+        )}
+
 
         {/* NEW: Guess status summary */}
         {started && (
@@ -413,37 +481,67 @@ export default function StartGamePage() {
               </div>
             </div>
         )}
-
         {guessingEntry && (
             <div
                 className="guess-overlay"
-                onClick={() => setGuessingEntry(null)} // click outside to close (optional)
+                onClick={() => setGuessingEntry(null)}
             >
-              <div className="guess-modal">
+              <div
+                  className="guess-modal"
+                  onClick={e => e.stopPropagation()}
+              >
                 <h4>Who wrote this?</h4>
 
                 <div className="guess-list">
                   <ul>
-                    {uniqueNames.map(name => {
-                      const authorAllGuessed = entries
-                          .filter(e => e.authorName === name)
-                          .every(e => e.guessed);
+                    {(() => {
+                      const enabledNames: string[] = [];
+                      const disabledNames: string[] = [];
 
-                      return (
+                      uniqueNames.forEach(name => {
+                        const authorAllGuessed = entries
+                            .filter(e => e.authorName === name)
+                            .every(e => e.guessed);
+
+                        if (authorAllGuessed) {
+                          disabledNames.push(name);
+                        } else {
+                          enabledNames.push(name);
+                        }
+                      });
+
+                      const renderName = (name: string, disabled: boolean) => (
                           <li key={name}>
                             <button
-                                disabled={authorAllGuessed || !guessingEntry}
+                                disabled={disabled || !guessingEntry}
                                 onClick={() => {
-                                  if (!guessingEntry) return;
+                                  if (!guessingEntry || disabled) return;
                                   guessAuthor(guessingEntry.entryId, name);
                                   setGuessingEntry(null);
+                                }}
+                                style={{
+                                  width: "75%",
+                                  padding: "12px 14px",
+                                  borderRadius: 12,
+                                  border: "none",
+                                  textAlign: "center",
+                                  backgroundColor: disabled ? "#e5e5ea" : "#007aff",
+                                  color: disabled ? "#8e8e93" : "white",
+                                  cursor: disabled ? "default" : "pointer",
                                 }}
                             >
                               {name}
                             </button>
                           </li>
                       );
-                    })}
+
+                      return (
+                          <>
+                            {enabledNames.map(name => renderName(name, false))}
+                            {disabledNames.map(name => renderName(name, true))}
+                          </>
+                      );
+                    })()}
                   </ul>
                 </div>
 
@@ -454,9 +552,9 @@ export default function StartGamePage() {
                   Cancel
                 </button>
               </div>
-
             </div>
         )}
+
 
         {showStartConfirm && (
             <div style={{
@@ -551,10 +649,16 @@ export default function StartGamePage() {
               </button>
             </div>
         )}
-        <ul>
-          {entries.length === 0 && <li>No entries found</li>}
 
-          {entries.map(entry => (
+        <ul>
+          {started && (
+              <p style={{ marginBottom: 12, fontWeight: 600, color: "#1d1d1f" }}>
+                Your Group's Answers:
+              </p>
+          )}
+          {sortedEntriesForDisplay.length === 0 && <li>No entries found</li>}
+
+          {sortedEntriesForDisplay.map(entry => (
               <li key={entry.entryId} style={{margin: "10px 0"}}>
                 {started ? (
                     <button
@@ -567,17 +671,17 @@ export default function StartGamePage() {
                       {entry.text}
                     </button>
                 ) : (
-                    <span style={{
-                      filter: 'blur(4px)',
-                      color: 'rgba(0,0,0,0.2)',
-                      userSelect: 'none',
-                      textShadow: '0 0 2px rgba(0,0,0,0.1)',
-                      transition: 'filter 0.3s ease, color 0.3s ease'
-                    }}>
-                      {entry.text}
-                    </span>
-
-
+                    <span
+                        style={{
+                          filter: "blur(4px)",
+                          color: "rgba(0,0,0,0.2)",
+                          userSelect: "none",
+                          textShadow: "0 0 2px rgba(0,0,0,0.1)",
+                          transition: "filter 0.3s ease, color 0.3s ease",
+                        }}
+                    >
+          {entry.text}
+        </span>
                 )}
               </li>
           ))}
