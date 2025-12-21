@@ -97,6 +97,73 @@ p {
     box-shadow: 0 4px 16px rgba(60, 60, 67, 0.1);
 }
 
+/* Full-screen dim background */
+.guess-overlay {
+    position: fixed;
+    inset: 0; /* top:0; right:0; bottom:0; left:0; */
+    background: rgba(0, 0, 0, 0.35); /* gray/dim background [web:33] */
+    display: flex;                   /* center modal with flexbox [web:30][web:46] */
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+/* Centered white bubble */
+/*.guess-modal {*/
+/*    background: #ffffff;*/
+/*    color: #111827;*/
+/*    padding: 20px 24px;*/
+/*    border-radius: 16px;*/
+/*    min-width: 260px;*/
+/*    max-width: 90vw;*/
+/*    box-shadow: 0 18px 45px rgba(15, 23, 42, 0.35);*/
+/*}*/
+
+.guess-modal {
+    background: #ffffff;
+    color: #111827;
+    padding: 20px 24px;
+    border-radius: 16px;
+    min-width: 260px;
+    max-width: 90vw;
+    box-shadow: 0 18px 45px rgba(15, 23, 42, 0.35);
+}
+
+/* Scrollable area for many names */
+.guess-list {
+    max-height: 320px;        /* ~5 buttons tall; adjust as needed */
+    overflow-y: auto;         /* scroll when more than 5 [web:71][web:76][web:80] */
+    margin: 8px 0 12px 0;
+}
+
+.guess-list ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.guess-list li + li {
+    margin-top: 8px;
+}
+
+
+/* Optional: tidy list/buttons */
+.guess-modal h4 {
+    margin-top: 0;
+    margin-bottom: 12px;
+}
+
+.guess-modal ul {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 16px 0;
+}
+
+.guess-modal li + li {
+    margin-top: 8px;
+}
+
+
 .guess-bubble {
     position: absolute;
     background: white;
@@ -146,7 +213,23 @@ p {
     box-shadow: 0 5px 15px rgba(0, 94, 203, 0.5);
 }
 
-.guess-bubble .cancel-button {
+.cancel-button {
+    margin-top: 12px;
+    background-color: #8B0000; /* dark red */
+    color: #ffffff;
+    padding: 10px 16px;
+    border-radius: 10px;
+    border: none;
+    font-weight: 600;
+    cursor: pointer;
+    width: 100%;
+}
+
+.cancel-button:hover {
+    background-color: #5A0000; /* darker red on hover */
+}
+
+.guess-bubble {
     width: 100%;
     padding: 10px 14px;
     border-radius: 14px;
@@ -159,7 +242,7 @@ p {
     transition: background-color 0.2s ease;
 }
 
-.guess-bubble .cancel-button:hover {
+.guess-bubble  {
     background-color: #d1d1d6;
 }
 @keyframes spin {

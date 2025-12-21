@@ -336,86 +336,50 @@ export default function StartGamePage() {
             </div>
         )}
 
-
-        <ul>
-          {entries.length === 0 && <li>No entries found</li>}
-
-          {entries.map(entry => (
-              <li key={entry.entryId} style={{margin: "10px 0"}}>
-                {started ? (
-                    <button
-                        ref={el => {
-                          buttonRefs.current[entry.entryId] = el;
-                        }}
-                        disabled={entry.guessed || (entry.revealed && guessedEntryIds.has(entry.entryId))}
-                        onClick={() => onEntryClick(entry)}
-                    >
-                      {entry.text}
-                    </button>
-                ) : (
-                    <span style={{
-                      filter: 'blur(4px)',
-                      color: 'rgba(0,0,0,0.2)',
-                      userSelect: 'none',
-                      textShadow: '0 0 2px rgba(0,0,0,0.1)',
-                      transition: 'filter 0.3s ease, color 0.3s ease'
-                    }}>
-                      {entry.text}
-                    </span>
-
-
-                )}
-              </li>
-          ))}
-        </ul>
-
         {guessingEntry && (
             <div
-                className="guess-bubble"
-                style={{
-                  position: "absolute",
-                  top: bubblePosition.top,
-                  left: bubblePosition.left,
-                  zIndex: 1000,
-                }}
+                className="guess-overlay"
+                onClick={() => setGuessingEntry(null)} // click outside to close (optional)
             >
-              <h4>Who wrote this?</h4>
-              <ul>
-                {uniqueNames.map(name => {
-                  const authorAllGuessed = entries
-                      .filter(e => e.authorName === name)
-                      .every(e => e.guessed);
+              <div className="guess-modal">
+                <h4>Who wrote this?</h4>
 
-                  return (
-                      <li key={name}>
-                        <button
-                            disabled={authorAllGuessed}
-                            style={{
-                              backgroundColor: authorAllGuessed ? '#c7c7cc' : '#007aff',
-                              color: authorAllGuessed ? '#86868b' : 'white',
-                              opacity: authorAllGuessed ? 0.6 : 1,
-                              cursor: authorAllGuessed ? 'not-allowed' : 'pointer',
-                            }}
-                            onClick={() => {
-                              if (authorAllGuessed) return;
-                              guessAuthor(guessingEntry.entryId, name);
-                              setGuessingEntry(null);
-                            }}
-                        >
-                          {name}
-                        </button>
-                      </li>
-                  );
-                })}
-              </ul>
-              <button
-                  className="cancel-button"
-                  onClick={() => setGuessingEntry(null)}
-              >
-                Cancel
-              </button>
+                <div className="guess-list">
+                  <ul>
+                    {uniqueNames.map(name => {
+                      const authorAllGuessed = entries
+                          .filter(e => e.authorName === name)
+                          .every(e => e.guessed);
+
+                      return (
+                          <li key={name}>
+                            <button
+                                disabled={authorAllGuessed || !guessingEntry}
+                                onClick={() => {
+                                  if (!guessingEntry) return;
+                                  guessAuthor(guessingEntry.entryId, name);
+                                  setGuessingEntry(null);
+                                }}
+                            >
+                              {name}
+                            </button>
+                          </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+
+                <button
+                    className="cancel-button"
+                    onClick={() => setGuessingEntry(null)}
+                >
+                  Cancel
+                </button>
+              </div>
+
             </div>
         )}
+
         {showStartConfirm && (
             <div style={{
               position: 'fixed',
@@ -509,28 +473,65 @@ export default function StartGamePage() {
               </button>
             </div>
         )}
+        <ul>
+          {entries.length === 0 && <li>No entries found</li>}
+
+          {entries.map(entry => (
+              <li key={entry.entryId} style={{margin: "10px 0"}}>
+                {started ? (
+                    <button
+                        ref={el => {
+                          buttonRefs.current[entry.entryId] = el;
+                        }}
+                        disabled={entry.guessed || (entry.revealed && guessedEntryIds.has(entry.entryId))}
+                        onClick={() => onEntryClick(entry)}
+                    >
+                      {entry.text}
+                    </button>
+                ) : (
+                    <span style={{
+                      filter: 'blur(4px)',
+                      color: 'rgba(0,0,0,0.2)',
+                      userSelect: 'none',
+                      textShadow: '0 0 2px rgba(0,0,0,0.1)',
+                      transition: 'filter 0.3s ease, color 0.3s ease'
+                    }}>
+                      {entry.text}
+                    </span>
+
+
+                )}
+              </li>
+          ))}
+        </ul>
+
         {toast && (
             <div
-                className="toast-notificatio`n"
+                className="toast-notification"
                 style={{
-                  position: 'fixed',
-                  top: 80,
-                  right: 20,
-                  backgroundColor: toast.type === 'success' ? '#34c759' : '#ff3b30',
-                  color: 'white',
-                  padding: '12px 20px',
+                  position: "fixed",
+                  // top: 80,                 // or use top: "50%" and translateY(-50%) for true center
+                  // transform: "translate(-50%, 0)",  // center horizontally
+                  top: "25%",
+                  transform: "translate(-50%, -50%)",
+                  left: "50%",
+                  backgroundColor: toast.type === "success" ? "#34c759" : "#ff3b30",
+                  color: "white",
+                  padding: "12px 20px",
                   borderRadius: 12,
-                  boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
+                  boxShadow: "0 4px 16px rgba(0,0,0,0.15)",
                   fontWeight: 600,
                   fontSize: 16,
                   zIndex: 2000,
-                  transform: 'translateX(100%)',
-                  animation: 'fadeScaleIn 0.4s ease-out forwards',
+                  animation: "fadeScaleIn 0.4s ease-out forwards",
+                  textAlign: "center",
+                  minWidth: 220,
                 }}
             >
               {toast.message}
             </div>
         )}
+
 
       </div>
   );
