@@ -5,7 +5,7 @@
   "main": "server.ts",
   "scripts": {
     "start": "tsx server.ts",
-    "dev": "concurrently \"npm run dev --prefix server\" \"npm start --prefix client\"",
+    "dev": "concurrently \"npm run dev:api\" \"npm start --prefix client\"",
     "dev:api": "tsx watch server.ts",
     "build": "tsc server.ts --outDir dist --target es2020"
   },
