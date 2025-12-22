@@ -22,7 +22,6 @@
   "homepage": "https://github.com/kumprj/game-of-thingies#readme",
   "devDependencies": {
     "concurrently": "^9.2.1",
-    "tsx": "^4.7.0",
     "typescript": "^5.0.0"
   },
   "dependencies": {
