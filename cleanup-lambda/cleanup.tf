@@ -32,7 +32,14 @@ resource "aws_iam_role_policy" "cleanup_policy" {
         "dynamodb:DeleteItem"
       ]
       Resource = "arn:aws:dynamodb:us-east-1:875660052076:table/Games"  # Update ARN
-    },{
+    }, {
+      Effect = "Allow"
+      Action = [
+        "dynamodb:Scan",
+        "dynamodb:DeleteItem"
+      ]
+      Resource = "arn:aws:dynamodb:us-east-1:875660052076:table/Entries"  # Added Entries table
+    }, {
         Effect = "Allow"
         Action = [
           "dynamodb:GetItem",
