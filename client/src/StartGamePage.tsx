@@ -4,9 +4,9 @@ import {useParams} from "react-router-dom";
 import logo from "../src/assets/logo.jpg";
 
 // Set backend API base URL
-axios.defaults.baseURL = "https://i7v5llgsek.execute-api.us-east-1.amazonaws.com/dev";
+// axios.defaults.baseURL = "https://i7v5llgsek.execute-api.us-east-1.amazonaws.com/dev";
 // Local:
-// axios.defaults.baseURL = "http://localhost:3001";
+axios.defaults.baseURL = "http://localhost:3001";
 
 interface Entry {
   entryId: string;
@@ -18,24 +18,33 @@ interface Entry {
   guessed?: boolean;
 }
 
+interface Score {
+  playerName: string;
+  score: number;
+
+}
+
 export default function StartGamePage() {
   const {gameId} = useParams();
   const [gameTitle, setGameTitle] = useState<string | null>(null);
   const [gameQuestion, setGameQuestion] = useState<string | null>(null);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [entryText, setEntryText] = useState("");
-  const [authorName, setAuthorName] = useState("");
+  const [authorName, setAuthorName] = useState<string>(() => {
+    if (typeof window === "undefined") return "";
+    const saved = window.localStorage.getItem("got_authorName");
+    return saved ?? "";
+  });
+
   const [started, setStarted] = useState(false);
-  // const [bubblePosition, setBubblePosition] = useState<{ top: number; left: number }>({
-  //   top: 0,
-  //   left: 0,
-  // });
+  const [scores, setScores] = useState<Score[]>([]);
   const buttonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const [showStartConfirm, setShowStartConfirm] = useState(false);
   const [isLoading, setIsLoading] = useState(false);        // For Start button
   const [addEntryLoading, setAddEntryLoading] = useState(false);  // ← NEW for Add Entry
   const [showHowToPlay, setShowHowToPlay] = useState(false);
   const [startNewRoundLoading, setStartNewRoundLoading] = useState(false);
+  const [showScores, setShowScores] = useState<boolean>(false);
 
 
   // State for the entry currently being guessed (for modal)
@@ -56,8 +65,9 @@ export default function StartGamePage() {
         if (aEnabled === bEnabled) {
           return a.text.localeCompare(b.text, undefined, {sensitivity: "base"});
         }
-        return aEnabled ? -1 : 1; // enabled first
+        return aEnabled ? -1 : 1;
       });
+
   const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
   // At the top of the page, show who has / hasn't been guessed yet
   const guessedNames = Array.from(
@@ -91,6 +101,19 @@ export default function StartGamePage() {
     }
   }, [toast]);
 
+  useEffect(() => {
+    if (authorName.trim() === "") return;
+    window.localStorage.setItem("got_authorName", authorName);
+  }, [authorName]);
+
+  useEffect(() => {
+    if (!gameId) return;
+    fetchScores();
+  }, [gameId, started]);
+
+
+
+
   // Fetch game title & question
   useEffect(() => {
     const fetchGameData = async () => {
@@ -114,6 +137,19 @@ export default function StartGamePage() {
     // eslint-disable-next-line
   }, [gameId]);
 
+  const fetchScores = async () => {
+    if (!gameId) return;
+    try {
+      const res = await axios.get<Score[]>(`/api/games/${gameId}/scores`);
+      const sorted = [...res.data].sort((a, b) => b.score - a.score);
+      setScores(sorted);
+    } catch (err) {
+      console.error("Error fetching scores", err);
+    }
+  };
+
+
+
   const fetchEntries = async () => {
     if (!gameId) {
       console.error("No gameId in route params");
@@ -130,8 +166,6 @@ export default function StartGamePage() {
       );
 
       setEntries(sortedEntries);
-
-
       if (sortedEntries.some((e: Entry) => e.revealed)) {
         setStarted(true);
       } else {
@@ -144,15 +178,6 @@ export default function StartGamePage() {
 
   const onEntryClick = (entry: Entry) => {
     setGuessingEntry(entry);
-    //
-    // const btn = buttonRefs.current[entry.entryId];
-    // if (btn) {
-    //   const rect = btn.getBoundingClientRect();
-    //   setBubblePosition({
-    //     top: rect.top + window.scrollY,
-    //     left: rect.right + window.scrollX + 10,
-    //   });
-    // }
   };
 
   const addEntry = async () => {
@@ -169,7 +194,7 @@ export default function StartGamePage() {
       });
 
       setEntryText("");
-      setAuthorName("");
+      // setAuthorName("");
       await fetchEntries();
 
       const elapsed = Date.now() - startTime;
@@ -202,6 +227,7 @@ export default function StartGamePage() {
       await axios.post(`/api/games/${gameId}/start`);
       setStarted(true);
       await fetchEntries();
+      await fetchScores();
     } catch (error: any) {
       console.error("Error starting game", error);
 
@@ -213,10 +239,9 @@ export default function StartGamePage() {
 
       setToast({message: 'Failed to start game', type: 'error'});
     } finally {
-      setIsLoading(false);  // ← Stop loading
+      setIsLoading(false);
+      setShowStartConfirm(false);
     }
-
-    setShowStartConfirm(false);  // Close confirmation modal
   };
 
 
@@ -244,16 +269,30 @@ export default function StartGamePage() {
     await sleep(1500); // artificial delay for UX
 
     try {
+      console.log("authorName:", authorName);
       const {data} = await axios.post(
           `/api/games/${gameId}/entries/${entryId}/guess`,
           {guesserName: authorName, guess}
       );
+
       if (data.isCorrect && data.entry) {
+        // Update this entry as guessed
         setEntries(prev =>
-            prev.map(e => (e.entryId === data.entry.entryId ? data.entry : e))
+            prev.map(e =>
+                e.entryId === data.entry.entryId ? data.entry : e
+            )
         );
-        setGuessedEntryIds(prev => new Set(prev).add(entryId));
+
+        setGuessedEntryIds(prev => {
+          const next = new Set(prev);
+          next.add(entryId);
+          return next;
+        });
+
         setToast({message: "Correct!", type: "success"});
+
+        // Scores changed → refresh scoreboard
+        await fetchScores();
       } else {
         setToast({message: "AAAAANT. Wrong answer!", type: "error"});
       }
@@ -261,7 +300,7 @@ export default function StartGamePage() {
       console.error("Error submitting guess", err);
     } finally {
       setGuessLoading(false);
-      setGuessingEntry(null);  // close after result
+      setGuessingEntry(null); // close modal after result
     }
   };
 
@@ -274,75 +313,118 @@ export default function StartGamePage() {
       <div style={{textAlign: "center", marginBottom: 20}}>
         <img src={logo} alt="Game of Things" style={{width: 80}}/>
         {/* Game title / ID / question */}
-        <h2>{gameTitle ?? gameId}</h2>
-        {gameId && (
-            <p style={{color: "#3c3c4399", fontSize: 14, marginTop: -8}}>
-              Game ID: {gameId}
-            </p>
-        )}
+        <div
+            style={{
+              display: "flex",
+              alignItems: "baseline",
+              justifyContent: "center",
+              gap: 12,
+              marginBottom: 4,
+            }}
+        >
+          <h2 style={{ margin: 0 }}>{gameTitle ?? gameId}</h2>
+          {gameId && (
+              <span
+                  style={{
+                    color: "#3c3c4399",
+                    fontSize: 14,
+                  }}
+              >
+      (ID: {gameId})
+    </span>
+          )}
+        </div>
+
         {gameQuestion && (
             <p style={{fontSize: 18, marginBottom: 20}}>{gameQuestion}</p>
         )}
 
-        {started && (
-            <div style={{
-              flex: 1,
-              display: "flex",
-              justifyContent: "center",
-              alignItems: "center",
-              marginBottom: 16
-            }}>
+
+        {/*Scoreboard*/}
+        {scores.length > 0 && (
+            <div
+                style={{
+                  maxWidth: 600,
+                  margin: "0 auto 12px auto",
+                  display: "flex",
+                  justifyContent: "flex-end",
+                }}
+            >
               <button
-                  onClick={() => setShowHowToPlay(prev => !prev)}
-                  aria-label="How to play"
+                  onClick={() => setShowScores(prev => !prev)}
                   style={{
-                    width: 28,
-                    height: 28,
-                    borderRadius: "50%",
                     border: "none",
-                    backgroundColor: "#e5e5ea",
+                    background: "transparent",
                     color: "#007aff",
-                    fontWeight: 700,
+                    fontSize: 14,
                     cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    boxShadow: "0 1px 3px rgba(0,0,0,0.15)",
+                    textDecoration: "underline",
                   }}
               >
-                i
+                {showScores ? "Hide scoreboard" : "Show scoreboard"}
               </button>
             </div>
         )}
 
-        {showHowToPlay && (
+        {scores.length > 0 && showScores && (
             <div
                 style={{
-                  maxWidth: 600,
-                  margin: "0 auto 20px auto",
+                  marginBottom: 20,
                   padding: "12px 16px",
-                  borderRadius: 12,
+                  borderRadius: 16,
                   backgroundColor: "#f2f2f7",
+                  maxWidth: 600,
+                  marginInline: "auto",
                   fontSize: 14,
-                  color: "#3c3c43",
-                  lineHeight: 1.5,
                 }}
             >
-              <p style={{marginTop: 0, marginBottom: 8}}>
-                How to Play: Each person secretly writes an answer to the question and adds it to
-                the list.
-              </p>
-              <p style={{margin: 0, marginBottom: 8}}>
-                When the host starts the game, all answers are revealed. Taking turns, tap an answer
-                and
-                then choose who you think wrote it. If you're right, you go again!
-              </p>
-              <p style={{margin: 0}}>
-                Correct guesses mark that person as guessed. Keep going until everyone has
-                been guessed, then ask a new question and start a new round.
-              </p>
+              <div
+                  style={{
+                    marginBottom: 8,
+                    fontWeight: 700,
+                    textAlign: "left",
+                    color: "#1d1d1f",
+                  }}
+              >
+                Scoreboard
+              </div>
+
+              {scores.map((s, index) => {
+                const rank = index + 1;
+
+                let bg = "#0f5cc0"; // default dark blue
+                let text = "white";
+
+                if (rank === 1) bg = "#f6c453";      // gold
+                else if (rank === 2) bg = "#c0c4cc"; // silver
+                else if (rank === 3) bg = "#cd7f32"; // bronze
+
+                return (
+                    <div
+                        key={s.playerName}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          marginTop: 6,
+                          padding: "8px 10px",
+                          borderRadius: 999,
+                          backgroundColor: bg,
+                          color: text,
+                        }}
+                    >
+                      <span style={{ fontWeight: 600, minWidth: 20 }}>#{rank}</span>
+                      <span style={{ flex: 1, marginLeft: 8, textAlign: "left" }}>
+            {s.playerName}
+          </span>
+                      <span style={{ fontWeight: 700 }}>{s.score}</span>
+                    </div>
+                );
+              })}
             </div>
         )}
+
+
 
 
         {/* NEW: Guess status summary */}
@@ -680,7 +762,7 @@ export default function StartGamePage() {
             <div style={{marginTop: 30}}>
               <input
                   type="text"
-                  placeholder="Ask a new question?"
+                  placeholder="Game Over! Ask a new question?"
                   value={newQuestion}
                   onChange={e => setNewQuestion(e.target.value)}
                   disabled={startNewRoundLoading}
@@ -697,13 +779,20 @@ export default function StartGamePage() {
                   disabled={!newQuestion.trim() || startNewRoundLoading}
                   onClick={startNewRound}
                   style={{
-                    background: startNewRoundLoading ? "#c7c7cc" : "#34c759",
-                    color: startNewRoundLoading ? "#86868b" : "white",
+                    background: startNewRoundLoading || !newQuestion.trim()
+                        ? "#c7c7cc"
+                        : "#34c759",
+                    color: startNewRoundLoading || !newQuestion.trim()
+                        ? "#86868b"
+                        : "white",
                     padding: "12px 16px",
                     borderRadius: 12,
                     border: "none",
                     fontWeight: 600,
-                    cursor: startNewRoundLoading ? "not-allowed" : "pointer",
+                    cursor:
+                        startNewRoundLoading || !newQuestion.trim()
+                            ? "not-allowed"
+                            : "pointer",
                     display: "inline-flex",
                     alignItems: "center",
                     gap: 8,
@@ -712,23 +801,24 @@ export default function StartGamePage() {
               >
                 {startNewRoundLoading ? (
                     <>
-          <span
-              style={{
-                display: "inline-block",
-                width: 16,
-                height: 16,
-                borderRadius: "50%",
-                border: "2px solid rgba(255,255,255,0.5)",
-                borderTopColor: "white",
-                animation: "spin 1s linear infinite",
-              }}
-          />
+      <span
+          style={{
+            display: "inline-block",
+            width: 16,
+            height: 16,
+            borderRadius: "50%",
+            border: "2px solid rgba(255,255,255,0.5)",
+            borderTopColor: "white",
+            animation: "spin 1s linear infinite",
+          }}
+      />
                       Starting...
                     </>
                 ) : (
                     "Start New Round"
                 )}
               </button>
+
             </div>
         )}
 
@@ -769,6 +859,70 @@ export default function StartGamePage() {
               </li>
           ))}
         </ul>
+
+
+        {/* How to play toggle at bottom-left */}
+        <div
+            style={{
+              maxWidth: 600,
+              margin: "24px auto 0 auto",
+              display: "flex",
+              justifyContent: "flex-start",
+              alignItems: "center",
+              gap: 8,
+            }}
+        >
+          <button
+              onClick={() => setShowHowToPlay(prev => !prev)}
+              aria-label="How to play"
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: "50%",
+                border: "none",
+                backgroundColor: "#e5e5ea",
+                color: "#007aff",
+                fontWeight: 700,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.15)",
+              }}
+          >
+            i
+          </button>
+          <span style={{ fontSize: 14, color: "#3c3c43" }}>
+  </span>
+        </div>
+
+        {showHowToPlay && (
+            <div
+                style={{
+                  maxWidth: 600,
+                  margin: "8px auto 20px auto",
+                  padding: "12px 16px",
+                  borderRadius: 12,
+                  backgroundColor: "#f2f2f7",
+                  fontSize: 14,
+                  color: "#3c3c43",
+                  lineHeight: 1.5,
+                  textAlign: "left",
+                }}
+            >
+              <p style={{ marginTop: 0, marginBottom: 8 }}>
+                How to play: Each person secretly writes an answer to the question and adds it to the list.
+              </p>
+              <p style={{ margin: 0, marginBottom: 8 }}>
+                When the host starts the game, all answers are revealed. Taking turns, tap an
+                answer and then choose who you think wrote it. If you're right, you go again!
+              </p>
+              <p style={{ margin: 0 }}>
+                Correct guesses mark that person as guessed. Keep going until everyone has
+                been guessed, then ask a new question and start a new round.
+              </p>
+            </div>
+        )}
 
         {toast && (
             <div

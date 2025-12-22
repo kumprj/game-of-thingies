@@ -15,7 +15,7 @@
       "function": {
         "gameofthingsProdApi": {
           "deploymentBucketName": "amplify-gameofthingies-dev-b755b-deployment",
-          "s3Key": "amplify-builds/gameofthingsProdApi-34615345676e744d4c35-build.zip"
+          "s3Key": "amplify-builds/gameofthingsProdApi-3844613865747a4c6332-build.zip"
         }
       },
       "api": {

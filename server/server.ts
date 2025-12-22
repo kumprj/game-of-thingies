@@ -200,51 +200,90 @@ app.get('/api/games/:gameId/entries', async (req, res) => {
   res.json(result.Items ?? []); // ⬅️ send array only
 });
 
-app.post('/api/games/:gameId/entries/:entryId/guess', async (req, res) => {
-  const {gameId, entryId} = req.params;
-  const {guesserName, guess} = req.body;
+app.get('/api/games/:gameId/scores', async (req, res) => {
+  const {gameId} = req.params;
 
+  try {
+    const result = await ddb.send(new QueryCommand({
+      TableName: 'Scores',
+      KeyConditionExpression: 'gameId = :g',
+      ExpressionAttributeValues: {':g': gameId},
+    }));
+
+    // Return array of { playerName, score }
+    const items = (result.Items || []).map(item => ({
+      playerName: item.playerName,
+      score: item.score ?? 0,
+    }));
+
+    res.json(items);
+  } catch (err) {
+    console.error('Scores fetch error:', err);
+    res.status(500).json({error: 'Failed to fetch scores'});
+  }
+});
+
+
+app.post('/api/games/:gameId/entries/:entryId/guess', async (req, res) => {
+  const { gameId, entryId } = req.params;
+  const { guesserName, guess } = req.body;
+  console.log(`Received guess for gameId=${gameId}, entryId=${entryId} from ${guesserName}: "${guess}"`);
   try {
     // Get the entry
     const entryResult = await ddb.send(new GetCommand({
       TableName: 'Entries',
-      Key: {gameId, entryId}
+      Key: { gameId, entryId },
     }));
-
+    console.log("Entry result:", entryResult);
     const item = entryResult.Item;
     if (!item) {
-      return res.status(404).json({error: "Entry not found"});
+      return res.status(404).json({ error: "Entry not found" });
     }
+    console.log("item is ", item);
 
     const isCorrect = item.authorName === guess;
-
+    console.log("isCorrect", isCorrect);
     if (isCorrect) {
       // Mark as guessed
       await ddb.send(new UpdateCommand({
         TableName: 'Entries',
-        Key: {gameId, entryId},
+        Key: { gameId, entryId },
         UpdateExpression: 'SET guessed = :val',
-        ExpressionAttributeValues: {':val': true}
+        ExpressionAttributeValues: { ':val': true },
       }));
+      console.log("got here 1");
 
-      // Fetch the updated item
+      // Increment player score in Scores table
+      await ddb.send(new UpdateCommand({
+        TableName: 'Scores',
+        Key: { gameId, playerName: guesserName },
+        UpdateExpression: 'ADD score :inc',
+        ExpressionAttributeValues: { ':inc': 1 },
+      }));
+      console.log("got here 2");
+
+      // Fetch the updated entry
       const updatedEntryResult = await ddb.send(new GetCommand({
         TableName: 'Entries',
-        Key: {gameId, entryId}
+        Key: { gameId, entryId },
       }));
+      console.log("got here 3");
 
+      console.log(updatedEntryResult);
       return res.json({
         isCorrect,
-        entry: updatedEntryResult.Item
+        entry: updatedEntryResult.Item,
       });
     }
 
-    res.json({isCorrect});
+    // Wrong answer branch – still respond
+    return res.json({ isCorrect });
   } catch (err) {
     console.error("Guess API error:", err);
-    res.status(500).json({error: "Internal Server Error"});
+    res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
-app.listen(3001, () => console.log('API server on port 3001'));
+
+// app.listen(3001, () => console.log('API server on port 3001'));
 export const handler = serverless(app);
