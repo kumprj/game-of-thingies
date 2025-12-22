@@ -26,14 +26,16 @@ export default function StartGamePage() {
   const [entryText, setEntryText] = useState("");
   const [authorName, setAuthorName] = useState("");
   const [started, setStarted] = useState(false);
-  const [bubblePosition, setBubblePosition] = useState<{ top: number; left: number }>({
-    top: 0,
-    left: 0,
-  });
+  // const [bubblePosition, setBubblePosition] = useState<{ top: number; left: number }>({
+  //   top: 0,
+  //   left: 0,
+  // });
   const buttonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const [showStartConfirm, setShowStartConfirm] = useState(false);
   const [isLoading, setIsLoading] = useState(false);        // For Start button
   const [addEntryLoading, setAddEntryLoading] = useState(false);  // ← NEW for Add Entry
+  const [showHowToPlay, setShowHowToPlay] = useState(false);
+  const [startNewRoundLoading, setStartNewRoundLoading] = useState(false);
 
 
   // State for the entry currently being guessed (for modal)
@@ -42,9 +44,43 @@ export default function StartGamePage() {
 
   // New question input state for starting a new round
   const [newQuestion, setNewQuestion] = useState("");
+// sort so enabled (clickable) entries appear first, then fall back to text sort
+  const isEntryEnabled = (entry: Entry) =>
+      started && !entry.guessed && !(entry.revealed && guessedEntryIds.has(entry.entryId));
+
+  const sortedEntriesForDisplay = entries
+      .slice()
+      .sort((a, b) => {
+        const aEnabled = isEntryEnabled(a);
+        const bEnabled = isEntryEnabled(b);
+        if (aEnabled === bEnabled) {
+          return a.text.localeCompare(b.text, undefined, {sensitivity: "base"});
+        }
+        return aEnabled ? -1 : 1; // enabled first
+      });
+  const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+  // At the top of the page, show who has / hasn't been guessed yet
+  const guessedNames = Array.from(
+      new Set(
+          entries
+              .filter(e => e.guessed)
+              .map(e => e.authorName)
+      )
+  ).sort((a, b) => a.localeCompare(b));
+
+  const notGuessedNames = Array.from(
+      new Set(
+          entries
+              .filter(e => !e.guessed)
+              .map(e => e.authorName)
+      )
+  ).sort((a, b) => a.localeCompare(b));
+
 
   // Check if all entries have been guessed
   const allGuessed = entries.length > 0 && entries.every(entry => entry.guessed);
+  const [guessLoading, setGuessLoading] = useState(false);
+
 // Add these states after your existing state declarations
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
@@ -86,10 +122,17 @@ export default function StartGamePage() {
 
     try {
       const res = await axios.get(`/api/games/${gameId}/entries`);
-      const shuffledEntries = res.data?.sort(() => Math.random() - 0.5) || [];
-      setEntries(shuffledEntries);
 
-      if (shuffledEntries.some((e: Entry) => e.revealed)) {
+      const sortedEntries = (res.data ?? []).slice().sort(
+          (a: Entry, b: Entry) =>
+              a.text.localeCompare(b.text, undefined, {sensitivity: "base"})
+          // or use a.authorName.localeCompare(b.authorName, ...) to sort by name
+      );
+
+      setEntries(sortedEntries);
+
+
+      if (sortedEntries.some((e: Entry) => e.revealed)) {
         setStarted(true);
       } else {
         setStarted(false);
@@ -101,39 +144,51 @@ export default function StartGamePage() {
 
   const onEntryClick = (entry: Entry) => {
     setGuessingEntry(entry);
-
-    const btn = buttonRefs.current[entry.entryId];
-    if (btn) {
-      const rect = btn.getBoundingClientRect();
-      setBubblePosition({
-        top: rect.top + window.scrollY,
-        left: rect.right + window.scrollX + 10,
-      });
-    }
+    //
+    // const btn = buttonRefs.current[entry.entryId];
+    // if (btn) {
+    //   const rect = btn.getBoundingClientRect();
+    //   setBubblePosition({
+    //     top: rect.top + window.scrollY,
+    //     left: rect.right + window.scrollX + 10,
+    //   });
+    // }
   };
 
   const addEntry = async () => {
     if (started || !entryText || !authorName) return;
 
-    setAddEntryLoading(true);  // ← Start loading
+    setAddEntryLoading(true);
+
+    const startTime = Date.now();
 
     try {
       await axios.post(`/api/games/${gameId}/entries`, {
         authorName,
         text: entryText,
       });
+
       setEntryText("");
       setAuthorName("");
-      await fetchEntries();  // Refresh entries list
-      setToast({message: 'Entry added!', type: 'success'});
+      await fetchEntries();
+
+      const elapsed = Date.now() - startTime;
+      const remaining = 1000 - elapsed; // 1 seconds total
+      console.log("Elapsed time for addEntry:", elapsed);
+      console.log("remaining time for addEntry:", remaining);
+      if (remaining > 0) {
+        await sleep(remaining);
+      }
+      setToast({message: "Entry added!", type: "success"});
     } catch (error) {
       console.error("Error adding entry", error);
-      setToast({message: 'Failed to add entry', type: 'error'});
+      setToast({message: "Failed to add entry", type: "error"});
     } finally {
-      setAddEntryLoading(false);  // ← Stop loading
+
+
+      setAddEntryLoading(false);
     }
   };
-
 
   const startGame = async () => {
     if (!entries.length) {
@@ -166,42 +221,50 @@ export default function StartGamePage() {
 
 
   const startNewRound = async () => {
+    setStartNewRoundLoading(true);
     try {
       await axios.post(`/api/games/${gameId}/reset`, {
-        question: newQuestion.trim()
+        question: newQuestion.trim(),
       });
       setNewQuestion("");
-      setEntries([]);  // Clear immediately
+      setEntries([]); // Clear immediately
       setGuessedEntryIds(new Set());
-      setStarted(false);  // Back to entry submission mode
-      window.location.reload();
-      // Game data will refresh via useEffect
+      setStarted(false); // Back to entry submission mode
+      window.location.reload(); // Game data will refresh via useEffect
     } catch (err) {
       console.error("Reset failed", err);
+    } finally {
+      setStartNewRoundLoading(false);
     }
   };
 
-  const guessAuthor = async (entryId: string, guess: string) => {
-    try {
-      const {data} = await axios.post(`/api/games/${gameId}/entries/${entryId}/guess`, {
-        guesserName: authorName,
-        guess,
-      });
 
+  const guessAuthor = async (entryId: string, guess: string) => {
+    setGuessLoading(true);
+    await sleep(1500); // artificial delay for UX
+
+    try {
+      const {data} = await axios.post(
+          `/api/games/${gameId}/entries/${entryId}/guess`,
+          {guesserName: authorName, guess}
+      );
       if (data.isCorrect && data.entry) {
-        // Update the guessed entry in entries state
         setEntries(prev =>
             prev.map(e => (e.entryId === data.entry.entryId ? data.entry : e))
         );
         setGuessedEntryIds(prev => new Set(prev).add(entryId));
-        setToast({message: 'Correct!', type: 'success'});
+        setToast({message: "Correct!", type: "success"});
       } else {
-        setToast({message: 'AAAAANT. Wrong answer!', type: 'error'});
+        setToast({message: "AAAAANT. Wrong answer!", type: "error"});
       }
-    } catch (error) {
-      console.error("Error submitting guess", error);
+    } catch (err) {
+      console.error("Error submitting guess", err);
+    } finally {
+      setGuessLoading(false);
+      setGuessingEntry(null);  // close after result
     }
   };
+
 
   // Get list of unique author names for guessing
   const uniqueNames = Array.from(new Set(entries.map(e => e.authorName)));
@@ -210,17 +273,105 @@ export default function StartGamePage() {
 
       <div style={{textAlign: "center", marginBottom: 20}}>
         <img src={logo} alt="Game of Things" style={{width: 80}}/>
+        {/* Game title / ID / question */}
         <h2>{gameTitle ?? gameId}</h2>
         {gameId && (
-            <p style={{color: "#3c3c4399", fontSize: 16, marginTop: -12, marginBottom: 28}}>
+            <p style={{color: "#3c3c4399", fontSize: 14, marginTop: -8}}>
               Game ID: {gameId}
             </p>
         )}
         {gameQuestion && (
-            <p style={{color: "#3c3c4399", fontSize: 16, marginTop: -12, marginBottom: 28}}>
-              {gameQuestion}
-            </p>
+            <p style={{fontSize: 18, marginBottom: 20}}>{gameQuestion}</p>
         )}
+
+        {started && (
+            <div style={{
+              flex: 1,
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              marginBottom: 16
+            }}>
+              <button
+                  onClick={() => setShowHowToPlay(prev => !prev)}
+                  aria-label="How to play"
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: "50%",
+                    border: "none",
+                    backgroundColor: "#e5e5ea",
+                    color: "#007aff",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.15)",
+                  }}
+              >
+                i
+              </button>
+            </div>
+        )}
+
+        {showHowToPlay && (
+            <div
+                style={{
+                  maxWidth: 600,
+                  margin: "0 auto 20px auto",
+                  padding: "12px 16px",
+                  borderRadius: 12,
+                  backgroundColor: "#f2f2f7",
+                  fontSize: 14,
+                  color: "#3c3c43",
+                  lineHeight: 1.5,
+                }}
+            >
+              <p style={{marginTop: 0, marginBottom: 8}}>
+                How to Play: Each person secretly writes an answer to the question and adds it to
+                the list.
+              </p>
+              <p style={{margin: 0, marginBottom: 8}}>
+                When the host starts the game, all answers are revealed. Taking turns, tap an answer
+                and
+                then choose who you think wrote it. If you're right, you go again!
+              </p>
+              <p style={{margin: 0}}>
+                Correct guesses mark that person as guessed. Keep going until everyone has
+                been guessed, then ask a new question and start a new round.
+              </p>
+            </div>
+        )}
+
+
+        {/* NEW: Guess status summary */}
+        {started && (
+            <div
+                style={{
+                  marginBottom: 20,
+                  padding: "10px 14px",
+                  borderRadius: 12,
+                  backgroundColor: "#f2f2f7",
+                  fontSize: 14,
+                  textAlign: "left",
+                  maxWidth: 600,
+                  marginInline: "auto",
+                }}
+            >
+              <div style={{marginBottom: 6}}>
+                <strong>Not yet guessed:</strong>{" "}
+                {notGuessedNames.length
+                    ? notGuessedNames.join(", ")
+                    : "Everyone has been guessed!"}
+              </div>
+              <div>
+                <strong>Already guessed:</strong>{" "}
+                {guessedNames.length ? guessedNames.join(", ") : "No one yet"}
+              </div>
+            </div>
+        )}
+
 
         {!started && (
             <div style={{
@@ -279,32 +430,47 @@ export default function StartGamePage() {
                       maxWidth: 140,
                       background: addEntryLoading
                           ? '#c7c7cc'
-                          : (entryText && authorName)
+                          : entryText && authorName
                               ? '#007aff'
                               : '#c7c7cc',
                       color: addEntryLoading
                           ? 'white'
-                          : (entryText && authorName)
+                          : entryText && authorName
                               ? 'white'
                               : '#86868b',
-                      opacity: (isLoading || addEntryLoading || !entryText || !authorName) ? 0.6 : 1,
-                      cursor: (isLoading || addEntryLoading || !entryText || !authorName) ? 'not-allowed' : 'pointer',
+                      opacity: isLoading || addEntryLoading || !entryText || !authorName ? 0.6 : 1,
+                      cursor: isLoading || addEntryLoading || !entryText || !authorName ? 'not-allowed' : 'pointer',
                       padding: '14px 24px',
                       borderRadius: 12,
                       border: 'none',
                       fontWeight: 600,
-                      fontSize: 16
+                      fontSize: 16,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 8,
                     }}
                 >
                   {addEntryLoading ? (
                       <>
-                        <span style={{ /* spinner styles */}}/>
-                        Adding...
+      <span
+          style={{
+            display: 'inline-block',
+            width: 16,
+            height: 16,
+            borderRadius: '50%',
+            border: '2px solid rgba(255,255,255,0.5)',
+            borderTopColor: 'white',
+            animation: 'spin 1s linear infinite',
+          }}
+      />
+                        Saving...
                       </>
                   ) : (
                       'Add Answer'
                   )}
                 </button>
+
 
                 <button
                     onClick={() => setShowStartConfirm(true)}
@@ -335,87 +501,111 @@ export default function StartGamePage() {
               </div>
             </div>
         )}
-
-
-        <ul>
-          {entries.length === 0 && <li>No entries found</li>}
-
-          {entries.map(entry => (
-              <li key={entry.entryId} style={{margin: "10px 0"}}>
-                {started ? (
-                    <button
-                        ref={el => {
-                          buttonRefs.current[entry.entryId] = el;
-                        }}
-                        disabled={entry.guessed || (entry.revealed && guessedEntryIds.has(entry.entryId))}
-                        onClick={() => onEntryClick(entry)}
-                    >
-                      {entry.text}
-                    </button>
-                ) : (
-                    <span style={{
-                      filter: 'blur(4px)',
-                      color: 'rgba(0,0,0,0.2)',
-                      userSelect: 'none',
-                      textShadow: '0 0 2px rgba(0,0,0,0.1)',
-                      transition: 'filter 0.3s ease, color 0.3s ease'
-                    }}>
-                      {entry.text}
-                    </span>
-
-
-                )}
-              </li>
-          ))}
-        </ul>
-
         {guessingEntry && (
             <div
-                className="guess-bubble"
-                style={{
-                  position: "absolute",
-                  top: bubblePosition.top,
-                  left: bubblePosition.left,
-                  zIndex: 1000,
-                }}
+                className="guess-overlay"
+                onClick={() => setGuessingEntry(null)}
             >
-              <h4>Who wrote this?</h4>
-              <ul>
-                {uniqueNames.map(name => {
-                  const authorAllGuessed = entries
-                      .filter(e => e.authorName === name)
-                      .every(e => e.guessed);
-
-                  return (
-                      <li key={name}>
-                        <button
-                            disabled={authorAllGuessed}
-                            style={{
-                              backgroundColor: authorAllGuessed ? '#c7c7cc' : '#007aff',
-                              color: authorAllGuessed ? '#86868b' : 'white',
-                              opacity: authorAllGuessed ? 0.6 : 1,
-                              cursor: authorAllGuessed ? 'not-allowed' : 'pointer',
-                            }}
-                            onClick={() => {
-                              if (authorAllGuessed) return;
-                              guessAuthor(guessingEntry.entryId, name);
-                              setGuessingEntry(null);
-                            }}
-                        >
-                          {name}
-                        </button>
-                      </li>
-                  );
-                })}
-              </ul>
-              <button
-                  className="cancel-button"
-                  onClick={() => setGuessingEntry(null)}
+              <div
+                  className="guess-modal"
+                  onClick={e => e.stopPropagation()}
               >
-                Cancel
-              </button>
+                <h4>Who wrote this?</h4>
+
+                <div className="guess-list">
+                  <ul>
+                    {(() => {
+                      const enabledNames: string[] = [];
+                      const disabledNames: string[] = [];
+
+                      uniqueNames.forEach(name => {
+                        const authorAllGuessed = entries
+                            .filter(e => e.authorName === name)
+                            .every(e => e.guessed);
+
+                        if (authorAllGuessed) {
+                          disabledNames.push(name);
+                        } else {
+                          enabledNames.push(name);
+                        }
+                      });
+
+                      const renderName = (name: string, disabled: boolean) => (
+                          <li key={name}>
+                            <button
+                                disabled={disabled || !guessingEntry || guessLoading}
+                                onClick={() => {
+                                  if (!guessingEntry || disabled || guessLoading) return;
+                                  guessAuthor(guessingEntry.entryId, name);
+                                }}
+                                style={{
+                                  width: "75%",
+                                  padding: "12px 14px",
+                                  borderRadius: 12,
+                                  border: "none",
+                                  textAlign: "center",
+                                  backgroundColor:
+                                      disabled || guessLoading ? "#e5e5ea" : "#007aff",
+                                  color:
+                                      disabled || guessLoading ? "#8e8e93" : "white",
+                                  cursor:
+                                      disabled || guessLoading ? "default" : "pointer",
+                                }}
+
+                            >
+                              {name}
+                            </button>
+                          </li>
+                      );
+
+                      return (
+                          <>
+                            {enabledNames.map(name => renderName(name, false))}
+                            {disabledNames.map(name => renderName(name, true))}
+                          </>
+                      );
+                    })()}
+                  </ul>
+                </div>
+                {guessLoading && (
+                    <div
+                        style={{
+                          marginTop: 16,
+                          fontSize: 15,
+                          fontWeight: 600,
+                          color: "#007aff",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: 10,
+                        }}
+                    >
+                      <span
+                          style={{
+                            width: 18,
+                            height: 18,
+                            borderRadius: "50%",
+                            border: "2px solid rgba(0,122,255,0.3)",
+                            borderTopColor: "#007aff",
+                            animation: "spin 0.9s linear infinite",
+                          }}
+                      />
+                      Guessing...
+                    </div>
+                )}
+
+
+                <button
+                    className="cancel-button"
+                    onClick={() => setGuessingEntry(null)}
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
         )}
+
+
         {showStartConfirm && (
             <div style={{
               position: 'fixed',
@@ -486,8 +676,6 @@ export default function StartGamePage() {
             </div>
         )}
 
-
-        {/* NEW Question Input shown after all guessed */}
         {allGuessed && (
             <div style={{marginTop: 30}}>
               <input
@@ -495,6 +683,7 @@ export default function StartGamePage() {
                   placeholder="Ask a new question?"
                   value={newQuestion}
                   onChange={e => setNewQuestion(e.target.value)}
+                  disabled={startNewRoundLoading}
                   style={{
                     padding: "12px 16px",
                     fontSize: 16,
@@ -504,33 +693,110 @@ export default function StartGamePage() {
                     marginRight: 12,
                   }}
               />
-              <button disabled={!newQuestion.trim()} onClick={startNewRound}>
-                Start New Round
+              <button
+                  disabled={!newQuestion.trim() || startNewRoundLoading}
+                  onClick={startNewRound}
+                  style={{
+                    background: startNewRoundLoading ? "#c7c7cc" : "#34c759",
+                    color: startNewRoundLoading ? "#86868b" : "white",
+                    padding: "12px 16px",
+                    borderRadius: 12,
+                    border: "none",
+                    fontWeight: 600,
+                    cursor: startNewRoundLoading ? "not-allowed" : "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8,
+                    whiteSpace: "nowrap",
+                  }}
+              >
+                {startNewRoundLoading ? (
+                    <>
+          <span
+              style={{
+                display: "inline-block",
+                width: 16,
+                height: 16,
+                borderRadius: "50%",
+                border: "2px solid rgba(255,255,255,0.5)",
+                borderTopColor: "white",
+                animation: "spin 1s linear infinite",
+              }}
+          />
+                      Starting...
+                    </>
+                ) : (
+                    "Start New Round"
+                )}
               </button>
             </div>
         )}
+
+
+        <ul>
+          {started && (
+              <p style={{marginBottom: 12, fontWeight: 600, color: "#1d1d1f"}}>
+                Your Group's Answers:
+              </p>
+          )}
+          {sortedEntriesForDisplay.length === 0 && <li>No entries found</li>}
+
+          {sortedEntriesForDisplay.map(entry => (
+              <li key={entry.entryId} style={{margin: "10px 0"}}>
+                {started ? (
+                    <button
+                        ref={el => {
+                          buttonRefs.current[entry.entryId] = el;
+                        }}
+                        disabled={entry.guessed || (entry.revealed && guessedEntryIds.has(entry.entryId))}
+                        onClick={() => onEntryClick(entry)}
+                    >
+                      {entry.text}
+                    </button>
+                ) : (
+                    <span
+                        style={{
+                          filter: "blur(4px)",
+                          color: "rgba(0,0,0,0.2)",
+                          userSelect: "none",
+                          textShadow: "0 0 2px rgba(0,0,0,0.1)",
+                          transition: "filter 0.3s ease, color 0.3s ease",
+                        }}
+                    >
+          {entry.text}
+        </span>
+                )}
+              </li>
+          ))}
+        </ul>
+
         {toast && (
             <div
-                className="toast-notificatio`n"
+                className="toast-notification"
                 style={{
-                  position: 'fixed',
-                  top: 80,
-                  right: 20,
-                  backgroundColor: toast.type === 'success' ? '#34c759' : '#ff3b30',
-                  color: 'white',
-                  padding: '12px 20px',
+                  position: "fixed",
+                  // top: 80,                 // or use top: "50%" and translateY(-50%) for true center
+                  // transform: "translate(-50%, 0)",  // center horizontally
+                  top: "25%",
+                  transform: "translate(-50%, -50%)",
+                  left: "50%",
+                  backgroundColor: toast.type === "success" ? "#34c759" : "#ff3b30",
+                  color: "white",
+                  padding: "12px 20px",
                   borderRadius: 12,
-                  boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
+                  boxShadow: "0 4px 16px rgba(0,0,0,0.15)",
                   fontWeight: 600,
                   fontSize: 16,
                   zIndex: 2000,
-                  transform: 'translateX(100%)',
-                  animation: 'fadeScaleIn 0.4s ease-out forwards',
+                  animation: "fadeScaleIn 0.4s ease-out forwards",
+                  textAlign: "center",
+                  minWidth: 220,
                 }}
             >
               {toast.message}
             </div>
         )}
+
 
       </div>
   );
