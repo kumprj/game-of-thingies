@@ -173,7 +173,9 @@ export default function StartGamePage() {
       await fetchEntries();
 
       const elapsed = Date.now() - startTime;
-      const remaining = 1000 - elapsed; // 2 seconds total
+      const remaining = 1000 - elapsed; // 1 seconds total
+      console.log("Elapsed time for addEntry:", elapsed);
+      console.log("remaining time for addEntry:", remaining);
       if (remaining > 0) {
         await sleep(remaining);
       }
@@ -239,6 +241,8 @@ export default function StartGamePage() {
 
   const guessAuthor = async (entryId: string, guess: string) => {
     setGuessLoading(true);
+    await sleep(1500); // artificial delay for UX
+
     try {
       const {data} = await axios.post(
           `/api/games/${gameId}/entries/${entryId}/guess`,
