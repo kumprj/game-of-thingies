@@ -3,6 +3,9 @@ import axios from "axios";
 import {useParams} from "react-router-dom";
 import logo from "../src/assets/logo.jpg";
 import {io} from 'socket.io-client';
+import {motion, AnimatePresence} from "framer-motion";
+import confetti from "canvas-confetti";
+
 
 // Set backend API base URL
 // axios.defaults.baseURL = "https://i7v5llgsek.execute-api.us-east-1.amazonaws.com/dev";
@@ -25,6 +28,7 @@ interface Score {
   score: number;
 
 }
+
 
 export default function StartGamePage() {
   const {gameId} = useParams();
@@ -70,6 +74,16 @@ export default function StartGamePage() {
         return aEnabled ? -1 : 1;
       });
 
+  const triggerConfetti = () => {
+    confetti({
+      particleCount: 100,
+      spread: 70,
+      origin: {y: 0.6},
+      colors: ['#26ccff', '#a25afd', '#ff5e7e', '#88ff5a', '#fcff42', '#ffa62d', '#ff36ff']
+    });
+  };
+
+
   const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
   // At the top of the page, show who has / hasn't been guessed yet
   const guessedNames = Array.from(
@@ -94,14 +108,35 @@ export default function StartGamePage() {
   const [guessLoading, setGuessLoading] = useState(false);
 
 // Add these states after your existing state declarations
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [toast, setToast] = useState<{
+    message: string;
+    type: 'success' | 'error';
+    duration?: number;
+  } | null>(null);
 
   useEffect(() => {
-    if (toast) {
-      const timer = setTimeout(() => setToast(null), 2000);
-      return () => clearTimeout(timer);
-    }
-  }, [toast]);
+    if (!toast) return;
+
+    console.log("Toast timer started:", toast.duration || 4000); // DEBUG
+
+    const timer = setTimeout(() => {
+      console.log("Toast timer expired"); // DEBUG
+      setToast(null);
+    }, toast.duration || 5000);  // 5 seconds minimum
+
+    return () => {
+      clearTimeout(timer);
+      console.log("Toast timer cleared"); // DEBUG
+    };
+  }, [toast?.message, toast?.duration]); // ✅ Key fix: specific deps
+
+
+  // useEffect(() => {
+  //   if (toast) {
+  //     const timer = setTimeout(() => setToast(null), 2000);
+  //     return () => clearTimeout(timer);
+  //   }
+  // }, [toast]);
 
   useEffect(() => {
     if (authorName.trim() === "") return;
@@ -131,6 +166,37 @@ export default function StartGamePage() {
   //   fetchGameData();
   // }, [gameId]);
 
+  const handleEntryClick = async (entry: any) => {
+    if (!started) return alert("Wait for the game to start!");
+    if (entry.guessed) return;
+
+    const guess = prompt(`Who wrote: "${entry.text}"?`);
+    if (!guess) return;
+
+    const guesserName = prompt("What is YOUR name?");
+    if (!guesserName) return;
+
+    try {
+      // Axios call
+      const res = await axios.post(
+          `/api/games/${gameId}/entries/${entry.entryId}/guess`,
+          {guesserName, guess}
+      );
+
+      // Axios puts the response data directly in .data
+      const {isCorrect} = res.data;
+
+      if (isCorrect) {
+        alert("🎉 CORRECT! You got it!");
+        // No need to manually refresh; the socket listener handles it
+      } else {
+        alert("❌ Wrong! Try again next turn.");
+      }
+    } catch (error) {
+      console.error("Guess failed:", error);
+      alert("Something went wrong with the guess.");
+    }
+  };
 
 // 1. Create this new function with your existing logic
   const fetchGameData = async () => {
@@ -160,21 +226,69 @@ export default function StartGamePage() {
   useEffect(() => {
     if (!gameId) return;
 
+    console.log("🎮 Joining game:", gameId); // Debug
     socket.emit("joinGame", gameId);
 
-    // When game starts, we need to refresh to see the "started: true" state
-    socket.on("gameStarted", () => {
-      fetchGameData(); // <--- Now this works!
+    socket.on("entriesUpdated", () => {
+      console.log("📝 Entries updated!");
       fetchEntries();
     });
 
-    socket.on("entriesUpdated", fetchEntries);
-    socket.on("scoreUpdated", fetchScores);
+    socket.on("gameStarted", () => {
+      console.log("🚀 Game started!");
+      fetchGameData();
+      fetchEntries();
+      setToast({
+        message: "‼️The game has started!",
+        type: 'success'
+      });
+    });
+
+    socket.on("wrongAnswer", (data) => {
+      console.log("❌ Wrong guess by:", data.playerName);
+
+      // Refresh entries (in case UI state changed)
+      fetchEntries();
+
+      // Show "wrong" toast for everyone
+      setToast({
+        message: `❌ ${data.playerName} guessed wrong for '${data.guess}'!`,
+        type: 'error',
+        duration: 7000
+      });
+    });
+
+
+    socket.on("gameReset", () => {
+      console.log("🔄 Game reset! Refreshing everything...");
+      fetchGameData();
+      fetchEntries();
+      fetchScores();
+
+      setToast({
+        message: "‼️A new question has been asked – add your answer",
+        type: 'success'
+      });
+    });
+
+
+    socket.on("scoreUpdated", (data) => {
+      console.log("⭐ Score:", data);
+      fetchScores();
+      triggerConfetti();
+      setToast({
+        message: `🎉 ${data?.playerName || 'Someone'} got it right! The answer was '${data?.guess}', written by ${data?.authorName}`,
+        type: 'success',
+        duration: 7000
+      });
+    });
 
     return () => {
-      socket.off("gameStarted");
       socket.off("entriesUpdated");
+      socket.off("gameStarted");
       socket.off("scoreUpdated");
+      socket.off("wrongAnswer");
+      socket.off("gameReset");
     };
   }, [gameId]);
 
@@ -334,7 +448,7 @@ export default function StartGamePage() {
         // Scores changed → refresh scoreboard
         await fetchScores();
       } else {
-        setToast({message: "AAAAANT. Wrong answer!", type: "error"});
+        setToast({message: "Wrong answer!", type: "error", duration: 7000});// longer for wrong answer
       }
     } catch (err) {
       console.error("Error submitting guess", err);
@@ -870,7 +984,14 @@ export default function StartGamePage() {
           {sortedEntriesForDisplay.length === 0 && <li>No entries found</li>}
 
           {sortedEntriesForDisplay.map(entry => (
-              <li key={entry.entryId} style={{margin: "10px 0"}}>
+              <motion.li  // ← Only change: motion.li instead of li
+                  key={entry.entryId}
+                  style={{margin: "10px 0"}}
+                  initial={{opacity: 0, y: 10}}
+                  animate={{opacity: 1, y: 0}}
+                  transition={{duration: 0.2}}
+              >
+                {/* YOUR EXACT ORIGINAL CONTENT */}
                 {started ? (
                     <button
                         ref={el => {
@@ -882,22 +1003,19 @@ export default function StartGamePage() {
                       {entry.text}
                     </button>
                 ) : (
-                    <span
-                        style={{
-                          filter: "blur(4px)",
-                          color: "rgba(0,0,0,0.2)",
-                          userSelect: "none",
-                          textShadow: "0 0 2px rgba(0,0,0,0.1)",
-                          transition: "filter 0.3s ease, color 0.3s ease",
-                        }}
-                    >
+                    <span style={{
+                      filter: "blur(4px)",
+                      color: "rgba(0,0,0,0.2)",
+                      userSelect: "none",
+                      textShadow: "0 0 2px rgba(0,0,0,0.1)",
+                      transition: "filter 0.3s ease, color 0.3s ease",
+                    }}>
           {entry.text}
         </span>
                 )}
-              </li>
+              </motion.li>
           ))}
         </ul>
-
 
         {/* How to play toggle at bottom-left */}
         <div
@@ -989,7 +1107,6 @@ export default function StartGamePage() {
               {toast.message}
             </div>
         )}
-
 
       </div>
   );

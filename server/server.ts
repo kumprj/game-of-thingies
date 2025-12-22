@@ -287,16 +287,24 @@ app.post('/api/games/:gameId/entries/:entryId/guess', async (req, res) => {
         TableName: 'Entries',
         Key: {gameId, entryId},
       }));
-      io.to(gameId).emit("scoreUpdated");
+      io.to(gameId).emit("scoreUpdated", {
+        playerName: guesserName,
+        authorName: item.authorName,
+        guess: item.text
+      });
       io.to(gameId).emit("entriesUpdated"); // Because an entry was revealed/guessed
-      console.log(updatedEntryResult);
+      console.log("updatedEntryResult is ", updatedEntryResult);
       return res.json({
         isCorrect,
         entry: updatedEntryResult.Item,
       });
     }
-
-    // Wrong answer branch – still respond
+    console.log("got here");
+    io.to(gameId).emit("wrongAnswer", {
+      playerName: guesserName,
+      authorName: item.authorName,
+      guess: item.text
+    });
     return res.json({isCorrect});
   } catch (err) {
     console.error("Guess API error:", err);
