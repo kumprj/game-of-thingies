@@ -17,19 +17,19 @@
       "build": true,
       "providerPlugin": "awscloudformation",
       "service": "Lambda",
-      "lastBuildTimeStamp": "2025-11-29T19:58:23.343Z",
+      "lastBuildTimeStamp": "2025-12-22T03:19:37.160Z",
       "lastBuildType": "PROD",
-      "lastPackageTimeStamp": "2025-11-29T19:58:26.765Z",
-      "distZipFilename": "gameofthingsProdApi-34615345676e744d4c35-build.zip",
+      "lastPackageTimeStamp": "2025-12-22T03:19:39.518Z",
+      "distZipFilename": "gameofthingsProdApi-3844613865747a4c6332-build.zip",
       "s3Bucket": {
         "deploymentBucketName": "amplify-gameofthingies-dev-b755b-deployment",
-        "s3Key": "amplify-builds/gameofthingsProdApi-34615345676e744d4c35-build.zip"
+        "s3Key": "amplify-builds/gameofthingsProdApi-3844613865747a4c6332-build.zip"
       },
       "providerMetadata": {
         "s3TemplateURL": "https://s3.amazonaws.com/amplify-gameofthingies-dev-b755b-deployment/amplify-cfn-templates/function/gameofthingsProdApi-cloudformation-template.json",
         "logicalId": "functiongameofthingsProdApi"
       },
-      "lastPushTimeStamp": "2025-11-29T19:59:55.710Z",
+      "lastPushTimeStamp": "2025-12-22T03:20:46.775Z",
       "output": {
         "LambdaExecutionRoleArn": "arn:aws:iam::875660052076:role/gameofthingiesLambdaRole397e1983-dev",
         "Region": "us-east-1",
@@ -37,7 +37,7 @@
         "Name": "gameofthingsProdApi-dev",
         "LambdaExecutionRole": "gameofthingiesLambdaRole397e1983-dev"
       },
-      "lastPushDirHash": "mk/oMWDEM37kYta6CLsuJLsjpeM=",
+      "lastPushDirHash": "i+wh3n0xE7JHRg3DS42DpZvZKws=",
       "dependsOn": []
     }
   },
@@ -59,7 +59,7 @@
         "s3TemplateURL": "https://s3.amazonaws.com/amplify-gameofthingies-dev-b755b-deployment/amplify-cfn-templates/api/prodGotApi-cloudformation-template.json",
         "logicalId": "apiprodGotApi"
       },
-      "lastPushTimeStamp": "2025-11-29T19:59:55.469Z",
+      "lastPushTimeStamp": "2025-12-22T03:20:46.565Z",
       "output": {
         "ApiName": "prodGotApi",
         "RootUrl": "https://i7v5llgsek.execute-api.us-east-1.amazonaws.com/dev",
