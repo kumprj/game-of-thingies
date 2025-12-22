@@ -2,11 +2,13 @@ import React, {useRef, useState, useEffect} from "react";
 import axios from "axios";
 import {useParams} from "react-router-dom";
 import logo from "../src/assets/logo.jpg";
+import {io} from 'socket.io-client';
 
 // Set backend API base URL
-axios.defaults.baseURL = "https://i7v5llgsek.execute-api.us-east-1.amazonaws.com/dev";
+// axios.defaults.baseURL = "https://i7v5llgsek.execute-api.us-east-1.amazonaws.com/dev";
 // Local:
-// axios.defaults.baseURL = "http://localhost:3001";
+axios.defaults.baseURL = "http://localhost:3001";
+const socket = io("http://localhost:3001"); // Point to your backend URL
 
 interface Entry {
   entryId: string;
@@ -112,22 +114,40 @@ export default function StartGamePage() {
   }, [gameId, started]);
 
 
+  // // Fetch game title & question
+  // useEffect(() => {
+  //   const fetchGameData = async () => {
+  //     if (!gameId) return;
+  //     try {
+  //       const res = await axios.get(`/api/games/${gameId}`);
+  //       setGameQuestion(res.data.question || null);
+  //       setGameTitle(res.data.gameOwner || null);
+  //     } catch (error) {
+  //       console.error("Failed to fetch game data", error);
+  //       setGameTitle(null);
+  //       setGameQuestion(null);
+  //     }
+  //   };
+  //   fetchGameData();
+  // }, [gameId]);
 
 
-  // Fetch game title & question
+// 1. Create this new function with your existing logic
+  const fetchGameData = async () => {
+    if (!gameId) return;
+    try {
+      const res = await axios.get(`/api/games/${gameId}`);
+      // Update your state here (e.g., setGameQuestion, setStarted, etc.)
+      setGameQuestion(res.data.question || null);
+      setGameTitle(res.data.gameOwner || null);
+      // setStarted(res.data.started);
+    } catch (err) {
+      console.error("Failed to fetch game data", err);
+    }
+  };
+
+// 2. Update your existing useEffect to just call it
   useEffect(() => {
-    const fetchGameData = async () => {
-      if (!gameId) return;
-      try {
-        const res = await axios.get(`/api/games/${gameId}`);
-        setGameQuestion(res.data.question || null);
-        setGameTitle(res.data.gameOwner || null);
-      } catch (error) {
-        console.error("Failed to fetch game data", error);
-        setGameTitle(null);
-        setGameQuestion(null);
-      }
-    };
     fetchGameData();
   }, [gameId]);
 
@@ -135,6 +155,27 @@ export default function StartGamePage() {
   useEffect(() => {
     fetchEntries();
     // eslint-disable-next-line
+  }, [gameId]);
+
+  useEffect(() => {
+    if (!gameId) return;
+
+    socket.emit("joinGame", gameId);
+
+    // When game starts, we need to refresh to see the "started: true" state
+    socket.on("gameStarted", () => {
+      fetchGameData(); // <--- Now this works!
+      fetchEntries();
+    });
+
+    socket.on("entriesUpdated", fetchEntries);
+    socket.on("scoreUpdated", fetchScores);
+
+    return () => {
+      socket.off("gameStarted");
+      socket.off("entriesUpdated");
+      socket.off("scoreUpdated");
+    };
   }, [gameId]);
 
   const fetchScores = async () => {
@@ -147,7 +188,6 @@ export default function StartGamePage() {
       console.error("Error fetching scores", err);
     }
   };
-
 
 
   const fetchEntries = async () => {
@@ -322,7 +362,7 @@ export default function StartGamePage() {
               marginBottom: 4,
             }}
         >
-          <h2 style={{ margin: 0 }}>{gameTitle ?? gameId}</h2>
+          <h2 style={{margin: 0}}>{gameTitle ?? gameId}</h2>
           {gameId && (
               <span
                   style={{
@@ -413,18 +453,16 @@ export default function StartGamePage() {
                           color: text,
                         }}
                     >
-                      <span style={{ fontWeight: 600, minWidth: 20 }}>#{rank}</span>
-                      <span style={{ flex: 1, marginLeft: 8, textAlign: "left" }}>
+                      <span style={{fontWeight: 600, minWidth: 20}}>#{rank}</span>
+                      <span style={{flex: 1, marginLeft: 8, textAlign: "left"}}>
             {s.playerName}
           </span>
-                      <span style={{ fontWeight: 700 }}>{s.score}</span>
+                      <span style={{fontWeight: 700}}>{s.score}</span>
                     </div>
                 );
               })}
             </div>
         )}
-
-
 
 
         {/* NEW: Guess status summary */}
@@ -892,7 +930,7 @@ export default function StartGamePage() {
           >
             i
           </button>
-          <span style={{ fontSize: 14, color: "#3c3c43" }}>
+          <span style={{fontSize: 14, color: "#3c3c43"}}>
   </span>
         </div>
 
@@ -910,14 +948,15 @@ export default function StartGamePage() {
                   textAlign: "left",
                 }}
             >
-              <p style={{ marginTop: 0, marginBottom: 8 }}>
-                How to play: Each person secretly writes an answer to the question and adds it to the list.
+              <p style={{marginTop: 0, marginBottom: 8}}>
+                How to play: Each person secretly writes an answer to the question and adds it to
+                the list.
               </p>
-              <p style={{ margin: 0, marginBottom: 8 }}>
+              <p style={{margin: 0, marginBottom: 8}}>
                 When the host starts the game, all answers are revealed. Taking turns, tap an
                 answer and then choose who you think wrote it. If you're right, you go again!
               </p>
-              <p style={{ margin: 0 }}>
+              <p style={{margin: 0}}>
                 Correct guesses mark that person as guessed. Keep going until everyone has
                 been guessed, then ask a new question and start a new round.
               </p>

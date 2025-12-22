@@ -2,6 +2,8 @@ import express from "express";
 import {v4 as uuidv4} from "uuid";
 import cors from "cors";
 import serverless from 'serverless-http';
+import http from "http";
+import {Server} from "socket.io";
 import {DynamoDBClient} from "@aws-sdk/client-dynamodb";
 import {
   DynamoDBDocumentClient,
@@ -15,6 +17,26 @@ import {
 const client = new DynamoDBClient({region: "us-east-1"});
 const ddb = DynamoDBDocumentClient.from(client);
 const app = express();
+const httpServer = http.createServer(app);
+
+// 3. Initialize Socket.IO
+const io = new Server(httpServer, {
+  cors: {
+    origin: "*", // Adjust this to your frontend URL in production
+    methods: ["GET", "POST"]
+  }
+});
+
+// 4. Handle connections (optional, but good for debugging)
+io.on("connection", (socket) => {
+  console.log("Client connected:", socket.id);
+
+  // Join a room based on gameId so updates only go to relevant players
+  socket.on("joinGame", (gameId) => {
+    socket.join(gameId);
+    console.log(`Socket ${socket.id} joined game ${gameId}`);
+  });
+});
 
 app.use(express.json());     // Parses JSON bodies
 // app.use(express.urlencoded({ extended: true }));  // Parses URL-encoded bodies
@@ -76,7 +98,7 @@ app.post('/api/games/:gameId/entries', async (req, res) => {
     Item: {entryId, gameId, authorName, text, createdAt, revealed}
   }));
 
-
+  io.to(gameId).emit("entriesUpdated");
   res.json({entryId});
 });
 
@@ -109,7 +131,7 @@ app.post('/api/games/:gameId/start', async (req, res) => {
         ExpressionAttributeValues: {':r': true}
       }));
     }
-
+    io.to(gameId).emit("gameStarted");
     res.json({success: true});
   } catch (err: any) {
     if (err.name === 'ConditionalCheckFailedException') {
@@ -157,7 +179,7 @@ app.post('/api/games/:gameId/reset', async (req, res) => {
       ReturnValues: 'ALL_NEW'
     }));
 
-
+    io.to(gameId).emit("gameReset");
     res.json({success: true, message: 'Game reset with fresh slate'});
   } catch (error) {
     console.error('Reset error:', error);
@@ -225,19 +247,19 @@ app.get('/api/games/:gameId/scores', async (req, res) => {
 
 
 app.post('/api/games/:gameId/entries/:entryId/guess', async (req, res) => {
-  const { gameId, entryId } = req.params;
-  const { guesserName, guess } = req.body;
+  const {gameId, entryId} = req.params;
+  const {guesserName, guess} = req.body;
   console.log(`Received guess for gameId=${gameId}, entryId=${entryId} from ${guesserName}: "${guess}"`);
   try {
     // Get the entry
     const entryResult = await ddb.send(new GetCommand({
       TableName: 'Entries',
-      Key: { gameId, entryId },
+      Key: {gameId, entryId},
     }));
     console.log("Entry result:", entryResult);
     const item = entryResult.Item;
     if (!item) {
-      return res.status(404).json({ error: "Entry not found" });
+      return res.status(404).json({error: "Entry not found"});
     }
     console.log("item is ", item);
 
@@ -247,28 +269,26 @@ app.post('/api/games/:gameId/entries/:entryId/guess', async (req, res) => {
       // Mark as guessed
       await ddb.send(new UpdateCommand({
         TableName: 'Entries',
-        Key: { gameId, entryId },
+        Key: {gameId, entryId},
         UpdateExpression: 'SET guessed = :val',
-        ExpressionAttributeValues: { ':val': true },
+        ExpressionAttributeValues: {':val': true},
       }));
-      console.log("got here 1");
 
       // Increment player score in Scores table
       await ddb.send(new UpdateCommand({
         TableName: 'Scores',
-        Key: { gameId, playerName: guesserName },
+        Key: {gameId, playerName: guesserName},
         UpdateExpression: 'ADD score :inc',
-        ExpressionAttributeValues: { ':inc': 1 },
+        ExpressionAttributeValues: {':inc': 1},
       }));
-      console.log("got here 2");
 
       // Fetch the updated entry
       const updatedEntryResult = await ddb.send(new GetCommand({
         TableName: 'Entries',
-        Key: { gameId, entryId },
+        Key: {gameId, entryId},
       }));
-      console.log("got here 3");
-
+      io.to(gameId).emit("scoreUpdated");
+      io.to(gameId).emit("entriesUpdated"); // Because an entry was revealed/guessed
       console.log(updatedEntryResult);
       return res.json({
         isCorrect,
@@ -277,13 +297,14 @@ app.post('/api/games/:gameId/entries/:entryId/guess', async (req, res) => {
     }
 
     // Wrong answer branch – still respond
-    return res.json({ isCorrect });
+    return res.json({isCorrect});
   } catch (err) {
     console.error("Guess API error:", err);
-    res.status(500).json({ error: "Internal Server Error" });
+    res.status(500).json({error: "Internal Server Error"});
   }
 });
 
 
 // app.listen(3001, () => console.log('API server on port 3001'));
-export const handler = serverless(app);
+httpServer.listen(3001, () => console.log('Server running on 3001'));
+// export const handler = serverless(app);
