@@ -8,10 +8,18 @@ import confetti from "canvas-confetti";
 
 
 // Set backend API base URL
-// axios.defaults.baseURL = "https://i7v5llgsek.execute-api.us-east-1.amazonaws.com/dev";
+axios.defaults.baseURL = process.env.NODE_ENV === 'production'
+    ? 'https://game-of-thingies.onrender.com'  // Production
+    : 'http://localhost:3001'                  // Local dev
 // Local:
-axios.defaults.baseURL = "http://localhost:3001";
-const socket = io("http://localhost:3001"); // Point to your backend URL
+// axios.defaults.baseURL = "http://localhost:3001";
+// This works out of the box
+const socket = io(
+    process.env.NODE_ENV === 'production'
+        ? 'https://game-of-thingies.onrender.com'  // Production
+        : 'http://localhost:3001'                  // Local dev
+);
+
 
 interface Entry {
   entryId: string;

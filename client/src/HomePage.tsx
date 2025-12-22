@@ -3,10 +3,9 @@ import axios from "axios";
 import {useNavigate} from "react-router-dom";
 import logo from "../src/assets/logo.jpg";
 
-// Set backend API base URL
-// axios.defaults.baseURL = "https://i7v5llgsek.execute-api.us-east-1.amazonaws.com/dev";
-// Local:
-axios.defaults.baseURL = "http://localhost:3001";
+axios.defaults.baseURL = process.env.NODE_ENV === 'production'
+    ? 'https://game-of-thingies.onrender.com'  // Production
+    : 'http://localhost:3001'                  // Local dev
 
 export default function HomePage() {
   const [gameName, setGameName] = useState("");
