@@ -3,7 +3,7 @@ import axios from "axios";
 import {useParams} from "react-router-dom";
 import logo from "../src/assets/logo.jpg";
 import {io} from 'socket.io-client';
-import {motion, AnimatePresence} from "framer-motion";
+import {motion} from "framer-motion";
 import confetti from "canvas-confetti";
 
 
@@ -157,57 +157,6 @@ export default function StartGamePage() {
     fetchScores();
   }, [gameId, started]);
 
-
-  // // Fetch game title & question
-  // useEffect(() => {
-  //   const fetchGameData = async () => {
-  //     if (!gameId) return;
-  //     try {
-  //       const res = await axios.get(`/api/games/${gameId}`);
-  //       setGameQuestion(res.data.question || null);
-  //       setGameTitle(res.data.gameOwner || null);
-  //     } catch (error) {
-  //       console.error("Failed to fetch game data", error);
-  //       setGameTitle(null);
-  //       setGameQuestion(null);
-  //     }
-  //   };
-  //   fetchGameData();
-  // }, [gameId]);
-
-  const handleEntryClick = async (entry: any) => {
-    if (!started) return alert("Wait for the game to start!");
-    if (entry.guessed) return;
-
-    const guess = prompt(`Who wrote: "${entry.text}"?`);
-    if (!guess) return;
-
-    const guesserName = prompt("What is YOUR name?");
-    if (!guesserName) return;
-
-    try {
-      // Axios call
-      const res = await axios.post(
-          `/api/games/${gameId}/entries/${entry.entryId}/guess`,
-          {guesserName, guess}
-      );
-
-      // Axios puts the response data directly in .data
-      const {isCorrect} = res.data;
-
-      if (isCorrect) {
-        alert("🎉 CORRECT! You got it!");
-        // No need to manually refresh; the socket listener handles it
-      } else {
-        alert("❌ Wrong! Try again next turn.");
-      }
-    } catch (error) {
-      console.error("Guess failed:", error);
-      alert("Something went wrong with the guess.");
-    }
-  };
-
-// 1. Create this new function with your existing logic
   const fetchGameData = async () => {
     if (!gameId) return;
     try {

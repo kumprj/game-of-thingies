@@ -1,7 +1,6 @@
 import express from "express";
 import {v4 as uuidv4} from "uuid";
 import cors from "cors";
-import serverless from 'serverless-http';
 import http from "http";
 import {Server} from "socket.io";
 import {DynamoDBClient} from "@aws-sdk/client-dynamodb";
@@ -55,6 +54,18 @@ function randomGameId() {
   }
   return result;
 }
+
+app.get("/warmup", async (_req, res) => {
+  try {
+    // Optionally touch anything heavy here, e.g.:
+    // await getAiClient();  // or your model init / DB init
+    res.status(200).send("OK");
+  } catch (err) {
+    // Still respond quickly so Render counts it as traffic
+    res.status(200).send("OK");
+  }
+});
+
 
 app.post('/api/createGame', async (req, res) => {
   const gameId = randomGameId();
