@@ -1,4 +1,4 @@
-import React, {useRef, useState, useEffect} from "react";
+import React, {useRef, useState, useEffect, useMemo} from "react";
 import axios from "axios";
 import {useParams} from "react-router-dom";
 import logo from "../src/assets/logo.jpg";
@@ -72,16 +72,28 @@ export default function StartGamePage() {
   const isEntryEnabled = (entry: Entry) =>
       started && !entry.guessed && !(entry.revealed && guessedEntryIds.has(entry.entryId));
 
-  const sortedEntriesForDisplay = entries
-      .slice()
-      .sort((a, b) => {
-        const aEnabled = isEntryEnabled(a);
-        const bEnabled = isEntryEnabled(b);
-        if (aEnabled === bEnabled) {
-          return a.text.localeCompare(b.text, undefined, {sensitivity: "base"});
-        }
-        return aEnabled ? -1 : 1;
+  const sortedEntriesForDisplay = useMemo(() => {
+    // 1. Create a shallow copy of entries to avoid mutating state directly
+    let sorted = [...entries];
+
+    if (started) {
+      // AFTER START: Sort alphabetically by the answer text
+      // This helps scramble them relative to who typed them,
+      // preventing people from guessing "Oh, Alice typed last, so this last one is hers."
+      sorted.sort((a, b) => a.text.localeCompare(b.text));
+    } else {
+      // BEFORE START: Sort by creation time (Oldest -> Newest)
+      // This ensures new entries appear at the bottom
+      sorted.sort((a, b) => {
+        const dateA = new Date(a.createdAt || 0).getTime();
+        const dateB = new Date(b.createdAt || 0).getTime();
+        return dateA - dateB;
       });
+    }
+
+    return sorted;
+  }, [entries, started]);
+
 
   const triggerConfetti = () => {
     confetti({
@@ -91,7 +103,6 @@ export default function StartGamePage() {
       colors: ['#26ccff', '#a25afd', '#ff5e7e', '#88ff5a', '#fcff42', '#ffa62d', '#ff36ff']
     });
   };
-
 
   const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
   // At the top of the page, show who has / hasn't been guessed yet
@@ -949,7 +960,7 @@ export default function StartGamePage() {
                   animate={{opacity: 1, y: 0}}
                   transition={{duration: 0.2}}
               >
-                {/* YOUR EXACT ORIGINAL CONTENT */}
+
                 {started ? (
                     <button
                         ref={el => {
@@ -962,13 +973,13 @@ export default function StartGamePage() {
                     </button>
                 ) : (
                     <span style={{
-                      filter: "blur(4px)",
-                      color: "rgba(0,0,0,0.2)",
+                      filter: "blur(6px)",
+                      color: "rgba(0,0,0,0.6)",
                       userSelect: "none",
                       textShadow: "0 0 2px rgba(0,0,0,0.1)",
                       transition: "filter 0.3s ease, color 0.3s ease",
                     }}>
-          {entry.text}
+                {entry.text}
         </span>
                 )}
               </motion.li>
@@ -1039,32 +1050,42 @@ export default function StartGamePage() {
             </div>
         )}
 
+        {/* Toast Notification */}
         {toast && (
             <div
-                className="toast-notification"
                 style={{
-                  position: "fixed",
-                  // top: 80,                 // or use top: "50%" and translateY(-50%) for true center
-                  // transform: "translate(-50%, 0)",  // center horizontally
-                  top: "25%",
-                  transform: "translate(-50%, -50%)",
-                  left: "50%",
-                  backgroundColor: toast.type === "success" ? "#34c759" : "#ff3b30",
-                  color: "white",
-                  padding: "12px 20px",
-                  borderRadius: 12,
-                  boxShadow: "0 4px 16px rgba(0,0,0,0.15)",
-                  fontWeight: 600,
-                  fontSize: 16,
+                  position: 'fixed',
+                  top: '20px',          // Distance from top
+                  left: 0,
+                  width: '100%',        // Span full width to allow flex centering
+                  display: 'flex',
+                  justifyContent: 'center',
                   zIndex: 2000,
-                  animation: "fadeScaleIn 0.4s ease-out forwards",
-                  textAlign: "center",
-                  minWidth: 220,
+                  pointerEvents: 'none', // Allow clicks to pass through the invisible container
                 }}
             >
-              {toast.message}
+              <div
+                  className="toast-notification"
+                  style={{
+                    backgroundColor: toast.type === 'success' ? '#34c759' : '#ff3b30',
+                    color: 'white',
+                    padding: '12px 20px',
+                    borderRadius: '12px',
+                    boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
+                    fontWeight: 600,
+                    fontSize: '16px',
+                    animation: 'fadeScaleIn 0.4s ease-out forwards',
+                    textAlign: 'center',
+                    minWidth: '220px',
+                    maxWidth: '90%',       // Prevents cropping on small mobile screens
+                    pointerEvents: 'auto', // Re-enable clicks on the toast itself
+                  }}
+              >
+                {toast.message}
+              </div>
             </div>
         )}
+
 
       </div>
   );
