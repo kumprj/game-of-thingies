@@ -1,4 +1,4 @@
-import React, {useRef, useState, useEffect} from "react";
+import React, {useRef, useState, useEffect, useMemo} from "react";
 import axios from "axios";
 import {useParams} from "react-router-dom";
 import logo from "../src/assets/logo.jpg";
@@ -72,16 +72,28 @@ export default function StartGamePage() {
   const isEntryEnabled = (entry: Entry) =>
       started && !entry.guessed && !(entry.revealed && guessedEntryIds.has(entry.entryId));
 
-  const sortedEntriesForDisplay = entries
-      .slice()
-      .sort((a, b) => {
-        const aEnabled = isEntryEnabled(a);
-        const bEnabled = isEntryEnabled(b);
-        if (aEnabled === bEnabled) {
-          return a.text.localeCompare(b.text, undefined, {sensitivity: "base"});
-        }
-        return aEnabled ? -1 : 1;
+  const sortedEntriesForDisplay = useMemo(() => {
+    // 1. Create a shallow copy of entries to avoid mutating state directly
+    let sorted = [...entries];
+
+    if (started) {
+      // AFTER START: Sort alphabetically by the answer text
+      // This helps scramble them relative to who typed them,
+      // preventing people from guessing "Oh, Alice typed last, so this last one is hers."
+      sorted.sort((a, b) => a.text.localeCompare(b.text));
+    } else {
+      // BEFORE START: Sort by creation time (Oldest -> Newest)
+      // This ensures new entries appear at the bottom
+      sorted.sort((a, b) => {
+        const dateA = new Date(a.createdAt || 0).getTime();
+        const dateB = new Date(b.createdAt || 0).getTime();
+        return dateA - dateB;
       });
+    }
+
+    return sorted;
+  }, [entries, started]);
+
 
   const triggerConfetti = () => {
     confetti({
@@ -961,13 +973,13 @@ export default function StartGamePage() {
                     </button>
                 ) : (
                     <span style={{
-                      filter: "blur(4px)",
-                      color: "rgba(0,0,0,0.2)",
+                      filter: "blur(6px)",
+                      color: "rgba(0,0,0,0.6)",
                       userSelect: "none",
                       textShadow: "0 0 2px rgba(0,0,0,0.1)",
                       transition: "filter 0.3s ease, color 0.3s ease",
                     }}>
-          {entry.text}
+                {entry.text}
         </span>
                 )}
               </motion.li>
