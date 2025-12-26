@@ -1,6 +1,6 @@
-import React, {useRef, useState, useEffect, useMemo} from "react";
+import React, {useEffect, useMemo, useRef, useState} from "react";
 import axios from "axios";
-import {useParams} from "react-router-dom";
+import {Link, useParams} from "react-router-dom";
 import logo from "../src/assets/logo.jpg";
 import {io} from 'socket.io-client';
 import {motion} from "framer-motion";
@@ -441,7 +441,9 @@ export default function StartGamePage() {
   return (
 
       <div style={{textAlign: "center", marginBottom: 20}}>
-        <img src={logo} alt="Game of Things" style={{width: 80}}/>
+        <Link to="/">
+          <img src={logo} alt="Game of Things" style={{ width: 80 }} />
+        </Link>
         {/* Game title / ID / question */}
         <div
             style={{
