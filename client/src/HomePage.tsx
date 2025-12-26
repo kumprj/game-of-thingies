@@ -152,12 +152,10 @@ export default function HomePage() {
             4-digit code will be generated for them to share with people to join the game. Then,
             submit your answer along with your name.
             Once everyone has submitted and the group is ready, the host will click to start the
-            game to reveal entries
-            shuffled randomly. Everyone else can refresh their device now to see the answers list!
-            Try to guess who wrote each entry—getting correct guesses earns points!
+            game to reveal the shuffled entries.
+            When it is your turn, try to guess who wrote each entry-getting correct guesses earns
+            points!
             Once all guesses are made, a new question box will pop up to start a new round.
-
-            Scorekeeping coming soon.
           </p>
           <p style={{fontSize: 14, color: '#6e6e73'}}>
             Have fun and enjoy the Game of Things!

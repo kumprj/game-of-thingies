@@ -115,7 +115,11 @@ export default function StartGamePage() {
     });
   };
 
+
+  const isMyTurn = currentPlayer === authorName;
+
   const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
   // At the top of the page, show who has / hasn't been guessed yet
   const guessedNames = Array.from(
       new Set(
@@ -137,6 +141,8 @@ export default function StartGamePage() {
   // Check if all entries have been guessed
   const allGuessed = entries.length > 0 && entries.every(entry => entry.guessed);
   const [guessLoading, setGuessLoading] = useState(false);
+  const remainingEntries = entries.filter(e => !e.guessed);
+  const isLastEntry = remainingEntries.length === 1;
 
 // Add these states after your existing state declarations
   const [toast, setToast] = useState<{
@@ -161,13 +167,6 @@ export default function StartGamePage() {
     };
   }, [toast?.message, toast?.duration]); // ✅ Key fix: specific deps
 
-
-  // useEffect(() => {
-  //   if (toast) {
-  //     const timer = setTimeout(() => setToast(null), 2000);
-  //     return () => clearTimeout(timer);
-  //   }
-  // }, [toast]);
 
   useEffect(() => {
     if (authorName.trim() === "") return;
@@ -920,12 +919,13 @@ export default function StartGamePage() {
 
         {/*Turn Order*/}
         {(turnOrder.length > 0 || started) && (
-            <div className="flex items-center justify-center gap-4 p-4 bg-gradient-to-r from-purple-500 to-pink-500 rounded-xl shadow-2xl mb-6">
+            <div
+                className="flex items-center justify-center gap-4 p-4 bg-gradient-to-r from-purple-500 to-pink-500 rounded-xl shadow-2xl mb-6">
               <motion.div
                   key={`arrow-${currentPlayer}`}  // Re-animate on player change
-                  initial={{ rotate: -180 }}
-                  animate={{ rotate: 0 }}
-                  transition={{ duration: 0.5, ease: "easeOut" }}
+                  initial={{rotate: -180}}
+                  animate={{rotate: 0}}
+                  transition={{duration: 0.5, ease: "easeOut"}}
                   className="text-4xl"
               >
                 ➡️
@@ -1032,40 +1032,46 @@ export default function StartGamePage() {
           {sortedEntriesForDisplay.length === 0 && <li>No entries found</li>}
 
           {sortedEntriesForDisplay.map(entry => (
-              <motion.li  // ← Only change: motion.li instead of li
-                  key={entry.entryId}
-                  style={{margin: "10px 0"}}
-                  initial={{opacity: 0, y: 10}}
-                  animate={{opacity: 1, y: 0}}
-                  transition={{duration: 0.2}}
-              >
+                  <motion.li  // ← Only change: motion.li instead of li
+                      key={entry.entryId}
+                      style={{margin: "10px 0"}}
+                      initial={{opacity: 0, y: 10}}
+                      animate={{opacity: 1, y: 0}}
+                      transition={{duration: 0.2}}
+                  >
 
-                {started ? (
-                    <button
-                        ref={el => {
-                          buttonRefs.current[entry.entryId] = el;
-                        }}
-                        disabled={entry.guessed || (entry.revealed && guessedEntryIds.has(entry.entryId))}
-                        onClick={() => onEntryClick(entry)}
-                    >
-                      {entry.text}
-                    </button>
-                ) : (
-                    <span style={{
-                      filter: "blur(6px)",
-                      color: "rgba(0,0,0,0.6)",
-                      userSelect: "none",
-                      textShadow: "0 0 2px rgba(0,0,0,0.1)",
-                      transition: "filter 0.3s ease, color 0.3s ease",
-                    }}>
-                {entry.text}
+                    {started ? (
+                        <button
+                            ref={el => {
+                              buttonRefs.current[entry.entryId] = el;
+                            }}
+                            disabled={
+                                !isMyTurn ||                      // 1. Must be my turn
+                                entry.guessed ||                  // 2. Must not be guessed
+                                (entry.authorName === authorName && !isLastEntry)     // 3. Can't guess self... UNLESS it's the last one!
+                            }
+                            onClick={() => onEntryClick(entry)}
+                        >
+                          {entry.text}
+                        </button>
+                    ) : (
+                        <span style={{
+                          filter: "blur(6px)",
+                          color: "rgba(0,0,0,0.6)",
+                          userSelect: "none",
+                          textShadow: "0 0 2px rgba(0,0,0,0.1)",
+                          transition: "filter 0.3s ease, color 0.3s ease",
+                        }}>
+          {entry.text}
         </span>
-                )}
-              </motion.li>
-          ))}
+                    )}
+                  </motion.li>
+              )
+          )}
         </ul>
 
-        {/* How to play toggle at bottom-left */}
+        {/* How to play toggle at bottom-left */
+        }
         <div
             style={{
               maxWidth: 600,
@@ -1100,72 +1106,79 @@ export default function StartGamePage() {
   </span>
         </div>
 
-        {showHowToPlay && (
-            <div
-                style={{
-                  maxWidth: 600,
-                  margin: "8px auto 20px auto",
-                  padding: "12px 16px",
-                  borderRadius: 12,
-                  backgroundColor: "#f2f2f7",
-                  fontSize: 14,
-                  color: "#3c3c43",
-                  lineHeight: 1.5,
-                  textAlign: "left",
-                }}
-            >
-              <p style={{marginTop: 0, marginBottom: 8}}>
-                How to play: Each person secretly writes an answer to the question and adds it to
-                the list.
-              </p>
-              <p style={{margin: 0, marginBottom: 8}}>
-                When the host starts the game, all answers are revealed. Taking turns, tap an
-                answer and then choose who you think wrote it. If you're right, you go again!
-              </p>
-              <p style={{margin: 0}}>
-                Correct guesses mark that person as guessed. Keep going until everyone has
-                been guessed, then ask a new question and start a new round.
-              </p>
-            </div>
-        )}
+        {
+            showHowToPlay && (
+                <div
+                    style={{
+                      maxWidth: 600,
+                      margin: "8px auto 20px auto",
+                      padding: "12px 16px",
+                      borderRadius: 12,
+                      backgroundColor: "#f2f2f7",
+                      fontSize: 14,
+                      color: "#3c3c43",
+                      lineHeight: 1.5,
+                      textAlign: "left",
+                    }}
+                >
+                  <p style={{marginTop: 0, marginBottom: 8}}>
+                    How to play: Each person secretly writes an answer to the question and adds it to
+                    the list.
+                  </p>
+                  <p style={{margin: 0, marginBottom: 8}}>
+                    When the host starts the game, all answers are revealed. Taking turns, tap an
+                    answer and then choose who you think wrote it. If you're right, you go again!
+                  </p>
+                  <p style={{margin: 0}}>
+                    Correct guesses mark that person as guessed. Keep going until everyone has
+                    been guessed. Once you're the last remaining player, you can guess yourself for a
+                    free point to end the game. Then, ask a new question and start a new round.
+                  </p>
+                </div>
+            )
+        }
 
-        {/* Toast Notification */}
-        {toast && (
-            <div
-                style={{
-                  position: 'fixed',
-                  top: '20px',          // Distance from top
-                  left: 0,
-                  width: '100%',        // Span full width to allow flex centering
-                  display: 'flex',
-                  justifyContent: 'center',
-                  zIndex: 2000,
-                  pointerEvents: 'none', // Allow clicks to pass through the invisible container
-                }}
-            >
-              <div
-                  className="toast-notification"
-                  style={{
-                    backgroundColor: toast.type === 'success' ? '#34c759' : '#ff3b30',
-                    color: 'white',
-                    padding: '12px 20px',
-                    borderRadius: '12px',
-                    boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
-                    fontWeight: 600,
-                    fontSize: '16px',
-                    animation: 'fadeScaleIn 0.4s ease-out forwards',
-                    textAlign: 'center',
-                    minWidth: '220px',
-                    maxWidth: '90%',       // Prevents cropping on small mobile screens
-                    pointerEvents: 'auto', // Re-enable clicks on the toast itself
-                  }}
-              >
-                {toast.message}
-              </div>
-            </div>
-        )}
+        {/* Toast Notification */
+        }
+        {
+            toast && (
+                <div
+                    style={{
+                      position: 'fixed',
+                      top: '20px',          // Distance from top
+                      left: 0,
+                      width: '100%',        // Span full width to allow flex centering
+                      display: 'flex',
+                      justifyContent: 'center',
+                      zIndex: 2000,
+                      pointerEvents: 'none', // Allow clicks to pass through the invisible container
+                    }}
+                >
+                  <div
+                      className="toast-notification"
+                      style={{
+                        backgroundColor: toast.type === 'success' ? '#34c759' : '#ff3b30',
+                        color: 'white',
+                        padding: '12px 20px',
+                        borderRadius: '12px',
+                        boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
+                        fontWeight: 600,
+                        fontSize: '16px',
+                        animation: 'fadeScaleIn 0.4s ease-out forwards',
+                        textAlign: 'center',
+                        minWidth: '220px',
+                        maxWidth: '90%',       // Prevents cropping on small mobile screens
+                        pointerEvents: 'auto', // Re-enable clicks on the toast itself
+                      }}
+                  >
+                    {toast.message}
+                  </div>
+                </div>
+            )
+        }
 
 
       </div>
-  );
+  )
+      ;
 }
