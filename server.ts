@@ -117,23 +117,36 @@ app.post('/api/games/:gameId/start', async (req, res) => {
   const {gameId} = req.params;
 
   try {
-    const result = await ddb.send(new UpdateCommand({
-      TableName: 'Games',
-      Key: {gameId},
-      UpdateExpression: 'SET started = :s',
-      ConditionExpression: 'attribute_not_exists(started) OR started = :f',
-      ExpressionAttributeValues: {
-        ':s': true,
-        ':f': false
-      },
-      ReturnValues: 'ALL_NEW'
-    }));
+    // 1. Fetch entries FIRST to get the players
     const entries = await ddb.send(new QueryCommand({
       TableName: 'Entries',
       KeyConditionExpression: 'gameId = :g',
       ExpressionAttributeValues: {':g': gameId}
     }));
 
+    // 2. Define 'shuffled' using the fetched entries
+// 1. Safe access with default
+    const entryItems = entries.Items || [];
+
+// 2. Map using the safe variable
+    const players = entryItems.map((e: any) => e.authorName).filter((v: any, i: number, a: any[]) => a.indexOf(v) === i);
+
+// 3. Shuffle
+    const shuffled = players.sort(() => Math.random() - 0.5);
+
+    // 3. NOW update the Games table with the shuffled turnOrder
+    await ddb.send(new UpdateCommand({
+      TableName: 'Games',
+      Key: {gameId},
+      UpdateExpression: 'SET turnOrder = :to, started = :s', // Combine updates if possible
+      ExpressionAttributeValues: {
+        ':to': shuffled,
+        ':s': true
+      },
+      ReturnValues: 'ALL_NEW'
+    }));
+
+    // 4. Reveal all entries
     for (const entry of entries.Items || []) {
       await ddb.send(new UpdateCommand({
         TableName: 'Entries',
@@ -142,18 +155,16 @@ app.post('/api/games/:gameId/start', async (req, res) => {
         ExpressionAttributeValues: {':r': true}
       }));
     }
-    io.to(gameId).emit("gameStarted");
+
+    // 5. Emit event
+    io.to(gameId).emit("gameStarted", {turnOrder: shuffled});
+
     res.json({success: true});
+
   } catch (err: any) {
-    if (err.name === 'ConditionalCheckFailedException') {
-      // Game already started - force frontend refresh
-      res.status(409).json({
-        error: 'GAME_ALREADY_STARTED',
-        message: 'Game has already started by another player!'
-      });
-    } else {
-      res.status(500).json({error: 'Failed to start game'});
-    }
+    // ... error handling ...
+    console.error('Failed to start game:', err);
+    res.status(500).json({error: 'Failed to start game'});
   }
 });
 
@@ -277,6 +288,25 @@ app.post('/api/games/:gameId/entries/:entryId/guess', async (req, res) => {
     const isCorrect = item.authorName === guess;
     console.log("isCorrect", isCorrect);
     if (isCorrect) {
+
+      // Start Turns
+      const gameData = await ddb.send(new GetCommand({
+        TableName: 'Games',
+        Key: {gameId}
+      }));
+
+      let turnOrder = gameData.Item?.turnOrder || [];
+      turnOrder = turnOrder.filter(name => name !== item.authorName);
+
+      await ddb.send(new UpdateCommand({
+        TableName: 'Games',
+        Key: {gameId},
+        UpdateExpression: 'SET turnOrder = :to',
+        ExpressionAttributeValues: {':to': turnOrder}
+      }));
+
+      // End Turns
+
       // Mark as guessed
       await ddb.send(new UpdateCommand({
         TableName: 'Entries',
@@ -303,20 +333,54 @@ app.post('/api/games/:gameId/entries/:entryId/guess', async (req, res) => {
         authorName: item.authorName,
         guess: item.text
       });
+      io.to(gameId).emit("nextTurn", {
+        currentPlayer: turnOrder[0] || null,
+        turnOrder
+      });
       io.to(gameId).emit("entriesUpdated"); // Because an entry was revealed/guessed
       console.log("updatedEntryResult is ", updatedEntryResult);
       return res.json({
         isCorrect,
         entry: updatedEntryResult.Item,
       });
+    } else {
+      // 1. Fetch current turn order
+      const gameData = await ddb.send(new GetCommand({
+        TableName: 'Games',
+        Key: {gameId}
+      }));
+
+      let turnOrder = gameData.Item?.turnOrder || [];
+
+      if (turnOrder.length > 1) {
+        // 2. Rotate the array: Move first player to the end
+        const current = turnOrder.shift();
+        turnOrder.push(current);
+
+        // 3. Update DB
+        await ddb.send(new UpdateCommand({
+          TableName: 'Games',
+          Key: {gameId},
+          UpdateExpression: 'SET turnOrder = :to',
+          ExpressionAttributeValues: {':to': turnOrder}
+        }));
+      }
+
+      // 4. Emit 'wrongAnswer' AND 'nextTurn'
+      io.to(gameId).emit("wrongAnswer", {
+        playerName: guesserName,
+        authorName: item.authorName,
+        guess: item.text
+      });
+
+      io.to(gameId).emit("nextTurn", {
+        currentPlayer: turnOrder[0] || null,
+        turnOrder
+      });
+
     }
-    console.log("got here");
-    io.to(gameId).emit("wrongAnswer", {
-      playerName: guesserName,
-      authorName: item.authorName,
-      guess: item.text
-    });
     return res.json({isCorrect});
+
   } catch (err) {
     console.error("Guess API error:", err);
     res.status(500).json({error: "Internal Server Error"});

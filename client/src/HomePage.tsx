@@ -3,10 +3,10 @@ import axios from "axios";
 import {useNavigate} from "react-router-dom";
 import logo from "../src/assets/logo.jpg";
 
-// axios.defaults.baseURL = process.env.NODE_ENV === 'production'
-//     ? 'https://game-of-thingies.onrender.com'  // Production
-//     : 'http://localhost:3001'                  // Local dev
-axios.defaults.baseURL = "https://game-of-thingies.onrender.com";
+axios.defaults.baseURL = process.env.NODE_ENV === 'production'
+    ? 'https://game-of-thingies.onrender.com'  // Production
+    : 'http://localhost:3001'                  // Local dev
+// axios.defaults.baseURL = "https://game-of-thingies.onrender.com";
 
 export default function HomePage() {
   const [gameName, setGameName] = useState("");

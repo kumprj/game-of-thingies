@@ -8,18 +8,28 @@ import confetti from "canvas-confetti";
 
 
 // Set backend API base URL
-// axios.defaults.baseURL = process.env.NODE_ENV === 'production'
-//     ? 'https://game-of-thingies.onrender.com'  // Production
-//     : 'http://localhost:3001'                  // Local dev
+axios.defaults.baseURL = process.env.NODE_ENV === 'production'
+    ? 'https://game-of-thingies.onrender.com'  // Production
+    : 'http://localhost:3001'                  // Local dev
 // Local:
 // axios.defaults.baseURL = "http://localhost:3001";
-axios.defaults.baseURL = "https://game-of-thingies.onrender.com";
-const socket = io('https://game-of-thingies.onrender.com');
-// const socket = io(
-//     process.env.NODE_ENV === 'production'
-//         ? 'https://game-of-thingies.onrender.com'  // Production
-//         : 'http://localhost:3001'                  // Local dev
-// );
+// axios.defaults.baseURL = "https://game-of-thingies.onrender.com";
+// const socket = io('https://game-of-thingies.onrender.com');
+const socket = io(
+    process.env.NODE_ENV === 'production'
+        ? 'https://game-of-thingies.onrender.com'  // Production
+        : 'http://localhost:3001'                  // Local dev
+);
+// Add this custom hook at top of file
+const useVibration = () => {
+  const vibrate = (pattern: number[] | number) => {
+    if ('vibrate' in navigator) {
+      navigator.vibrate(pattern);
+    }
+  };
+
+  return vibrate;
+}
 
 
 interface Entry {
@@ -60,7 +70,8 @@ export default function StartGamePage() {
   const [showHowToPlay, setShowHowToPlay] = useState(false);
   const [startNewRoundLoading, setStartNewRoundLoading] = useState(false);
   const [showScores, setShowScores] = useState<boolean>(false);
-
+  const [currentPlayer, setCurrentPlayer] = useState<string | null>(null);
+  const [turnOrder, setTurnOrder] = useState<string[]>([]);
 
   // State for the entry currently being guessed (for modal)
   const [guessingEntry, setGuessingEntry] = useState<Entry | null>(null);
@@ -71,7 +82,7 @@ export default function StartGamePage() {
 // sort so enabled (clickable) entries appear first, then fall back to text sort
   const isEntryEnabled = (entry: Entry) =>
       started && !entry.guessed && !(entry.revealed && guessedEntryIds.has(entry.entryId));
-
+  const vibrate = useVibration();
   const sortedEntriesForDisplay = useMemo(() => {
     // 1. Create a shallow copy of entries to avoid mutating state directly
     let sorted = [...entries];
@@ -175,7 +186,11 @@ export default function StartGamePage() {
       // Update your state here (e.g., setGameQuestion, setStarted, etc.)
       setGameQuestion(res.data.question || null);
       setGameTitle(res.data.gameOwner || null);
-      // setStarted(res.data.started);
+
+      if (res.data.turnOrder) {
+        setTurnOrder(res.data.turnOrder);
+        setCurrentPlayer(res.data.turnOrder[0] || null);
+      }
     } catch (err) {
       console.error("Failed to fetch game data", err);
     }
@@ -203,7 +218,10 @@ export default function StartGamePage() {
       fetchEntries();
     });
 
-    socket.on("gameStarted", () => {
+    socket.on("gameStarted", (data) => {
+      setTurnOrder(data.turnOrder || []);
+      setCurrentPlayer(data.turnOrder?.[0] || null);
+      vibrate([300, 100, 300]);
       console.log("🚀 Game started!");
       fetchGameData();
       fetchEntries();
@@ -245,11 +263,27 @@ export default function StartGamePage() {
       console.log("⭐ Score:", data);
       fetchScores();
       triggerConfetti();
+      if (data.playerName === authorName) {
+        // VICTORY VIBRATION! 🎉
+        vibrate([100, 50, 100, 50, 200, 100, 400]);
+      }
       setToast({
         message: `🎉 ${data?.playerName || 'Someone'} got it right! The answer was '${data?.guess}', written by ${data?.authorName}`,
         type: 'success',
         duration: 7000
       });
+    });
+
+    socket.on("nextTurn", (data) => {
+      setTurnOrder(data.turnOrder);
+      setCurrentPlayer(data.currentPlayer);
+
+      // 🎯 VIBRATE if it's YOUR turn!
+      if (data.currentPlayer === authorName) {  // playerName from your state
+        vibrate([200, 100, 200]);  // Pattern: buzz-pause-buzz
+      } else {
+        vibrate(100);  // Subtle buzz for other turns
+      }
     });
 
     return () => {
@@ -258,6 +292,7 @@ export default function StartGamePage() {
       socket.off("scoreUpdated");
       socket.off("wrongAnswer");
       socket.off("gameReset");
+      socket.off("nextTurn");
     };
   }, [gameId]);
 
@@ -563,14 +598,18 @@ export default function StartGamePage() {
                 }}
             >
               <div style={{marginBottom: 6}}>
+                <strong>Already guessed:</strong>{" "}
+                {guessedNames.length ? guessedNames.join(", ") : "No one yet"}
+              </div>
+              <div style={{marginBottom: 6}}>
                 <strong>Not yet guessed:</strong>{" "}
                 {notGuessedNames.length
                     ? notGuessedNames.join(", ")
                     : "Everyone has been guessed!"}
               </div>
               <div>
-                <strong>Already guessed:</strong>{" "}
-                {guessedNames.length ? guessedNames.join(", ") : "No one yet"}
+                <strong>Players Left:</strong>{" "}
+                {turnOrder.length}
               </div>
             </div>
         )}
@@ -876,6 +915,46 @@ export default function StartGamePage() {
                   </button>
                 </div>
               </div>
+            </div>
+        )}
+
+        {/*Turn Order*/}
+        {(turnOrder.length > 0 || started) && (
+            <div className="flex items-center justify-center gap-4 p-4 bg-gradient-to-r from-purple-500 to-pink-500 rounded-xl shadow-2xl mb-6">
+              <motion.div
+                  key={`arrow-${currentPlayer}`}  // Re-animate on player change
+                  initial={{ rotate: -180 }}
+                  animate={{ rotate: 0 }}
+                  transition={{ duration: 0.5, ease: "easeOut" }}
+                  className="text-4xl"
+              >
+                ➡️
+              </motion.div>
+
+              <div className="text-center">
+                <h2 className="text-2xl font-bold text-white drop-shadow-lg">
+                  {turnOrder.length >= 1
+                      ? `${currentPlayer}'s turn!`
+                      : "All answers guessed!"}
+                </h2>
+              </div>
+
+              {/*/!* Player queue preview *!/*/}
+              {/*<div className="flex gap-1 ml-4">*/}
+              {/*  {turnOrder.slice(0, 3).map((player, i) => (*/}
+              {/*      <motion.span*/}
+              {/*          key={player}*/}
+              {/*          className={`px-3 py-1 rounded-full text-xs font-semibold ${*/}
+              {/*              player === currentPlayer*/}
+              {/*                  ? 'bg-white text-purple-600 shadow-lg'*/}
+              {/*                  : 'bg-white/50 text-white'*/}
+              {/*          }`}*/}
+              {/*          whileHover={{ scale: 1.1 }}*/}
+              {/*      >*/}
+              {/*        {player.slice(0, 3)}*/}
+              {/*      </motion.span>*/}
+              {/*  ))}*/}
+              {/*</div>*/}
             </div>
         )}
 
