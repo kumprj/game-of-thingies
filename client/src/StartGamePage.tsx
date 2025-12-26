@@ -20,17 +20,6 @@ const socket = io(
         ? 'https://game-of-thingies.onrender.com'  // Production
         : 'http://localhost:3001'                  // Local dev
 );
-// Add this custom hook at top of file
-const useVibration = () => {
-  const vibrate = (pattern: number[] | number) => {
-    if ('vibrate' in navigator) {
-      navigator.vibrate(pattern);
-    }
-  };
-
-  return vibrate;
-}
-
 
 interface Entry {
   entryId: string;
@@ -79,10 +68,7 @@ export default function StartGamePage() {
 
   // New question input state for starting a new round
   const [newQuestion, setNewQuestion] = useState("");
-// sort so enabled (clickable) entries appear first, then fall back to text sort
-  const isEntryEnabled = (entry: Entry) =>
-      started && !entry.guessed && !(entry.revealed && guessedEntryIds.has(entry.entryId));
-  const vibrate = useVibration();
+// sort so enabled (clickable) entries appear first, then fall back to text sort;
   const sortedEntriesForDisplay = useMemo(() => {
     // 1. Create a shallow copy of entries to avoid mutating state directly
     let sorted = [...entries];
@@ -220,7 +206,6 @@ export default function StartGamePage() {
     socket.on("gameStarted", (data) => {
       setTurnOrder(data.turnOrder || []);
       setCurrentPlayer(data.turnOrder?.[0] || null);
-      vibrate([300, 100, 300]);
       console.log("🚀 Game started!");
       fetchGameData();
       fetchEntries();
@@ -262,10 +247,6 @@ export default function StartGamePage() {
       console.log("⭐ Score:", data);
       fetchScores();
       triggerConfetti();
-      if (data.playerName === authorName) {
-        // VICTORY VIBRATION! 🎉
-        vibrate([100, 50, 100, 50, 200, 100, 400]);
-      }
       setToast({
         message: `🎉 ${data?.playerName || 'Someone'} got it right! The answer was '${data?.guess}', written by ${data?.authorName}`,
         type: 'success',
@@ -276,13 +257,6 @@ export default function StartGamePage() {
     socket.on("nextTurn", (data) => {
       setTurnOrder(data.turnOrder);
       setCurrentPlayer(data.currentPlayer);
-
-      // 🎯 VIBRATE if it's YOUR turn!
-      if (data.currentPlayer === authorName) {  // playerName from your state
-        vibrate([200, 100, 200]);  // Pattern: buzz-pause-buzz
-      } else {
-        vibrate(100);  // Subtle buzz for other turns
-      }
     });
 
     return () => {
@@ -319,7 +293,6 @@ export default function StartGamePage() {
       const sortedEntries = (res.data ?? []).slice().sort(
           (a: Entry, b: Entry) =>
               a.text.localeCompare(b.text, undefined, {sensitivity: "base"})
-          // or use a.authorName.localeCompare(b.authorName, ...) to sort by name
       );
 
       setEntries(sortedEntries);
