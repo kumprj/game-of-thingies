@@ -134,17 +134,28 @@ app.post('/api/games/:gameId/start', async (req, res) => {
 // 3. Shuffle
     const shuffled = players.sort(() => Math.random() - 0.5);
 
-    // 3. NOW update the Games table with the shuffled turnOrder
-    await ddb.send(new UpdateCommand({
-      TableName: 'Games',
-      Key: {gameId},
-      UpdateExpression: 'SET turnOrder = :to, started = :s', // Combine updates if possible
-      ExpressionAttributeValues: {
-        ':to': shuffled,
-        ':s': true
-      },
-      ReturnValues: 'ALL_NEW'
-    }));
+    try {
+      await ddb.send(new UpdateCommand({
+        TableName: 'Games',
+        Key: {gameId},
+        UpdateExpression: 'SET started = :trueVal, turnOrder = :tOrder',
+        // Condition: Only update if 'started' is currently false (or doesn't exist)
+        ConditionExpression: 'attribute_not_exists(started) OR started = :falseVal',
+        ExpressionAttributeValues: {
+          ':trueVal': true,
+          ':falseVal': false,
+          ':tOrder': shuffled // your turn order logic
+        }
+      }));
+    } catch (err: any) {
+      if (err.name === 'ConditionalCheckFailedException') {
+        console.log("Game already started, ignoring duplicate request.");
+        // Optional: Return the existing game state instead of an error
+        return res.json({success: true, message: "Game already started"});
+      }
+      throw err; // Re-throw other errors
+    }
+
 
     // 4. Reveal all entries
     for (const entry of entries.Items || []) {
@@ -162,7 +173,6 @@ app.post('/api/games/:gameId/start', async (req, res) => {
     res.json({success: true});
 
   } catch (err: any) {
-    // ... error handling ...
     console.error('Failed to start game:', err);
     res.status(500).json({error: 'Failed to start game'});
   }
