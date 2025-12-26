@@ -92,7 +92,6 @@ export default function StartGamePage() {
     });
   };
 
-
   const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
   // At the top of the page, show who has / hasn't been guessed yet
   const guessedNames = Array.from(
@@ -949,7 +948,7 @@ export default function StartGamePage() {
                   animate={{opacity: 1, y: 0}}
                   transition={{duration: 0.2}}
               >
-                {/* YOUR EXACT ORIGINAL CONTENT */}
+
                 {started ? (
                     <button
                         ref={el => {
@@ -1039,32 +1038,42 @@ export default function StartGamePage() {
             </div>
         )}
 
+        {/* Toast Notification */}
         {toast && (
             <div
-                className="toast-notification"
                 style={{
-                  position: "fixed",
-                  // top: 80,                 // or use top: "50%" and translateY(-50%) for true center
-                  // transform: "translate(-50%, 0)",  // center horizontally
-                  top: "25%",
-                  transform: "translate(-50%, -50%)",
-                  left: "50%",
-                  backgroundColor: toast.type === "success" ? "#34c759" : "#ff3b30",
-                  color: "white",
-                  padding: "12px 20px",
-                  borderRadius: 12,
-                  boxShadow: "0 4px 16px rgba(0,0,0,0.15)",
-                  fontWeight: 600,
-                  fontSize: 16,
+                  position: 'fixed',
+                  top: '20px',          // Distance from top
+                  left: 0,
+                  width: '100%',        // Span full width to allow flex centering
+                  display: 'flex',
+                  justifyContent: 'center',
                   zIndex: 2000,
-                  animation: "fadeScaleIn 0.4s ease-out forwards",
-                  textAlign: "center",
-                  minWidth: 220,
+                  pointerEvents: 'none', // Allow clicks to pass through the invisible container
                 }}
             >
-              {toast.message}
+              <div
+                  className="toast-notification"
+                  style={{
+                    backgroundColor: toast.type === 'success' ? '#34c759' : '#ff3b30',
+                    color: 'white',
+                    padding: '12px 20px',
+                    borderRadius: '12px',
+                    boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
+                    fontWeight: 600,
+                    fontSize: '16px',
+                    animation: 'fadeScaleIn 0.4s ease-out forwards',
+                    textAlign: 'center',
+                    minWidth: '220px',
+                    maxWidth: '90%',       // Prevents cropping on small mobile screens
+                    pointerEvents: 'auto', // Re-enable clicks on the toast itself
+                  }}
+              >
+                {toast.message}
+              </div>
             </div>
         )}
+
 
       </div>
   );
