@@ -208,7 +208,7 @@ export default function StartGamePage() {
       fetchGameData();
       fetchEntries();
       setToast({
-        message: "‼️The game has started!",
+        message: "‼️The game has started ‼️",
         type: 'success'
       });
     });
