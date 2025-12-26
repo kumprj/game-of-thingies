@@ -8,18 +8,28 @@ import confetti from "canvas-confetti";
 
 
 // Set backend API base URL
-// axios.defaults.baseURL = process.env.NODE_ENV === 'production'
-//     ? 'https://game-of-thingies.onrender.com'  // Production
-//     : 'http://localhost:3001'                  // Local dev
+axios.defaults.baseURL = process.env.NODE_ENV === 'production'
+    ? 'https://game-of-thingies.onrender.com'  // Production
+    : 'http://localhost:3001'                  // Local dev
 // Local:
 // axios.defaults.baseURL = "http://localhost:3001";
-axios.defaults.baseURL = "https://game-of-thingies.onrender.com";
-const socket = io('https://game-of-thingies.onrender.com');
-// const socket = io(
-//     process.env.NODE_ENV === 'production'
-//         ? 'https://game-of-thingies.onrender.com'  // Production
-//         : 'http://localhost:3001'                  // Local dev
-// );
+// axios.defaults.baseURL = "https://game-of-thingies.onrender.com";
+// const socket = io('https://game-of-thingies.onrender.com');
+const socket = io(
+    process.env.NODE_ENV === 'production'
+        ? 'https://game-of-thingies.onrender.com'  // Production
+        : 'http://localhost:3001'                  // Local dev
+);
+// Add this custom hook at top of file
+const useVibration = () => {
+  const vibrate = (pattern: number[] | number) => {
+    if ('vibrate' in navigator) {
+      navigator.vibrate(pattern);
+    }
+  };
+
+  return vibrate;
+}
 
 
 interface Entry {
@@ -60,7 +70,8 @@ export default function StartGamePage() {
   const [showHowToPlay, setShowHowToPlay] = useState(false);
   const [startNewRoundLoading, setStartNewRoundLoading] = useState(false);
   const [showScores, setShowScores] = useState<boolean>(false);
-
+  const [currentPlayer, setCurrentPlayer] = useState<string | null>(null);
+  const [turnOrder, setTurnOrder] = useState<string[]>([]);
 
   // State for the entry currently being guessed (for modal)
   const [guessingEntry, setGuessingEntry] = useState<Entry | null>(null);
@@ -71,7 +82,7 @@ export default function StartGamePage() {
 // sort so enabled (clickable) entries appear first, then fall back to text sort
   const isEntryEnabled = (entry: Entry) =>
       started && !entry.guessed && !(entry.revealed && guessedEntryIds.has(entry.entryId));
-
+  const vibrate = useVibration();
   const sortedEntriesForDisplay = useMemo(() => {
     // 1. Create a shallow copy of entries to avoid mutating state directly
     let sorted = [...entries];
@@ -104,7 +115,11 @@ export default function StartGamePage() {
     });
   };
 
+
+  const isMyTurn = currentPlayer === authorName;
+
   const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
   // At the top of the page, show who has / hasn't been guessed yet
   const guessedNames = Array.from(
       new Set(
@@ -126,6 +141,8 @@ export default function StartGamePage() {
   // Check if all entries have been guessed
   const allGuessed = entries.length > 0 && entries.every(entry => entry.guessed);
   const [guessLoading, setGuessLoading] = useState(false);
+  const remainingEntries = entries.filter(e => !e.guessed);
+  const isLastEntry = remainingEntries.length === 1;
 
 // Add these states after your existing state declarations
   const [toast, setToast] = useState<{
@@ -151,13 +168,6 @@ export default function StartGamePage() {
   }, [toast?.message, toast?.duration]); // ✅ Key fix: specific deps
 
 
-  // useEffect(() => {
-  //   if (toast) {
-  //     const timer = setTimeout(() => setToast(null), 2000);
-  //     return () => clearTimeout(timer);
-  //   }
-  // }, [toast]);
-
   useEffect(() => {
     if (authorName.trim() === "") return;
     window.localStorage.setItem("got_authorName", authorName);
@@ -175,7 +185,11 @@ export default function StartGamePage() {
       // Update your state here (e.g., setGameQuestion, setStarted, etc.)
       setGameQuestion(res.data.question || null);
       setGameTitle(res.data.gameOwner || null);
-      // setStarted(res.data.started);
+
+      if (res.data.turnOrder) {
+        setTurnOrder(res.data.turnOrder);
+        setCurrentPlayer(res.data.turnOrder[0] || null);
+      }
     } catch (err) {
       console.error("Failed to fetch game data", err);
     }
@@ -203,7 +217,10 @@ export default function StartGamePage() {
       fetchEntries();
     });
 
-    socket.on("gameStarted", () => {
+    socket.on("gameStarted", (data) => {
+      setTurnOrder(data.turnOrder || []);
+      setCurrentPlayer(data.turnOrder?.[0] || null);
+      vibrate([300, 100, 300]);
       console.log("🚀 Game started!");
       fetchGameData();
       fetchEntries();
@@ -245,11 +262,27 @@ export default function StartGamePage() {
       console.log("⭐ Score:", data);
       fetchScores();
       triggerConfetti();
+      if (data.playerName === authorName) {
+        // VICTORY VIBRATION! 🎉
+        vibrate([100, 50, 100, 50, 200, 100, 400]);
+      }
       setToast({
         message: `🎉 ${data?.playerName || 'Someone'} got it right! The answer was '${data?.guess}', written by ${data?.authorName}`,
         type: 'success',
         duration: 7000
       });
+    });
+
+    socket.on("nextTurn", (data) => {
+      setTurnOrder(data.turnOrder);
+      setCurrentPlayer(data.currentPlayer);
+
+      // 🎯 VIBRATE if it's YOUR turn!
+      if (data.currentPlayer === authorName) {  // playerName from your state
+        vibrate([200, 100, 200]);  // Pattern: buzz-pause-buzz
+      } else {
+        vibrate(100);  // Subtle buzz for other turns
+      }
     });
 
     return () => {
@@ -258,6 +291,7 @@ export default function StartGamePage() {
       socket.off("scoreUpdated");
       socket.off("wrongAnswer");
       socket.off("gameReset");
+      socket.off("nextTurn");
     };
   }, [gameId]);
 
@@ -563,14 +597,18 @@ export default function StartGamePage() {
                 }}
             >
               <div style={{marginBottom: 6}}>
+                <strong>Already guessed:</strong>{" "}
+                {guessedNames.length ? guessedNames.join(", ") : "No one yet"}
+              </div>
+              <div style={{marginBottom: 6}}>
                 <strong>Not yet guessed:</strong>{" "}
                 {notGuessedNames.length
                     ? notGuessedNames.join(", ")
                     : "Everyone has been guessed!"}
               </div>
               <div>
-                <strong>Already guessed:</strong>{" "}
-                {guessedNames.length ? guessedNames.join(", ") : "No one yet"}
+                <strong>Players Left:</strong>{" "}
+                {turnOrder.length}
               </div>
             </div>
         )}
@@ -879,6 +917,47 @@ export default function StartGamePage() {
             </div>
         )}
 
+        {/*Turn Order*/}
+        {(turnOrder.length > 0 || started) && (
+            <div
+                className="flex items-center justify-center gap-4 p-4 bg-gradient-to-r from-purple-500 to-pink-500 rounded-xl shadow-2xl mb-6">
+              <motion.div
+                  key={`arrow-${currentPlayer}`}  // Re-animate on player change
+                  initial={{rotate: -180}}
+                  animate={{rotate: 0}}
+                  transition={{duration: 0.5, ease: "easeOut"}}
+                  className="text-4xl"
+              >
+                ➡️
+              </motion.div>
+
+              <div className="text-center">
+                <h2 className="text-2xl font-bold text-white drop-shadow-lg">
+                  {turnOrder.length >= 1
+                      ? `${currentPlayer}'s turn!`
+                      : "All answers guessed!"}
+                </h2>
+              </div>
+
+              {/*/!* Player queue preview *!/*/}
+              {/*<div className="flex gap-1 ml-4">*/}
+              {/*  {turnOrder.slice(0, 3).map((player, i) => (*/}
+              {/*      <motion.span*/}
+              {/*          key={player}*/}
+              {/*          className={`px-3 py-1 rounded-full text-xs font-semibold ${*/}
+              {/*              player === currentPlayer*/}
+              {/*                  ? 'bg-white text-purple-600 shadow-lg'*/}
+              {/*                  : 'bg-white/50 text-white'*/}
+              {/*          }`}*/}
+              {/*          whileHover={{ scale: 1.1 }}*/}
+              {/*      >*/}
+              {/*        {player.slice(0, 3)}*/}
+              {/*      </motion.span>*/}
+              {/*  ))}*/}
+              {/*</div>*/}
+            </div>
+        )}
+
         {allGuessed && (
             <div style={{marginTop: 30}}>
               <input
@@ -953,40 +1032,46 @@ export default function StartGamePage() {
           {sortedEntriesForDisplay.length === 0 && <li>No entries found</li>}
 
           {sortedEntriesForDisplay.map(entry => (
-              <motion.li  // ← Only change: motion.li instead of li
-                  key={entry.entryId}
-                  style={{margin: "10px 0"}}
-                  initial={{opacity: 0, y: 10}}
-                  animate={{opacity: 1, y: 0}}
-                  transition={{duration: 0.2}}
-              >
+                  <motion.li  // ← Only change: motion.li instead of li
+                      key={entry.entryId}
+                      style={{margin: "10px 0"}}
+                      initial={{opacity: 0, y: 10}}
+                      animate={{opacity: 1, y: 0}}
+                      transition={{duration: 0.2}}
+                  >
 
-                {started ? (
-                    <button
-                        ref={el => {
-                          buttonRefs.current[entry.entryId] = el;
-                        }}
-                        disabled={entry.guessed || (entry.revealed && guessedEntryIds.has(entry.entryId))}
-                        onClick={() => onEntryClick(entry)}
-                    >
-                      {entry.text}
-                    </button>
-                ) : (
-                    <span style={{
-                      filter: "blur(6px)",
-                      color: "rgba(0,0,0,0.6)",
-                      userSelect: "none",
-                      textShadow: "0 0 2px rgba(0,0,0,0.1)",
-                      transition: "filter 0.3s ease, color 0.3s ease",
-                    }}>
-                {entry.text}
+                    {started ? (
+                        <button
+                            ref={el => {
+                              buttonRefs.current[entry.entryId] = el;
+                            }}
+                            disabled={
+                                !isMyTurn ||                      // 1. Must be my turn
+                                entry.guessed ||                  // 2. Must not be guessed
+                                (entry.authorName === authorName && !isLastEntry)     // 3. Can't guess self... UNLESS it's the last one!
+                            }
+                            onClick={() => onEntryClick(entry)}
+                        >
+                          {entry.text}
+                        </button>
+                    ) : (
+                        <span style={{
+                          filter: "blur(6px)",
+                          color: "rgba(0,0,0,0.6)",
+                          userSelect: "none",
+                          textShadow: "0 0 2px rgba(0,0,0,0.1)",
+                          transition: "filter 0.3s ease, color 0.3s ease",
+                        }}>
+          {entry.text}
         </span>
-                )}
-              </motion.li>
-          ))}
+                    )}
+                  </motion.li>
+              )
+          )}
         </ul>
 
-        {/* How to play toggle at bottom-left */}
+        {/* How to play toggle at bottom-left */
+        }
         <div
             style={{
               maxWidth: 600,
@@ -1021,72 +1106,79 @@ export default function StartGamePage() {
   </span>
         </div>
 
-        {showHowToPlay && (
-            <div
-                style={{
-                  maxWidth: 600,
-                  margin: "8px auto 20px auto",
-                  padding: "12px 16px",
-                  borderRadius: 12,
-                  backgroundColor: "#f2f2f7",
-                  fontSize: 14,
-                  color: "#3c3c43",
-                  lineHeight: 1.5,
-                  textAlign: "left",
-                }}
-            >
-              <p style={{marginTop: 0, marginBottom: 8}}>
-                How to play: Each person secretly writes an answer to the question and adds it to
-                the list.
-              </p>
-              <p style={{margin: 0, marginBottom: 8}}>
-                When the host starts the game, all answers are revealed. Taking turns, tap an
-                answer and then choose who you think wrote it. If you're right, you go again!
-              </p>
-              <p style={{margin: 0}}>
-                Correct guesses mark that person as guessed. Keep going until everyone has
-                been guessed, then ask a new question and start a new round.
-              </p>
-            </div>
-        )}
+        {
+            showHowToPlay && (
+                <div
+                    style={{
+                      maxWidth: 600,
+                      margin: "8px auto 20px auto",
+                      padding: "12px 16px",
+                      borderRadius: 12,
+                      backgroundColor: "#f2f2f7",
+                      fontSize: 14,
+                      color: "#3c3c43",
+                      lineHeight: 1.5,
+                      textAlign: "left",
+                    }}
+                >
+                  <p style={{marginTop: 0, marginBottom: 8}}>
+                    How to play: Each person secretly writes an answer to the question and adds it to
+                    the list.
+                  </p>
+                  <p style={{margin: 0, marginBottom: 8}}>
+                    When the host starts the game, all answers are revealed. Taking turns, tap an
+                    answer and then choose who you think wrote it. If you're right, you go again!
+                  </p>
+                  <p style={{margin: 0}}>
+                    Correct guesses mark that person as guessed. Keep going until everyone has
+                    been guessed. Once you're the last remaining player, you can guess yourself for a
+                    free point to end the game. Then, ask a new question and start a new round.
+                  </p>
+                </div>
+            )
+        }
 
-        {/* Toast Notification */}
-        {toast && (
-            <div
-                style={{
-                  position: 'fixed',
-                  top: '20px',          // Distance from top
-                  left: 0,
-                  width: '100%',        // Span full width to allow flex centering
-                  display: 'flex',
-                  justifyContent: 'center',
-                  zIndex: 2000,
-                  pointerEvents: 'none', // Allow clicks to pass through the invisible container
-                }}
-            >
-              <div
-                  className="toast-notification"
-                  style={{
-                    backgroundColor: toast.type === 'success' ? '#34c759' : '#ff3b30',
-                    color: 'white',
-                    padding: '12px 20px',
-                    borderRadius: '12px',
-                    boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
-                    fontWeight: 600,
-                    fontSize: '16px',
-                    animation: 'fadeScaleIn 0.4s ease-out forwards',
-                    textAlign: 'center',
-                    minWidth: '220px',
-                    maxWidth: '90%',       // Prevents cropping on small mobile screens
-                    pointerEvents: 'auto', // Re-enable clicks on the toast itself
-                  }}
-              >
-                {toast.message}
-              </div>
-            </div>
-        )}
+        {/* Toast Notification */
+        }
+        {
+            toast && (
+                <div
+                    style={{
+                      position: 'fixed',
+                      top: '20px',          // Distance from top
+                      left: 0,
+                      width: '100%',        // Span full width to allow flex centering
+                      display: 'flex',
+                      justifyContent: 'center',
+                      zIndex: 2000,
+                      pointerEvents: 'none', // Allow clicks to pass through the invisible container
+                    }}
+                >
+                  <div
+                      className="toast-notification"
+                      style={{
+                        backgroundColor: toast.type === 'success' ? '#34c759' : '#ff3b30',
+                        color: 'white',
+                        padding: '12px 20px',
+                        borderRadius: '12px',
+                        boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
+                        fontWeight: 600,
+                        fontSize: '16px',
+                        animation: 'fadeScaleIn 0.4s ease-out forwards',
+                        textAlign: 'center',
+                        minWidth: '220px',
+                        maxWidth: '90%',       // Prevents cropping on small mobile screens
+                        pointerEvents: 'auto', // Re-enable clicks on the toast itself
+                      }}
+                  >
+                    {toast.message}
+                  </div>
+                </div>
+            )
+        }
 
 
       </div>
-  );
+  )
+      ;
 }
