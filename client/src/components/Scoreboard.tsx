@@ -22,10 +22,10 @@ export default function Scoreboard({ scores }: Props) {
   return (
       <div style={{
         marginBottom: 20, padding: "12px 16px", borderRadius: 16,
-        backgroundColor: "#f2f2f7", maxWidth: 600, marginInline: "auto", fontSize: 14
+        backgroundColor: 'var(--bg-secondary)', maxWidth: 600, marginInline: "auto", fontSize: 14
       }}>
         {/* Header for the scoreboard */}
-        <div style={{ marginBottom: 8, fontWeight: 700, textAlign: "left", color: "#1d1d1f" }}>
+        <div style={{ marginBottom: 8, fontWeight: 700, textAlign: "left", color: 'var(--text-main)' }}>
           Scoreboard
         </div>
         {/* Map through the scores array and render each player's score */}

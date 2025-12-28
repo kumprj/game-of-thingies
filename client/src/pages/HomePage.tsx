@@ -137,12 +137,12 @@ export default function HomePage() {
             style={{
               marginTop: 20,
               padding: 16,
-              backgroundColor: '#f0f0f5',
+              backgroundColor: 'var(--bg-secondary)',
               borderRadius: 12,
               maxWidth: 600,
               marginLeft: 'auto',
               marginRight: 'auto',
-              color: '#3c3c43'
+              color: 'var(--text-main)'
             }}
         >
           <h3>How to Play</h3>

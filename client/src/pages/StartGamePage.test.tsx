@@ -1,7 +1,7 @@
 // src/StartGamePage.test.tsx
-import { render, screen, fireEvent } from '@testing-library/react';
-import { describe, it, expect, vi } from 'vitest';
-import { BrowserRouter } from 'react-router-dom';
+import {render, screen, fireEvent} from '@testing-library/react';
+import {describe, it, expect, vi} from 'vitest';
+import {BrowserRouter} from 'react-router-dom';
 import StartGamePage from './StartGamePage';
 import * as GameHook from '../hooks/useGameLogic';
 
@@ -28,7 +28,7 @@ describe('StartGamePage', () => {
     addEntry: vi.fn(),
     startGame: vi.fn(),
     setShowStartConfirm: vi.fn(),
-    buttonRefs: { current: {} },
+    buttonRefs: {current: {}},
     sortedEntriesForDisplay: [],
     uniqueNames: [],
   };
@@ -39,7 +39,7 @@ describe('StartGamePage', () => {
 
     render(
         <BrowserRouter>
-          <StartGamePage />
+          <StartGamePage/>
         </BrowserRouter>
     );
 
@@ -54,7 +54,7 @@ describe('StartGamePage', () => {
       ...defaultHookValues,
       started: true,
       sortedEntriesForDisplay: [
-        { entryId: '1', text: 'Funny Answer', authorName: 'Bob', guessed: false }
+        {entryId: '1', text: 'Funny Answer', authorName: 'Bob', guessed: false}
       ],
       turnOrder: ['Alice'],
       currentPlayer: 'Alice',
@@ -63,7 +63,7 @@ describe('StartGamePage', () => {
 
     render(
         <BrowserRouter>
-          <StartGamePage />
+          <StartGamePage/>
         </BrowserRouter>
     );
 
@@ -84,7 +84,7 @@ describe('StartGamePage', () => {
 
     render(
         <BrowserRouter>
-          <StartGamePage />
+          <StartGamePage/>
         </BrowserRouter>
     );
 
