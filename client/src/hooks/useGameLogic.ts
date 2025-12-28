@@ -232,7 +232,6 @@ export function useGameLogic() {
       setEntries([]);
       setGuessedEntryIds(new Set());
       setStarted(false);
-      // window.location.reload();
     } catch (err) { console.error("Reset failed", err); }
     finally { setStartNewRoundLoading(false); }
   };
