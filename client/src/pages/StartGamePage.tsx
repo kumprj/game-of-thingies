@@ -1,7 +1,7 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import logo from "../../src/assets/logo.jpg";
+import logo from "../assets/logo.jpg";
 import { useGameLogic } from "../hooks/useGameLogic";
 import Scoreboard from "../components/Scoreboard";
 
