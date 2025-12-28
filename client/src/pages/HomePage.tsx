@@ -1,7 +1,7 @@
 import React, {useState, useEffect} from "react";
 import axios from "axios";
 import {useNavigate} from "react-router-dom";
-import logo from "../src/assets/logo.jpg";
+import logo from "../../src/assets/logo.jpg";
 
 axios.defaults.baseURL = process.env.NODE_ENV === 'production'
     ? 'https://game-of-thingies.onrender.com'  // Production
