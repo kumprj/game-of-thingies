@@ -38,7 +38,7 @@ interface Score {
 }
 
 
-export default function StartGamePage() {
+export default function Old_StartGamePage() {
   const {gameId} = useParams();
   const [gameTitle, setGameTitle] = useState<string | null>(null);
   const [gameQuestion, setGameQuestion] = useState<string | null>(null);
