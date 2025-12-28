@@ -4,6 +4,7 @@ import {motion} from "framer-motion";
 import logo from "../assets/logo.jpg";
 import {useGameLogic} from "../hooks/useGameLogic";
 import Scoreboard from "../components/Scoreboard";
+import {useDarkMode} from "../hooks/useDarkMode";
 
 export default function StartGamePage() {
   const {
@@ -49,8 +50,41 @@ export default function StartGamePage() {
     uniqueNames
   } = useGameLogic();
 
+  const {isDark, toggleTheme} = useDarkMode();
+
   return (
       <div style={{textAlign: "center", marginBottom: 20}}>
+
+        {/* --- NEW HEADER ROW FOR DARK MODE --- */}
+        <div style={{
+          display: "flex",
+          justifyContent: "flex-end",
+          maxWidth: 700,     /* Match your #root width */
+          margin: "0 auto",  /* Center the container */
+          paddingRight: 10   /* Small buffer from edge */
+        }}>
+          <button
+              onClick={toggleTheme}
+              style={{
+                background: "transparent",
+                border: "1px solid var(--border-main)",
+                borderRadius: "50%",
+                width: 44,
+                height: 44,
+                padding: 0,
+                fontSize: 22,
+                boxShadow: "none",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center"
+              }}
+              title="Toggle Dark Mode"
+          >
+            {isDark ? "🌙" : "☀️"}
+          </button>
+        </div>
+
         <Link to="/"><img src={logo} alt="Game of Things" style={{width: 80}}/></Link>
 
         {/* Header */}
@@ -82,7 +116,8 @@ export default function StartGamePage() {
                         color: 'var(--text-main)',
                         fontSize: 14,
                         cursor: "pointer",
-                        textDecoration: "underline"
+                        textDecoration: "underline",
+                        fontWeight: 800
                       }}>
                 {showScores ? "Hide scoreboard" : "Show scoreboard"}
               </button>
@@ -163,9 +198,9 @@ export default function StartGamePage() {
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
+                          color: 'white',
                           gap: 8,
                           background: (entryText && authorName && !addEntryLoading) ? '#007aff' : '#c7c7cc',
-                          color: 'white',
                           cursor: (entryText && authorName && !addEntryLoading) ? 'pointer' : 'not-allowed'
                         }}>
                   {addEntryLoading ? (
@@ -248,10 +283,11 @@ export default function StartGamePage() {
               <button disabled={!newQuestion.trim() || startNewRoundLoading} onClick={startNewRound}
                       style={{
                         background: startNewRoundLoading || !newQuestion.trim() ? "#c7c7cc" : "#34c759",
-                        color: "white",
                         padding: "12px 16px",
                         borderRadius: 12,
                         border: "none",
+                        backgroundColor: 'var(--bg-secondary)',
+                        color: 'var(--text-main)',
                         fontWeight: 600,
                         cursor: startNewRoundLoading ? "not-allowed" : "pointer"
                       }}>
@@ -262,6 +298,7 @@ export default function StartGamePage() {
                         width: 16,
                         height: 16,
                         borderRadius: '50%',
+                        color: 'white',
                         border: '2px solid rgba(255,255,255,0.5)',
                         borderTopColor: 'white',
                         animation: 'spin 1s linear infinite',
@@ -485,7 +522,8 @@ export default function StartGamePage() {
               display: 'flex',
               justifyContent: 'center',
               zIndex: 2000,
-              pointerEvents: 'none'
+              pointerEvents: 'none',
+              animation: 'fadeScaleIn 0.3s ease-out forwards'
             }}>
               <div style={{
                 backgroundColor: toast.type === 'success' ? '#34c759' : '#ff3b30',
@@ -494,7 +532,8 @@ export default function StartGamePage() {
                 borderRadius: '12px',
                 boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
                 fontWeight: 600,
-                pointerEvents: 'auto'
+                pointerEvents: 'auto',
+                animation: 'fadeScaleIn 0.3s ease-out forwards'
               }}>
                 {toast.message}
               </div>
