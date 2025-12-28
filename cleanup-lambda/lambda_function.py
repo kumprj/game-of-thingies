@@ -6,6 +6,7 @@ from typing import Dict, Any
 dynamodb = boto3.resource('dynamodb')
 games_table = dynamodb.Table('Games')
 entries_table = dynamodb.Table('Entries')
+scores_table = dynamodb.Table('Scores')
 
 def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """Delete Games older than 48 hours and their related Entries"""
@@ -49,6 +50,21 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     entry_id = entry['entryId']
                     entries_table.delete_item(
                         Key={'gameId': game_id, 'entryId': entry_id}
+                    )
+                    deleted_entries += 1
+
+                print(f"Deleted {len(entries)} entries for game {game_id} in Entries table")
+
+                # Delete scores from Scores Table.
+                scores_response = scores_table.scan(
+                    FilterExpression='gameId = :game_id',
+                    ExpressionAttributeValues={':game_id': game_id}
+                )
+                # Delete each entry
+                for score in scores:
+                    game_id = score['gameId']
+                    scores_table.delete_item(
+                        Key={'gameId': game_id}
                     )
                     deleted_entries += 1
 
