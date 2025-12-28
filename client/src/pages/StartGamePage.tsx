@@ -49,6 +49,7 @@ export default function StartGamePage() {
     isMyTurn,
     uniqueNames
   } = useGameLogic();
+
   const {isDark, toggleTheme} = useDarkMode();
 
   return (
@@ -521,7 +522,8 @@ export default function StartGamePage() {
               display: 'flex',
               justifyContent: 'center',
               zIndex: 2000,
-              pointerEvents: 'none'
+              pointerEvents: 'none',
+              animation: 'fadeScaleIn 0.3s ease-out forwards'
             }}>
               <div style={{
                 backgroundColor: toast.type === 'success' ? '#34c759' : '#ff3b30',
@@ -530,7 +532,8 @@ export default function StartGamePage() {
                 borderRadius: '12px',
                 boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
                 fontWeight: 600,
-                pointerEvents: 'auto'
+                pointerEvents: 'auto',
+                animation: 'fadeScaleIn 0.3s ease-out forwards'
               }}>
                 {toast.message}
               </div>
