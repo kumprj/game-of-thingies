@@ -16,15 +16,3 @@ applications:
       cache:
         paths:
           - node_modules/**/*
-###
-#To build the backend, update server.ts file
-#copy to /Users/robertkump/Documents/Projects/game-of-thingies/amplify/backend/function/gameofthingsProdApi/src/index.ts
-# npm init -y
-# npm install express cors uuid serverless-http @aws-sdk/client-dynamodb @aws-sdk/lib-dynamodb
-#npm install --save-dev @types/node
-#npm install @aws-sdk/client-dynamodb @aws-sdk/lib-dynamodb
-#  npm run build
-# Enable const handler...
-# Comment out app.listen
-#Run npm run build
-#amplify push
