@@ -1,46 +1,68 @@
-# Getting Started with Create React App
+# Game of Thingies (Client)
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+This folder contains the frontend client for **Game of Thingies**, built with React + Vite (TypeScript). It communicates with the backend API (Axios) and uses Socket.io for real-time game updates.
 
-## Available Scripts
+## Requirements
 
-In the project directory, you can run:
+- Node.js (LTS recommended)
+- Backend running locally (typically on `http://localhost:3001`)
 
-### `npm start`
+## Project Layout
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+- `src/pages/`: Route-level pages (e.g., HomePage, StartGamePage)
+- `src/components/`: Reusable UI components (e.g., Scoreboard)
+- `src/hooks/`: Custom hooks for game logic (e.g., `useGameLogic.ts`)
+- `src/gameConfig.ts`: API + Socket configuration
 
-The page will reload if you make edits.\
-You will also see any lint errors in the console.
+## Local Development
 
-### `npm test`
+From the `client/` folder:
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+### Start the dev server
 
-### `npm run build`
+npm start
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+Vite will serve the app (default):
+- http://localhost:5173
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+### Build for production
 
-### `npm run eject`
+npm run build
 
-**Note: this is a one-way operation. Once you `eject`, you can’t go back!**
 
-If you aren’t satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+Outputs a production build to:
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you’re on your own.
+- `client/dist`
 
-You don’t have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn’t feel obligated to use this feature. However we understand that this tool wouldn’t be useful if you couldn’t customize it when you are ready for it.
+### Preview the production build locally
 
-## Learn More
+npm run preview 
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+## Testing (Unit Tests)
+
+### Run tests in watch mode
+npm test
+
+
+### Run tests with the Vitest UI (optional)
+
+npx vitest --ui
+
+
+## Environment / API Notes
+
+- In development, the client is expected to call the backend at `http://localhost:3001` (either directly via `src/gameConfig.ts` or through a Vite proxy if configured).
+- In production, the client should use your deployed backend URL (e.g., Render).
+
+## Tech Stack
+
+- React
+- Vite
+- TypeScript
+- Axios
+- Socket.io-client
+- Vitest + React Testing Library
+- Framer Motion + canvas-confetti
+
