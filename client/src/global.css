@@ -1,13 +1,80 @@
+/* =========================================
+   THEME VARIABLES (Light & Dark Mode)
+   ========================================= */
+:root {
+    /* --- LIGHT MODE DEFAULTS --- */
+    --bg-body: #fefefe;
+    --bg-card: #ffffff;
+    --bg-secondary: #f2f2f7;      /* Used for bubbles/background elements */
+    --bg-input: #ffffff;
+
+    --text-main: #1d1d1f;
+    --text-secondary: #3c3c4399;  /* Semi-transparent gray */
+    --text-inverse: #ffffff;      /* Text on blue buttons */
+
+    --border-main: #d1d1d6;
+    --border-light: #e5e5ea;
+
+    --accent-blue: #007aff;
+    --accent-blue-hover: #005ecb;
+
+    --danger-red: #8B0000;
+    --danger-red-hover: #5A0000;
+
+    --shadow-light: rgba(60, 60, 67, 0.1);
+    --shadow-blue: rgba(0, 122, 255, 0.3);
+    --shadow-overlay: rgba(0, 0, 0, 0.35);
+
+    --disabled-bg: #c7c7cc;
+}
+
+/* --- DARK MODE OVERRIDES (Auto-detected) --- */
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg-body: #000000;         /* True black for OLED screens */
+        --bg-card: #1c1c1e;         /* Dark gray cards */
+        --bg-secondary: #2c2c2e;    /* Slightly lighter gray for bubbles */
+        --bg-input: #1c1c1e;
+
+        --text-main: #f5f5f7;       /* Off-white for readability */
+        --text-secondary: #ebebf599;
+        --text-inverse: #ffffff;
+
+        --border-main: #38383a;
+        --border-light: #2c2c2e;
+
+        /* iOS Dark Mode Blue is slightly lighter for contrast */
+        --accent-blue: #0a84ff;
+        --accent-blue-hover: #0077ed;
+
+        /* iOS Dark Mode Red */
+        --danger-red: #ff453a;
+        --danger-red-hover: #d70015;
+
+        --shadow-light: rgba(0, 0, 0, 0.5);
+        --shadow-blue: rgba(10, 132, 255, 0.3);
+        --shadow-overlay: rgba(0, 0, 0, 0.7);
+
+        --disabled-bg: #48484a;
+    }
+}
+
+/* =========================================
+   GLOBAL STYLES
+   ========================================= */
+
 body {
-    background-color: #fefefe;
+    background-color: var(--bg-body);
+    color: var(--text-main);
     font-family: -apple-system, BlinkMacSystemFont, "San Francisco", "Helvetica Neue", Helvetica, Arial, sans-serif;
-    color: #1d1d1f;
     margin: 0;
     padding: 0;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     display: flex;
     justify-content: center;
+    /* Smoothly transition colors when mode changes */
+    transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 #root {
@@ -16,138 +83,138 @@ body {
     margin-top: 40px;
 }
 
-button {
-    background: #007aff;
-    border: none;
-    color: white;
-    padding: 14px 24px;
+/* --- HEADINGS & TEXT --- */
+h1, h2, h3 {
     font-weight: 600;
-    border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(0, 122, 255, 0.3);
-    cursor: pointer;
-    transition: background-color 0.3s ease, box-shadow 0.3s ease;
-    font-size: 16px;
+    margin-bottom: 24px;
+    color: var(--text-main);
 }
 
-button:hover {
-    background: #005ecb;
-    box-shadow: 0 4px 12px rgba(0, 94, 203, 0.4);
+p {
+    color: var(--text-secondary);
+    line-height: 1.5;
 }
 
-button:disabled {
-    background: #c7c7cc;
-    cursor: not-allowed;
-    box-shadow: none;
+/* --- CONTAINERS --- */
+.container {
+    padding: 24px;
+    background: var(--bg-card);
+    border-radius: 20px;
+    box-shadow: 0 4px 16px var(--shadow-light);
+    transition: background-color 0.3s ease;
 }
 
+/* --- INPUTS --- */
 input {
-    border: 1px solid #d1d1d6;
+    background-color: var(--bg-input);
+    color: var(--text-main);
+    border: 1px solid var(--border-main);
     padding: 12px 16px;
     font-size: 16px;
     border-radius: 12px;
     margin-bottom: 20px;
     width: 100%;
     box-sizing: border-box;
-    transition: border-color 0.3s ease;
+    transition: border-color 0.3s ease, background-color 0.3s ease;
 }
 
 input:focus {
     outline: none;
-    border-color: #007aff;
+    border-color: var(--accent-blue);
     box-shadow: 0 0 8px rgba(0, 122, 255, 0.25);
 }
 
+/* --- BUTTONS --- */
+button {
+    background: var(--accent-blue);
+    border: none;
+    color: var(--text-inverse);
+    padding: 14px 24px;
+    font-weight: 600;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px var(--shadow-blue);
+    cursor: pointer;
+    transition: background-color 0.3s ease, box-shadow 0.3s ease;
+    font-size: 16px;
+}
 
+button:hover {
+    background: var(--accent-blue-hover);
+    box-shadow: 0 4px 12px rgba(0, 94, 203, 0.4);
+}
+
+button:disabled {
+    background: var(--disabled-bg);
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
+.cancel-button {
+    margin-top: 12px;
+    background-color: var(--danger-red);
+    color: #ffffff;
+    padding: 10px 16px;
+    border-radius: 10px;
+    border: none;
+    font-weight: 600;
+    cursor: pointer;
+    width: 100%;
+}
+
+.cancel-button:hover {
+    background-color: var(--danger-red-hover);
+}
+
+/* --- LISTS --- */
 ul {
     list-style: none;
     padding: 0;
 }
 
 li {
-    background: white;
+    background: var(--bg-card);
+    color: var(--text-main);
     padding: 16px 20px;
     border-radius: 16px;
     margin-bottom: 12px;
-    border: 1px solid #e5e5ea;
-    box-shadow: 0 1px 3px rgba(60, 60, 67, 0.1);
+    border: 1px solid var(--border-light);
+    box-shadow: 0 1px 3px var(--shadow-light);
     cursor: pointer;
     user-select: none;
-    transition: box-shadow 0.3s ease;
+    transition: box-shadow 0.3s ease, background-color 0.3s ease;
 }
 
 li:hover {
-    box-shadow: 0 2px 10px rgba(0, 122, 255, 0.3);
+    box-shadow: 0 2px 10px var(--shadow-blue);
 }
 
-h1, h2, h3 {
-    font-weight: 600;
-    margin-bottom: 24px;
-    color: #1c1c1e;
-}
-
-p {
-    color: #3c3c4399;
-    line-height: 1.5;
-}
-
-.container {
-    padding: 24px;
-    background: white;
-    border-radius: 20px;
-    box-shadow: 0 4px 16px rgba(60, 60, 67, 0.1);
-}
+/* =========================================
+   GAME COMPONENT STYLES
+   ========================================= */
 
 /* Full-screen dim background */
 .guess-overlay {
     position: fixed;
     inset: 0; /* top:0; right:0; bottom:0; left:0; */
-    background: rgba(0, 0, 0, 0.35); /* gray/dim background [web:33] */
-    display: flex;                   /* center modal with flexbox [web:30][web:46] */
+    background: var(--shadow-overlay);
+    display: flex;
     justify-content: center;
     align-items: center;
     z-index: 1000;
+    backdrop-filter: blur(2px); /* Adds a nice blur effect like iOS */
 }
 
-/* Centered white bubble */
-/*.guess-modal {*/
-/*    background: #ffffff;*/
-/*    color: #111827;*/
-/*    padding: 20px 24px;*/
-/*    border-radius: 16px;*/
-/*    min-width: 260px;*/
-/*    max-width: 90vw;*/
-/*    box-shadow: 0 18px 45px rgba(15, 23, 42, 0.35);*/
-/*}*/
-
+/* Centered modal */
 .guess-modal {
-    background: #ffffff;
-    color: #111827;
+    background: var(--bg-card);
+    color: var(--text-main);
     padding: 20px 24px;
     border-radius: 16px;
     min-width: 260px;
     max-width: 90vw;
-    box-shadow: 0 18px 45px rgba(15, 23, 42, 0.35);
+    box-shadow: 0 18px 45px rgba(0, 0, 0, 0.4);
 }
 
-/* Scrollable area for many names */
-.guess-list {
-    max-height: 320px;        /* ~5 buttons tall; adjust as needed */
-    overflow-y: auto;         /* scroll when more than 5 [web:71][web:76][web:80] */
-    margin: 8px 0 12px 0;
-}
-
-.guess-list ul {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-}
-
-.guess-list li + li {
-    margin-top: 8px;
-}
-
-
-/* Optional: tidy list/buttons */
 .guess-modal h4 {
     margin-top: 0;
     margin-bottom: 12px;
@@ -163,17 +230,42 @@ p {
     margin-top: 8px;
 }
 
+/* Scrollable area for many names */
+.guess-list {
+    max-height: 320px;
+    overflow-y: auto;
+    margin: 8px 0 12px 0;
+}
 
+.guess-list ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.guess-list li + li {
+    margin-top: 8px;
+}
+
+/* Floating Action Bubble (Guess Bubble) */
 .guess-bubble {
     position: absolute;
-    background: white;
+    background: var(--bg-secondary);
+    color: var(--text-main);
     border-radius: 20px;
-    box-shadow: 0 8px 24px rgba(60, 60, 67, 0.15);
+    box-shadow: 0 8px 24px var(--shadow-light);
     padding: 20px;
     max-width: 280px;
     z-index: 1000;
     font-family: -apple-system, BlinkMacSystemFont, "San Francisco", "Helvetica Neue", Helvetica, Arial, sans-serif;
-    color: #1c1c1e;
+
+    /* Additional styles from your original file merged here */
+    width: 100%;
+    box-sizing: border-box;
+    font-weight: 600;
+    font-size: 15px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
 }
 
 .guess-bubble h4 {
@@ -192,6 +284,10 @@ p {
 
 .guess-bubble li {
     margin-bottom: 10px;
+    background: transparent; /* Reset standard li style for bubble items */
+    border: none;
+    padding: 0;
+    box-shadow: none;
 }
 
 .guess-bubble li button {
@@ -199,57 +295,24 @@ p {
     padding: 12px 16px;
     border: none;
     border-radius: 14px;
-    background-color: #007aff;
+    background-color: var(--accent-blue);
     color: white;
     font-weight: 600;
     font-size: 16px;
-    box-shadow: 0 3px 8px rgba(0, 122, 255, 0.35);
+    box-shadow: 0 3px 8px var(--shadow-blue);
     cursor: pointer;
     transition: background-color 0.3s ease, box-shadow 0.3s ease;
 }
 
 .guess-bubble li button:hover {
-    background-color: #005ecb;
+    background-color: var(--accent-blue-hover);
     box-shadow: 0 5px 15px rgba(0, 94, 203, 0.5);
 }
 
-.cancel-button {
-    margin-top: 12px;
-    background-color: #8B0000; /* dark red */
-    color: #ffffff;
-    padding: 10px 16px;
-    border-radius: 10px;
-    border: none;
-    font-weight: 600;
-    cursor: pointer;
-    width: 100%;
-}
-
-.cancel-button:hover {
-    background-color: #5A0000; /* darker red on hover */
-}
-
-.guess-bubble {
-    width: 100%;
-    padding: 10px 14px;
-    border-radius: 14px;
-    background: #f2f2f7;
-    color: #6e6e73;
-    font-weight: 600;
-    font-size: 15px;
-    border: none;
-    cursor: pointer;
-    transition: background-color 0.2s ease;
-}
-
-.guess-bubble  {
-    background-color: #d1d1d6;
-}
+/* --- ANIMATIONS --- */
 @keyframes spin {
     to { transform: rotate(360deg); }
 }
-
-
 
 @keyframes fadeScaleIn {
     from {
