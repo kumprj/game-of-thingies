@@ -4,6 +4,7 @@ import {motion} from "framer-motion";
 import logo from "../assets/logo.jpg";
 import {useGameLogic} from "../hooks/useGameLogic";
 import Scoreboard from "../components/Scoreboard";
+import {useDarkMode} from "../hooks/useDarkMode";
 
 export default function StartGamePage() {
   const {
@@ -49,8 +50,41 @@ export default function StartGamePage() {
     uniqueNames
   } = useGameLogic();
 
+  const {isDark, toggleTheme} = useDarkMode();
+
   return (
       <div style={{textAlign: "center", marginBottom: 20}}>
+
+        {/* --- NEW HEADER ROW FOR DARK MODE --- */}
+        <div style={{
+          display: "flex",
+          justifyContent: "flex-end",
+          maxWidth: 700,     /* Match your #root width */
+          margin: "0 auto",  /* Center the container */
+          paddingRight: 10   /* Small buffer from edge */
+        }}>
+          <button
+              onClick={toggleTheme}
+              style={{
+                background: "transparent",
+                border: "1px solid var(--border-main)",
+                borderRadius: "50%",
+                width: 44,
+                height: 44,
+                padding: 0,
+                fontSize: 22,
+                boxShadow: "none",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center"
+              }}
+              title="Toggle Dark Mode"
+          >
+            {isDark ? "🌙" : "☀️"}
+          </button>
+        </div>
+
         <Link to="/"><img src={logo} alt="Game of Things" style={{width: 80}}/></Link>
 
         {/* Header */}
@@ -82,7 +116,8 @@ export default function StartGamePage() {
                         color: 'var(--text-main)',
                         fontSize: 14,
                         cursor: "pointer",
-                        textDecoration: "underline"
+                        textDecoration: "underline",
+                        fontWeight: 800
                       }}>
                 {showScores ? "Hide scoreboard" : "Show scoreboard"}
               </button>
@@ -163,9 +198,9 @@ export default function StartGamePage() {
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
+                          color: 'white',
                           gap: 8,
                           background: (entryText && authorName && !addEntryLoading) ? '#007aff' : '#c7c7cc',
-                          color: 'white',
                           cursor: (entryText && authorName && !addEntryLoading) ? 'pointer' : 'not-allowed'
                         }}>
                   {addEntryLoading ? (
@@ -248,10 +283,11 @@ export default function StartGamePage() {
               <button disabled={!newQuestion.trim() || startNewRoundLoading} onClick={startNewRound}
                       style={{
                         background: startNewRoundLoading || !newQuestion.trim() ? "#c7c7cc" : "#34c759",
-                        color: "white",
                         padding: "12px 16px",
                         borderRadius: 12,
                         border: "none",
+                        backgroundColor: 'var(--bg-secondary)',
+                        color: 'var(--text-main)',
                         fontWeight: 600,
                         cursor: startNewRoundLoading ? "not-allowed" : "pointer"
                       }}>
@@ -262,6 +298,7 @@ export default function StartGamePage() {
                         width: 16,
                         height: 16,
                         borderRadius: '50%',
+                        color: 'white',
                         border: '2px solid rgba(255,255,255,0.5)',
                         borderTopColor: 'white',
                         animation: 'spin 1s linear infinite',
@@ -374,16 +411,26 @@ export default function StartGamePage() {
               zIndex: 2000
             }}>
               <div style={{
-                background: 'white',
+                backgroundColor: 'var(--bg-secondary)',
+                color: 'var(--text-main)',
                 borderRadius: 20,
                 padding: 32,
                 maxWidth: 400,
                 textAlign: 'center',
                 boxShadow: '0 20px 40px rgba(0,0,0,0.2)'
               }}>
-                <h3 style={{margin: '0 0 16px', fontSize: 24, fontWeight: 600}}>👥 Is everyone
+                <h3 style={{
+                  backgroundColor: 'var(--bg-secondary)',
+                  color: 'var(--text-main)',
+                  margin: '0 0 16px',
+                  fontSize: 24,
+                  fontWeight: 600
+                }}>👥 Is everyone
                   ready?</h3>
-                <p style={{margin: '0 0 32px', color: '#3c3c43'}}>Once you press Start, answers are
+                <p style={{
+                  margin: '0 0 32px',
+                  color: 'var(--text-main)',
+                }}>Once you press Start, answers are
                   revealed. Refresh your screens!</p>
                 <div style={{display: 'flex', gap: 12, justifyContent: 'center'}}>
                   <button onClick={() => {
@@ -427,24 +474,43 @@ export default function StartGamePage() {
             height: 28,
             borderRadius: "50%",
             border: "none",
+            fontWeight: 700,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.15)",
             backgroundColor: 'var(--bg-secondary)',
-            color: 'var(--text-main)',
-            fontWeight: 700
+            color: 'var(--text-main)'
           }}>
             i
           </button>
         </div>
         {showHowToPlay && (
             <div style={{
+              backgroundColor: 'var(--bg-secondary)',
+              color: 'var(--text-main)',
               maxWidth: 600,
               margin: "8px auto 20px auto",
               padding: "12px 16px",
               borderRadius: 12,
-              backgroundColor: 'var(--bg-secondary)',
               fontSize: 14,
-              textAlign: "left"
+              lineHeight: 1.5,
+              textAlign: "left",
             }}>
-              <p>Each person secretly writes an answer. Reveal them, then guess who wrote what!</p>
+              <p style={{marginTop: 0, marginBottom: 8}}>
+                How to play: Each person secretly writes an answer to the question and adds it to
+                the list.
+              </p>
+              <p style={{margin: 0, marginBottom: 8}}>
+                When the host starts the game, all answers are revealed. Taking turns, tap an
+                answer and then choose who you think wrote it. If you're right, you go again!
+              </p>
+              <p style={{margin: 0}}>
+                Correct guesses mark that person as guessed. Keep going until everyone has
+                been guessed. Once you're the last remaining player, you can guess yourself for a
+                free point to end the game. Then, ask a new question and start a new round.
+              </p>
             </div>
         )}
         {toast && (
@@ -456,7 +522,8 @@ export default function StartGamePage() {
               display: 'flex',
               justifyContent: 'center',
               zIndex: 2000,
-              pointerEvents: 'none'
+              pointerEvents: 'none',
+              animation: 'fadeScaleIn 0.3s ease-out forwards'
             }}>
               <div style={{
                 backgroundColor: toast.type === 'success' ? '#34c759' : '#ff3b30',
@@ -465,7 +532,8 @@ export default function StartGamePage() {
                 borderRadius: '12px',
                 boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
                 fontWeight: 600,
-                pointerEvents: 'auto'
+                pointerEvents: 'auto',
+                animation: 'fadeScaleIn 0.3s ease-out forwards'
               }}>
                 {toast.message}
               </div>

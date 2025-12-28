@@ -1,6 +1,7 @@
 import React, {useState, useEffect} from "react";
 import axios from "axios";
 import {useNavigate} from "react-router-dom";
+import {useDarkMode} from "../hooks/useDarkMode";
 import logo from "../assets/logo.jpg";
 
 axios.defaults.baseURL = process.env.NODE_ENV === 'production'
@@ -14,6 +15,7 @@ export default function HomePage() {
   const [joinGameId, setJoinGameId] = useState("");
   const [creatingGame, setCreatingGame] = useState(false);
   const navigate = useNavigate();
+  const { isDark, toggleTheme } = useDarkMode();
 
   const createGame = async () => {
     if (!gameName.trim() || !questionText.trim()) return;
@@ -58,6 +60,36 @@ export default function HomePage() {
 
   return (
       <div style={{textAlign: "center", marginTop: 40}}>
+        {/* --- NEW HEADER ROW FOR DARK MODE --- */}
+        <div style={{
+          display: "flex",
+          justifyContent: "flex-end",
+          maxWidth: 700,     /* Match your #root width */
+          margin: "0 auto",  /* Center the container */
+          paddingRight: 10   /* Small buffer from edge */
+        }}>
+          <button
+              onClick={toggleTheme}
+              style={{
+                background: "transparent",
+                border: "1px solid var(--border-main)",
+                borderRadius: "50%",
+                width: 44,
+                height: 44,
+                padding: 0,
+                fontSize: 22,
+                boxShadow: "none",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center"
+              }}
+              title="Toggle Dark Mode"
+          >
+            {isDark ? "🌙" : "☀️"}
+          </button>
+        </div>
+        {/* ---------------------- */}
         <img src={logo} alt="Game of Things" style={{width: 120, marginBottom: 20}}/>
         <h1>Game of Things</h1>
 

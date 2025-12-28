@@ -54,7 +54,8 @@ describe('StartGamePage', () => {
       ...defaultHookValues,
       started: true,
       sortedEntriesForDisplay: [
-        {entryId: '1', text: 'Funny Answer', authorName: 'Bob', guessed: false}
+        {entryId: '1', text: 'Funny Answer', authorName: 'Bob', guessed: false,
+          gameId: 'testGame', createdAt: '2025-12-26T02:56:20.413Z', revealed: true}
       ],
       turnOrder: ['Alice'],
       currentPlayer: 'Alice',

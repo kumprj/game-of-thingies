@@ -1,18 +1,31 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="theme-color" content="#fefefe" media="(prefers-color-scheme: light)">
+    <script>
+      (function() {
+        // 1. Check local storage
+        const savedTheme = localStorage.getItem("theme");
+
+        // 2. Check system preference if no saved theme
+        const systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+
+        // 3. Apply class immediately if needed
+        if (savedTheme === "dark" || (!savedTheme && systemDark)) {
+          document.body.classList.add("dark-mode");
+        }
+      })();
+    </script>
     <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+    <meta name="theme-color" content="#fefefe" media="(prefers-color-scheme: light)">
     <meta charset="utf-8"/>
     <link rel="icon" href="favicon.png"/>
     <meta name="viewport" content="width=device-width, initial-scale=1"/>
-    <meta name="theme-color" content="#000000"/>
     <meta name="description" content="Game of Things - Guess who wrote what!"/>
-    <title>Game of Things</title>  <!-- ← CHANGE THIS -->
+    <title>Game of Things</title>
 </head>
 <body>
 <div id="root"></div>
-    <script type="module" src="/src/index.tsx"></script>  <!-- Add this line -->
+    <script type="module" src="/src/index.tsx"></script>
 </body>
 
 </html>

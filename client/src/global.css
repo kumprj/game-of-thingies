@@ -28,36 +28,34 @@
     --disabled-bg: #c7c7cc;
 }
 
-/* --- DARK MODE OVERRIDES (Auto-detected) --- */
-@media (prefers-color-scheme: dark) {
-    :root {
-        --bg-body: #000000;         /* True black for OLED screens */
-        --bg-card: #1c1c1e;         /* Dark gray cards */
-        --bg-secondary: #2c2c2e;    /* Slightly lighter gray for bubbles */
-        --bg-input: #1c1c1e;
+/* --- DARK MODE OVERRIDES (Manual Toggle) --- */
+/* We apply these variables whenever the <body> has the class "dark-mode" */
+body.dark-mode {
+    --bg-body: #000000;
+    --bg-card: #1c1c1e;
+    --bg-secondary: #2c2c2e;
+    --bg-input: #1c1c1e;
 
-        --text-main: #f5f5f7;       /* Off-white for readability */
-        --text-secondary: #ebebf599;
-        --text-inverse: #ffffff;
+    --text-main: #f5f5f7;
+    --text-secondary: #ebebf599;
+    --text-inverse: #ffffff;
 
-        --border-main: #38383a;
-        --border-light: #2c2c2e;
+    --border-main: #38383a;
+    --border-light: #2c2c2e;
 
-        /* iOS Dark Mode Blue is slightly lighter for contrast */
-        --accent-blue: #0a84ff;
-        --accent-blue-hover: #0077ed;
+    --accent-blue: #0a84ff;
+    --accent-blue-hover: #0077ed;
 
-        /* iOS Dark Mode Red */
-        --danger-red: #ff453a;
-        --danger-red-hover: #d70015;
+    --danger-red: #ff453a;
+    --danger-red-hover: #d70015;
 
-        --shadow-light: rgba(0, 0, 0, 0.5);
-        --shadow-blue: rgba(10, 132, 255, 0.3);
-        --shadow-overlay: rgba(0, 0, 0, 0.7);
+    --shadow-light: rgba(0, 0, 0, 0.5);
+    --shadow-blue: rgba(10, 132, 255, 0.3);
+    --shadow-overlay: rgba(0, 0, 0, 0.7);
 
-        --disabled-bg: #48484a;
-    }
+    --disabled-bg: #48484a;
 }
+
 
 /* =========================================
    GLOBAL STYLES
