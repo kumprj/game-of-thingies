@@ -77,7 +77,7 @@ Base path: /api
 - Run tests:
   `npm test`
 - Tests use Vitest framework, can also run with:
-- `npx vitest --ui`
+  `npx vitest --ui`
 
 DEVELOPMENT NOTES
 
