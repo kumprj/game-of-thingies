@@ -323,12 +323,25 @@ export default function StartGamePage() {
                          initial={{opacity: 0, y: 10}} animate={{opacity: 1, y: 0}}
                          transition={{duration: 0.2}}>
                 {started ? (
-                    <button ref={el => {
-                      buttonRefs.current[entry.entryId] = el;
-                    }}
-                            disabled={!isMyTurn || entry.guessed || (entry.authorName === authorName && !isLastEntry)}
-                            onClick={() => onEntryClick(entry)}>
+                    <button
+                        ref={el => { buttonRefs.current[entry.entryId] = el; }}
+                        disabled={!isMyTurn || entry.guessed || (entry.authorName === authorName && !isLastEntry)}
+                        onClick={() => onEntryClick(entry)}
+                        style={{
+                          // If guessed, use Dark Blue. Otherwise, let CSS handle it (null/undefined)
+                          backgroundColor: entry.guessed ? "#004080" : undefined,
+                          color: entry.guessed ? "#ffffff" : undefined, // Ensure text is white on dark blue
+                          opacity: entry.guessed ? 1 : undefined,       // Force opacity to 1 so it doesn't look "disabled/faded"
+                          border: entry.guessed ? "1px solid #003366" : undefined
+                        }}
+                    >
                       {entry.text}
+
+                      {entry.guessed && (
+                          <span style={{ marginLeft: "8px", fontWeight: "600", color: "#80c1ff" }}>
+            -{entry.authorName}
+        </span>
+                      )}
                     </button>
                 ) : (
                     <span style={{
