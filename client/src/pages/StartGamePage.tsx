@@ -1,4 +1,4 @@
-import React from "react";
+import React, {useState, useEffect} from "react";
 import {Link} from "react-router-dom";
 import {motion} from "framer-motion";
 import logo from "../assets/logo.jpg";
@@ -51,6 +51,29 @@ export default function StartGamePage() {
   } = useGameLogic();
 
   const {isDark, toggleTheme} = useDarkMode();
+  const [hasSubmitted, setHasSubmitted] = useState(false);
+
+  // Check if user already submitted for this specific Game ID
+  useEffect(() => {
+    if (gameId) {
+      const alreadySubmitted = localStorage.getItem(`submitted_${gameId}`);
+      if (alreadySubmitted === 'true') {
+        setHasSubmitted(true);
+      }
+    }
+  }, [gameId]);
+
+  // Wrapper to save to DB AND LocalStorage
+  const handleAddEntry = async () => {
+    // 1. Call the original hook function
+    await addEntry();
+
+    // 2. Lock the UI
+    setHasSubmitted(true);
+    if (gameId) {
+      localStorage.setItem(`submitted_${gameId}`, 'true');
+    }
+  };
 
   return (
       <div style={{textAlign: "center", marginBottom: 20}}>
@@ -149,6 +172,7 @@ export default function StartGamePage() {
         )}
 
         {/* Input Section (Pre-Game) */}
+        {/* Input Section (Pre-Game) */}
         {!started && (
             <div style={{
               display: 'flex',
@@ -157,27 +181,44 @@ export default function StartGamePage() {
               alignItems: 'center',
               marginTop: 16
             }}>
-              <input value={entryText} onChange={e => setEntryText(e.target.value)}
-                     placeholder="Your answer"
-                     disabled={isLoading || addEntryLoading} style={{
-                width: '100%',
-                maxWidth: 400,
-                padding: '12px 16px',
-                fontSize: 16,
-                borderRadius: 12,
-                border: '1px solid #d1d1d6'
-              }}/>
 
-              <input value={authorName} onChange={e => setAuthorName(e.target.value)}
-                     placeholder="Your name"
-                     disabled={isLoading || addEntryLoading} style={{
-                width: '100%',
-                maxWidth: 400,
-                padding: '12px 16px',
-                fontSize: 16,
-                borderRadius: 12,
-                border: '1px solid #d1d1d6'
-              }}/>
+              {/* Answer Input */}
+              <input
+                  value={entryText}
+                  onChange={e => setEntryText(e.target.value)}
+                  placeholder="Your answer"
+                  // Update disabled logic:
+                  disabled={isLoading || addEntryLoading || hasSubmitted}
+                  style={{
+                    width: '100%',
+                    maxWidth: 400,
+                    padding: '12px 16px',
+                    fontSize: 16,
+                    borderRadius: 12,
+                    border: '1px solid var(--border-main)',
+                    background: 'var(--bg-input)',
+                    color: 'var(--text-main)'
+                  }}
+              />
+
+              {/* Name Input */}
+              <input
+                  value={authorName}
+                  onChange={e => setAuthorName(e.target.value)}
+                  placeholder="Your name"
+                  // Update disabled logic:
+                  disabled={isLoading || addEntryLoading || hasSubmitted}
+                  style={{
+                    width: '100%',
+                    maxWidth: 400,
+                    padding: '12px 16px',
+                    fontSize: 16,
+                    borderRadius: 12,
+                    border: '1px solid var(--border-main)',
+                    background: 'var(--bg-input)',
+                    color: 'var(--text-main)'
+                  }}
+              />
 
               <div style={{
                 display: 'flex',
@@ -186,24 +227,37 @@ export default function StartGamePage() {
                 maxWidth: 400,
                 justifyContent: 'center'
               }}>
-                <button onClick={addEntry}
-                        disabled={isLoading || addEntryLoading || !entryText || !authorName}
-                        style={{
-                          flex: 1,
-                          maxWidth: 140,
-                          padding: '14px 24px',
-                          borderRadius: 12,
-                          border: 'none',
-                          fontWeight: 600,
-                          fontSize: 16,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          color: 'white',
-                          gap: 8,
-                          background: (entryText && authorName && !addEntryLoading) ? '#007aff' : '#c7c7cc',
-                          cursor: (entryText && authorName && !addEntryLoading) ? 'pointer' : 'not-allowed'
-                        }}>
+
+                {/* Add Answer Button */}
+                <button
+                    // CHANGE 1: Use the new wrapper function
+                    onClick={handleAddEntry}
+
+                    // CHANGE 2: Disable if hasSubmitted is true
+                    disabled={isLoading || addEntryLoading || !entryText || !authorName || hasSubmitted}
+
+                    style={{
+                      flex: 1,
+                      maxWidth: 140,
+                      padding: '14px 24px',
+                      borderRadius: 12,
+                      border: 'none',
+                      fontWeight: 600,
+                      fontSize: 16,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 8,
+
+                      // CHANGE 3: Update background color logic
+                      background: (entryText && authorName && !addEntryLoading && !hasSubmitted) ? 'var(--accent-blue)' : 'var(--disabled-bg)',
+
+                      // CHANGE 4: Update cursor
+                      cursor: (entryText && authorName && !addEntryLoading && !hasSubmitted) ? 'pointer' : 'not-allowed',
+
+                      color: 'white'
+                    }}>
+
                   {addEntryLoading ? (
                       <>
                         <span style={{
@@ -217,8 +271,9 @@ export default function StartGamePage() {
                         }}/>
                         Saving...
                       </>
-                  ) : 'Add Answer'}
+                  ) : hasSubmitted ? 'Submitted!' : 'Add Answer'} {/* CHANGE 5: Update Text */}
                 </button>
+
 
                 <button onClick={() => setShowStartConfirm(true)}
                         disabled={!entries.length || started || isLoading}
@@ -324,7 +379,9 @@ export default function StartGamePage() {
                          transition={{duration: 0.2}}>
                 {started ? (
                     <button
-                        ref={el => { buttonRefs.current[entry.entryId] = el; }}
+                        ref={el => {
+                          buttonRefs.current[entry.entryId] = el;
+                        }}
                         disabled={!isMyTurn || entry.guessed || (entry.authorName === authorName && !isLastEntry)}
                         onClick={() => onEntryClick(entry)}
                         style={{
@@ -338,14 +395,14 @@ export default function StartGamePage() {
                       {entry.text}
 
                       {entry.guessed && (
-                          <span style={{ marginLeft: "8px", fontWeight: "600", color: "#80c1ff" }}>
+                          <span style={{marginLeft: "8px", fontWeight: "600", color: "#80c1ff"}}>
             -{entry.authorName}
         </span>
                       )}
                     </button>
                 ) : (
                     <span style={{
-                      filter: "blur(6px)",
+                      filter: "blur(5px)",
                       color: "rgba(0,0,0,0.6)",
                       userSelect: "none",
                       textShadow: "0 0 2px rgba(0,0,0,0.1)"

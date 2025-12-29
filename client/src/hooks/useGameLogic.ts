@@ -35,7 +35,7 @@ export function useGameLogic() {
   const [guessLoading, setGuessLoading] = useState(false); // Indicates whether the "guess author" action is loading.
   const [guessingEntry, setGuessingEntry] = useState<Entry | null>(null); // Stores the entry currently being guessed.
   const [guessedEntryIds, setGuessedEntryIds] = useState<Set<string>>(new Set()); // Stores the IDs of guessed entries.
-
+  const [isConnected, setIsConnected] = useState(true);
   const [showStartConfirm, setShowStartConfirm] = useState(false); // Indicates whether the start confirmation modal is visible.
   const [showHowToPlay, setShowHowToPlay] = useState(false); // Indicates whether the "how to play" modal is visible.
   const [showScores, setShowScores] = useState<boolean>(false); // Indicates whether the scores modal is visible.
@@ -115,6 +115,32 @@ export function useGameLogic() {
     syncAllData();
 
     socket.emit("joinGame", gameId);
+    let pollInterval: NodeJS.Timeout | null = null;
+    const startPolling = () => {
+      console.log("⚠️ Disconnected! Refreshing...");
+      setIsConnected(false);
+      setToast({message: "Reconnecting...", type: "error", duration: 99999}); // Persistent toast
+
+      // Poll every 3 seconds while disconnected
+      pollInterval = setInterval(() => {
+        if (document.visibilityState === 'visible') {
+          syncAllData();
+        }
+      }, 3000);
+    };
+
+    const stopPolling = () => {
+      console.log("✅ Connected! Stopping refreshing.");
+      setIsConnected(true);
+      setToast({message: "Connected!", type: "success", duration: 2000});
+
+      if (pollInterval) {
+        clearInterval(pollInterval);
+        pollInterval = null;
+      }
+      // Sync one last time to make sure we didn't miss anything during the transition
+      syncAllData();
+    };
 
     const onEntriesUpdated = () => fetchEntries();
 
@@ -161,25 +187,9 @@ export function useGameLogic() {
     socket.on("gameReset", onGameReset);
     socket.on("scoreUpdated", onScoreUpdated);
     socket.on("nextTurn", onNextTurn);
-    socket.on("disconnect", () => {
-      setToast({message: "Reconnecting...", type: "error", duration: 3000});
-    });
-
-    socket.on("connect", () => {
-      setToast({message: "Connected!", type: "success", duration: 2000});
-      syncAllData(); // Immediately re-sync when connection comes back
-    });
-
-    const pollInterval = setInterval(() => {
-      // Only poll if the tab is visible to save bandwidth/battery
-      if (document.visibilityState === 'visible') {
-        // We don't need to fetchGameData every time, just the changing parts
-        fetchEntries();
-        fetchScores();
-        // If you want to be extra safe about turn order:
-        fetchGameData();
-      }
-    }, 10000);
+    // Attach Connection Listeners
+    socket.on("connect", stopPolling);
+    socket.on("disconnect", startPolling);
 
 
     return () => {
@@ -189,7 +199,7 @@ export function useGameLogic() {
       socket.off("gameReset");
       socket.off("scoreUpdated");
       socket.off("nextTurn");
-      clearInterval(pollInterval);
+      if (pollInterval) clearInterval(pollInterval);
     };
   }, [gameId]);
 
