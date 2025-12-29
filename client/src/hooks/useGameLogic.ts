@@ -35,7 +35,7 @@ export function useGameLogic() {
   const [guessLoading, setGuessLoading] = useState(false); // Indicates whether the "guess author" action is loading.
   const [guessingEntry, setGuessingEntry] = useState<Entry | null>(null); // Stores the entry currently being guessed.
   const [guessedEntryIds, setGuessedEntryIds] = useState<Set<string>>(new Set()); // Stores the IDs of guessed entries.
-
+  const [isConnected, setIsConnected] = useState(true);
   const [showStartConfirm, setShowStartConfirm] = useState(false); // Indicates whether the start confirmation modal is visible.
   const [showHowToPlay, setShowHowToPlay] = useState(false); // Indicates whether the "how to play" modal is visible.
   const [showScores, setShowScores] = useState<boolean>(false); // Indicates whether the scores modal is visible.
@@ -106,19 +106,48 @@ export function useGameLogic() {
       }
     };
 
-    fetchGameData();
-    fetchEntries();
-    fetchScores();
+    const syncAllData = () => {
+      fetchGameData();
+      fetchEntries();
+      fetchScores();
+    };
+
+    syncAllData();
 
     socket.emit("joinGame", gameId);
+    let pollInterval: NodeJS.Timeout | null = null;
+    const startPolling = () => {
+      console.log("⚠️ Disconnected! Refreshing...");
+      setIsConnected(false);
+      setToast({message: "Reconnecting...", type: "error", duration: 99999}); // Persistent toast
+
+      // Poll every 3 seconds while disconnected
+      pollInterval = setInterval(() => {
+        if (document.visibilityState === 'visible') {
+          syncAllData();
+        }
+      }, 3000);
+    };
+
+    const stopPolling = () => {
+      console.log("✅ Connected! Stopping refreshing.");
+      setIsConnected(true);
+      setToast({message: "Connected!", type: "success", duration: 2000});
+
+      if (pollInterval) {
+        clearInterval(pollInterval);
+        pollInterval = null;
+      }
+      // Sync one last time to make sure we didn't miss anything during the transition
+      syncAllData();
+    };
 
     const onEntriesUpdated = () => fetchEntries();
 
     const onGameStarted = (data: any) => {
       setTurnOrder(data.turnOrder || []);
       setCurrentPlayer(data.turnOrder?.[0] || null);
-      fetchGameData();
-      fetchEntries();
+      syncAllData();
       setToast({message: "‼️ The game has started ‼️", type: 'success'});
     };
 
@@ -127,15 +156,13 @@ export function useGameLogic() {
       setToast({
         message: `❌ ${data.playerName} guessed wrong for '${data.guess}'!`,
         type: 'error',
-        duration: 5000
+        duration: 3000
       });
       fetchEntries();
     };
 
     const onGameReset = () => {
-      fetchGameData();
-      fetchEntries();
-      fetchScores();
+      syncAllData();
       setToast({message: "‼️ A new question has been asked – add your answer", type: 'success'});
     };
 
@@ -160,6 +187,10 @@ export function useGameLogic() {
     socket.on("gameReset", onGameReset);
     socket.on("scoreUpdated", onScoreUpdated);
     socket.on("nextTurn", onNextTurn);
+    // Attach Connection Listeners
+    socket.on("connect", stopPolling);
+    socket.on("disconnect", startPolling);
+
 
     return () => {
       socket.off("entriesUpdated");
@@ -168,6 +199,7 @@ export function useGameLogic() {
       socket.off("gameReset");
       socket.off("scoreUpdated");
       socket.off("nextTurn");
+      if (pollInterval) clearInterval(pollInterval);
     };
   }, [gameId]);
 
