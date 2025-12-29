@@ -29,16 +29,15 @@ resource "aws_iam_role_policy" "cleanup_policy" {
       Effect = "Allow"
       Action = [
         "dynamodb:Scan",
-        "dynamodb:DeleteItem"
+        "dynamodb:DeleteItem",
+        "dynamodb:BatchWriteItem",  # Recommended for efficient deletes
+        "dynamodb:Query"            # Often needed if you look up by GameId
       ]
-      Resource = "arn:aws:dynamodb:us-east-1:875660052076:table/Games"  # Update ARN
-    }, {
-      Effect = "Allow"
-      Action = [
-        "dynamodb:Scan",
-        "dynamodb:DeleteItem"
+      Resource = [
+        "arn:aws:dynamodb:us-east-1:875660052076:table/Games",
+        "arn:aws:dynamodb:us-east-1:875660052076:table/Entries",
+        "arn:aws:dynamodb:us-east-1:875660052076:table/Scores"
       ]
-      Resource = "arn:aws:dynamodb:us-east-1:875660052076:table/Entries"  # Added Entries table
     }, {
         Effect = "Allow"
         Action = [
