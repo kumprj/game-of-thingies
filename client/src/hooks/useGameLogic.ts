@@ -106,9 +106,13 @@ export function useGameLogic() {
       }
     };
 
-    fetchGameData();
-    fetchEntries();
-    fetchScores();
+    const syncAllData = () => {
+      fetchGameData();
+      fetchEntries();
+      fetchScores();
+    };
+
+    syncAllData();
 
     socket.emit("joinGame", gameId);
 
@@ -117,8 +121,7 @@ export function useGameLogic() {
     const onGameStarted = (data: any) => {
       setTurnOrder(data.turnOrder || []);
       setCurrentPlayer(data.turnOrder?.[0] || null);
-      fetchGameData();
-      fetchEntries();
+      syncAllData();
       setToast({message: "‼️ The game has started ‼️", type: 'success'});
     };
 
@@ -127,15 +130,13 @@ export function useGameLogic() {
       setToast({
         message: `❌ ${data.playerName} guessed wrong for '${data.guess}'!`,
         type: 'error',
-        duration: 5000
+        duration: 3000
       });
       fetchEntries();
     };
 
     const onGameReset = () => {
-      fetchGameData();
-      fetchEntries();
-      fetchScores();
+      syncAllData();
       setToast({message: "‼️ A new question has been asked – add your answer", type: 'success'});
     };
 
@@ -160,6 +161,26 @@ export function useGameLogic() {
     socket.on("gameReset", onGameReset);
     socket.on("scoreUpdated", onScoreUpdated);
     socket.on("nextTurn", onNextTurn);
+    socket.on("disconnect", () => {
+      setToast({message: "Reconnecting...", type: "error", duration: 3000});
+    });
+
+    socket.on("connect", () => {
+      setToast({message: "Connected!", type: "success", duration: 2000});
+      syncAllData(); // Immediately re-sync when connection comes back
+    });
+
+    const pollInterval = setInterval(() => {
+      // Only poll if the tab is visible to save bandwidth/battery
+      if (document.visibilityState === 'visible') {
+        // We don't need to fetchGameData every time, just the changing parts
+        fetchEntries();
+        fetchScores();
+        // If you want to be extra safe about turn order:
+        fetchGameData();
+      }
+    }, 10000);
+
 
     return () => {
       socket.off("entriesUpdated");
@@ -168,6 +189,7 @@ export function useGameLogic() {
       socket.off("gameReset");
       socket.off("scoreUpdated");
       socket.off("nextTurn");
+      clearInterval(pollInterval);
     };
   }, [gameId]);
 

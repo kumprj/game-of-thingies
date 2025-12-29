@@ -98,8 +98,9 @@ export default function StartGamePage() {
           <h2 style={{margin: 0}}>{gameTitle ?? gameId}</h2>
           {gameId && <span style={{color: 'var(--text-main)', fontSize: 14}}>(ID: {gameId})</span>}
         </div>
-        {gameQuestion && <p style={{color: 'var(--text-main)', fontSize: 18, marginBottom: 20}}>
-          <strong>Question:</strong> {gameQuestion}</p>}
+        <p style={{color: 'var(--text-main)', fontSize: 18, marginBottom: 20, minHeight: 27}}>
+          {gameQuestion ? gameQuestion : <span style={{opacity: 0.5}}>Loading question...</span>}
+        </p>
 
         {/* Scoreboard Toggle */}
         {scores.length > 0 && (
