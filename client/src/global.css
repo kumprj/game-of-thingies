@@ -59,10 +59,15 @@ body.dark-mode {
     --accent-red-shadow: #b02626;
 }
 body.dark-mode input {
-    border: 2px solid rgba(255,255,255,0.15);
-    background-color: #2C2C2C;
+    background-color: #2C2C2C; /* Distinct dark gray */
+    border: 2px solid rgba(255, 255, 255, 0.15);
+    color: #ffffff; /* Ensure text is white */
 }
 
+body.dark-mode input:focus {
+    background-color: #383838; /* Slightly lighter on focus */
+    border-color: var(--accent-blue);
+}
 /* =========================================
    CORE LAYOUT
    ========================================= */
@@ -188,8 +193,8 @@ button:disabled {
    INPUTS
    ========================================= */
 input {
-    background-color: var(--bg-secondary);
-    border: 2px solid rgba(0,0,0,0.1); /* <--- Now it has a subtle 2px border */
+    background-color: #ffffff;
+    border: 2px solid rgba(0,0,0,0.15); /* <--- Now it has a subtle 2px border */
     color: var(--text-main);
     padding: 14px;
     font-size: 16px;
