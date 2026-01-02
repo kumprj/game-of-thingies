@@ -18,6 +18,7 @@ export default function StartGamePage() {
     started,
     entryText,
     setEntryText,
+    resetCount,
     authorName,
     setAuthorName,
     newQuestion,
@@ -63,6 +64,16 @@ export default function StartGamePage() {
     }
   }, [gameId]);
 
+  // Reset local state when the backend signals a new round
+  useEffect(() => {
+    if (resetCount > 0) {
+      setHasSubmitted(false);
+      if (gameId) {
+        localStorage.removeItem(`submitted_${gameId}`);
+      }
+    }
+  }, [resetCount, gameId]);
+
   // Wrapper to save to DB AND LocalStorage
   const handleAddEntry = async () => {
     // 1. Call the original hook function
@@ -89,23 +100,26 @@ export default function StartGamePage() {
           <button
               onClick={toggleTheme}
               style={{
-                background: "transparent",
-                border: "1px solid var(--border-main)",
+                background: "var(--bg-secondary)", // Light gray background
+                border: "2px solid var(--border-light)", // Distinct border
                 borderRadius: "50%",
                 width: 44,
                 height: 44,
                 padding: 0,
-                fontSize: 22,
-                boxShadow: "none",
+                fontSize: 20,
                 cursor: "pointer",
                 display: "flex",
                 alignItems: "center",
-                justifyContent: "center"
+                justifyContent: "center",
+                transition: "all 0.2s ease",
+                boxShadow: "0 2px 5px rgba(0,0,0,0.05)" // Subtle shadow
               }}
-              title="Toggle Dark Mode"
+              title={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}
+              aria-label="Toggle Dark Mode"
           >
             {isDark ? "🌙" : "☀️"}
           </button>
+
         </div>
 
         <Link to="/"><img src={logo} alt="Game of Things" style={{width: 80}}/></Link>
@@ -195,7 +209,7 @@ export default function StartGamePage() {
                     padding: '12px 16px',
                     fontSize: 16,
                     borderRadius: 12,
-                    border: '1px solid var(--border-main)',
+                    border: "1px solid #d1d1d6",
                     background: 'var(--bg-input)',
                     color: 'var(--text-main)'
                   }}
@@ -214,7 +228,7 @@ export default function StartGamePage() {
                     padding: '12px 16px',
                     fontSize: 16,
                     borderRadius: 12,
-                    border: '1px solid var(--border-main)',
+                    border: "1px solid #d1d1d6",
                     background: 'var(--bg-input)',
                     color: 'var(--text-main)'
                   }}
@@ -248,14 +262,8 @@ export default function StartGamePage() {
                       alignItems: 'center',
                       justifyContent: 'center',
                       gap: 8,
-
-                      // CHANGE 3: Update background color logic
                       background: (entryText && authorName && !addEntryLoading && !hasSubmitted) ? 'var(--accent-blue)' : 'var(--disabled-bg)',
-
-                      // CHANGE 4: Update cursor
                       cursor: (entryText && authorName && !addEntryLoading && !hasSubmitted) ? 'pointer' : 'not-allowed',
-
-                      color: 'white'
                     }}>
 
                   {addEntryLoading ? (
@@ -286,7 +294,6 @@ export default function StartGamePage() {
                           fontWeight: 600,
                           fontSize: 16,
                           background: entries.length && !started && !isLoading ? '#34c759' : '#c7c7cc',
-                          color: 'white',
                           cursor: isLoading ? 'not-allowed' : 'pointer'
                         }}>
                   {isLoading ? (
@@ -333,6 +340,7 @@ export default function StartGamePage() {
                        fontSize: 16,
                        width: "70%",
                        borderRadius: 12,
+                       background: 'var(--bg-input)',
                        border: "1px solid #d1d1d6",
                        marginRight: 12
                      }}/>
@@ -368,8 +376,8 @@ export default function StartGamePage() {
         )}
 
         {/* Answers List */}
-        <ul>
-          {started &&
+        <ul style={{ listStyle: "none", padding: 0, margin: 0, marginTop: "24px" }}>
+        {started &&
               <p style={{marginBottom: 12, fontWeight: 600, color: 'var(--text-main)'}}>Your Group's
                 Answers:</p>}
           {sortedEntriesForDisplay.length === 0 && <li>No entries found</li>}
@@ -386,8 +394,8 @@ export default function StartGamePage() {
                         onClick={() => onEntryClick(entry)}
                         style={{
                           // If guessed, use Dark Blue. Otherwise, let CSS handle it (null/undefined)
-                          backgroundColor: entry.guessed ? "#004080" : undefined,
-                          color: entry.guessed ? "#ffffff" : undefined, // Ensure text is white on dark blue
+                          backgroundColor: entry.guessed ? "var(--guessed-bg)" : undefined,
+                          color: entry.guessed ? "var(--guessed-text)" : undefined, // Ensure text is white on dark blue
                           opacity: entry.guessed ? 1 : undefined,       // Force opacity to 1 so it doesn't look "disabled/faded"
                           border: entry.guessed ? "1px solid #003366" : undefined
                         }}
@@ -452,7 +460,7 @@ export default function StartGamePage() {
               <div className="guess-modal" onClick={e => e.stopPropagation()}>
                 <h4>Who wrote this?</h4>
                 <div className="guess-list">
-                  <ul>
+                  <ul style={{ listStyle: "none", padding: 0 }}>
                     {uniqueNames.map(name => {
                       const disabled = entries.filter(e => e.authorName === name).every(e => e.guessed);
                       return (
