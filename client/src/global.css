@@ -58,6 +58,10 @@ body.dark-mode {
     --accent-green-shadow: #267a36;
     --accent-red-shadow: #b02626;
 }
+body.dark-mode input {
+    border: 2px solid rgba(255,255,255,0.15);
+    background-color: #2C2C2C;
+}
 
 /* =========================================
    CORE LAYOUT
@@ -185,7 +189,7 @@ button:disabled {
    ========================================= */
 input {
     background-color: var(--bg-secondary);
-    border: 2px solid transparent;
+    border: 2px solid rgba(0,0,0,0.1); /* <--- Now it has a subtle 2px border */
     color: var(--text-main);
     padding: 14px;
     font-size: 16px;
@@ -195,6 +199,7 @@ input {
     transition: all 0.2s ease;
     margin-bottom: 20px;
 }
+
 
 input:focus {
     outline: none;
