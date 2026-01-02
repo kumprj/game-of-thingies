@@ -401,13 +401,47 @@ export default function StartGamePage() {
                       )}
                     </button>
                 ) : (
-                    <span style={{
-                      filter: "blur(5px)",
-                      color: "rgba(0,0,0,0.6)",
-                      userSelect: "none",
-                      textShadow: "0 0 2px rgba(0,0,0,0.1)"
-                    }}>{entry.text}</span>
+                    // PRE-GAME STATE (Blurred / Hidden)
+                    // Check if this is MY entry
+                    entry.authorName === authorName ? (
+                        <div style={{
+                          display: 'flex',
+                          flexDirection: 'column',      // Stack vertical
+                          alignItems: 'center',         // Center horizontal
+                          justifyContent: 'center',     // Center vertical
+                          color: 'var(--accent-blue)',
+                          fontWeight: 600,
+                          textAlign: 'center'
+                        }}>
+                          {/* Answer Text */}
+                          <span style={{ fontSize: '16px' }}>
+                                {entry.text}
+                            </span>
+
+                          {/* Label */}
+                          <span style={{
+                            fontSize: '12px',
+                            opacity: 0.7,
+                            marginTop: 4,
+                            fontWeight: 400
+                          }}>
+                                (Your submission, not viewable to others yet)
+                            </span>
+                        </div>
+                    ) : (
+
+                        // Everyone else's entry (Blurred)
+                        <span style={{
+                          filter: "blur(6px)",
+                          color: "rgba(0,0,0,0.6)",
+                          userSelect: "none",
+                          textShadow: "0 0 2px rgba(0,0,0,0.1)"
+                        }}>
+                            {entry.text}
+                        </span>
+                    )
                 )}
+
               </motion.li>
           ))}
         </ul>
