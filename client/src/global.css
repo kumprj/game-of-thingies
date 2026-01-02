@@ -26,11 +26,11 @@
     --accent-red-shadow: #E03131;
 
     --disabled-bg: #c7c7cc;
-    --disabled-text: #adb5bd;
+    --disabled-text: #6c757d; /* Darker gray for better readability */
 
     /* GAME STATES */
-    --guessed-bg: #f8f9fa;        /* Almost white */
-    --guessed-text: #adb5bd;      /* Light gray text */
+    --guessed-bg: #f1f3f5;
+    --guessed-text: #495057;      /* Light gray text */
     --guessed-border: #e9ecef;
 
     /* SHADOWS & BORDERS */
@@ -49,6 +49,7 @@ body.dark-mode {
 
     --guessed-bg: #181818;
     --guessed-border: #333333;
+    --guessed-text: #888888;
 
     --card-shadow: 0 4px 12px rgba(0,0,0,0.4);
 
