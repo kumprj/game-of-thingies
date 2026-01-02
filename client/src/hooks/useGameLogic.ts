@@ -27,7 +27,7 @@ export function useGameLogic() {
     return window.localStorage.getItem("got_authorName") ?? ""; // Retrieves the author's name from local storage.
   });
   const [newQuestion, setNewQuestion] = useState(""); // Stores the new question for the next round.
-
+  const [resetCount, setResetCount] = useState(0);
   // Loading/UI State
   const [isLoading, setIsLoading] = useState(false); // Indicates whether a general loading state is active.
   const [addEntryLoading, setAddEntryLoading] = useState(false); // Indicates whether the "add entry" action is loading.
@@ -54,7 +54,6 @@ export function useGameLogic() {
    * @param ms - The number of milliseconds to sleep.
    */
   const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
   /**
    * Triggers a confetti animation.
    */
@@ -163,6 +162,7 @@ export function useGameLogic() {
 
     const onGameReset = () => {
       syncAllData();
+      setResetCount(prev => prev + 1); // <--- Add this
       setToast({message: "‼️ A new question has been asked – add your answer", type: 'success'});
     };
 
@@ -406,6 +406,7 @@ export function useGameLogic() {
     allGuessed,
     isLastEntry,
     isMyTurn,
+    resetCount,
     uniqueNames
   };
 }

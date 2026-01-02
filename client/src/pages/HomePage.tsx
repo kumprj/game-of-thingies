@@ -71,23 +71,26 @@ export default function HomePage() {
           <button
               onClick={toggleTheme}
               style={{
-                background: "transparent",
-                border: "1px solid var(--border-main)",
+                background: "var(--bg-secondary)", // Light gray background
+                border: "2px solid var(--border-light)", // Distinct border
                 borderRadius: "50%",
                 width: 44,
                 height: 44,
                 padding: 0,
-                fontSize: 22,
-                boxShadow: "none",
+                fontSize: 20,
                 cursor: "pointer",
                 display: "flex",
                 alignItems: "center",
-                justifyContent: "center"
+                justifyContent: "center",
+                transition: "all 0.2s ease",
+                boxShadow: "0 2px 5px rgba(0,0,0,0.05)" // Subtle shadow
               }}
-              title="Toggle Dark Mode"
+              title={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}
+              aria-label="Toggle Dark Mode"
           >
             {isDark ? "🌙" : "☀️"}
           </button>
+
         </div>
         {/* ---------------------- */}
         <img src={logo} alt="Game of Things" style={{width: 120, marginBottom: 20}}/>

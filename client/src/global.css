@@ -1,324 +1,253 @@
 /* =========================================
-   THEME VARIABLES (Light & Dark Mode)
+   THEME: "CLEAN & JUICY"
    ========================================= */
 :root {
-    /* --- LIGHT MODE DEFAULTS --- */
-    --bg-body: #fefefe;
+    /* --- PALETTE --- */
+    --bg-body: #f8f9fa;      /* Very light gray/white for easier reading */
     --bg-card: #ffffff;
-    --bg-secondary: #f2f2f7;      /* Used for bubbles/background elements */
-    --bg-input: #ffffff;
+    --bg-secondary: #f1f3f5; /* Light gray for inputs/bubbles */
 
-    --text-main: #1d1d1f;
-    --text-secondary: #3c3c4399;  /* Semi-transparent gray */
-    --text-inverse: #ffffff;      /* Text on blue buttons */
+    --text-main: #212529;    /* Soft black */
+    --text-secondary: #868e96;
+    --text-inverse: #ffffff;
 
-    --border-main: #d1d1d6;
-    --border-light: #e5e5ea;
+    /* STATUS COLORS */
+    /* Vibrant Blue for primary actions */
+    --accent-blue: #228BE6;
+    --accent-blue-hover: #1C7ED6;
+    --accent-blue-shadow: #1864AB; /* Darker blue for 3D edge */
 
-    --accent-blue: #007aff;
-    --accent-blue-hover: #005ecb;
+    /* Fun Green for success/start */
+    --accent-green: #40C057;
+    --accent-green-shadow: #2F9E44;
 
-    --danger-red: #8B0000;
-    --danger-red-hover: #5A0000;
-
-    --shadow-light: rgba(60, 60, 67, 0.1);
-    --shadow-blue: rgba(0, 122, 255, 0.3);
-    --shadow-overlay: rgba(0, 0, 0, 0.35);
+    /* Red for danger/cancel */
+    --accent-red: #FA5252;
+    --accent-red-shadow: #E03131;
 
     --disabled-bg: #c7c7cc;
+    --disabled-text: #adb5bd;
+
+    /* GAME STATES */
+    --guessed-bg: #f8f9fa;        /* Almost white */
+    --guessed-text: #adb5bd;      /* Light gray text */
+    --guessed-border: #e9ecef;
+
+    /* SHADOWS & BORDERS */
+    --card-shadow: 0 4px 12px rgba(0,0,0,0.08); /* Soft, modern shadow */
+    --border-radius: 16px;
 }
 
 /* --- DARK MODE OVERRIDES (Manual Toggle) --- */
-/* We apply these variables whenever the <body> has the class "dark-mode" */
 body.dark-mode {
-    --bg-body: #000000;
-    --bg-card: #1c1c1e;
-    --bg-secondary: #2c2c2e;
-    --bg-input: #1c1c1e;
+    --bg-body: #121212;      /* True Black */
+    --bg-card: #1E1E1E;      /* Dark Gray Cards */
+    --bg-secondary: #2C2C2C;
 
-    --text-main: #f5f5f7;
-    --text-secondary: #ebebf599;
-    --text-inverse: #ffffff;
+    --text-main: #E0E0E0;
+    --text-secondary: #A0A0A0;
 
-    --border-main: #38383a;
-    --border-light: #2c2c2e;
+    --guessed-bg: #181818;
+    --guessed-border: #333333;
 
-    --accent-blue: #0a84ff;
-    --accent-blue-hover: #0077ed;
+    --card-shadow: 0 4px 12px rgba(0,0,0,0.4);
 
-    --danger-red: #ff453a;
-    --danger-red-hover: #d70015;
-
-    --shadow-light: rgba(0, 0, 0, 0.5);
-    --shadow-blue: rgba(10, 132, 255, 0.3);
-    --shadow-overlay: rgba(0, 0, 0, 0.7);
-
-    --disabled-bg: #48484a;
+    /* Adjust shadows for dark mode visibility */
+    --accent-blue-shadow: #15558d;
+    --accent-green-shadow: #267a36;
+    --accent-red-shadow: #b02626;
 }
 
-
 /* =========================================
-   GLOBAL STYLES
+   CORE LAYOUT
    ========================================= */
-
 body {
-    background-color: var(--bg-body);
+    background: var(--bg-body);
     color: var(--text-main);
-    font-family: -apple-system, BlinkMacSystemFont, "San Francisco", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     margin: 0;
     padding: 0;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
     display: flex;
     justify-content: center;
-    /* Smoothly transition colors when mode changes */
+    min-height: 100vh;
     transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 #root {
-    max-width: 700px;
+    max-width: 600px;
     width: 95%;
     margin-top: 40px;
+    padding-bottom: 40px;
 }
 
-/* --- HEADINGS & TEXT --- */
 h1, h2, h3 {
-    font-weight: 600;
+    font-weight: 700;
     margin-bottom: 24px;
     color: var(--text-main);
+    text-align: center;
 }
 
 p {
     color: var(--text-secondary);
-    line-height: 1.5;
+    line-height: 1.6;
 }
 
-/* --- CONTAINERS --- */
+/* =========================================
+   COMPONENTS: CARDS
+   ========================================= */
 .container {
-    padding: 24px;
+    padding: 32px;
     background: var(--bg-card);
-    border-radius: 20px;
-    box-shadow: 0 4px 16px var(--shadow-light);
-    transition: background-color 0.3s ease;
+    border-radius: var(--border-radius);
+    box-shadow: var(--card-shadow);
 }
 
-/* --- INPUTS --- */
-input {
-    background-color: var(--bg-input);
+/* List Items (Answer Cards) */
+li {
+    background: var(--bg-card);
     color: var(--text-main);
-    border: 1px solid var(--border-main);
-    padding: 12px 16px;
-    font-size: 16px;
+    padding: 20px;
     border-radius: 12px;
-    margin-bottom: 20px;
-    width: 100%;
-    box-sizing: border-box;
-    transition: border-color 0.3s ease, background-color 0.3s ease;
+    margin-bottom: 12px;
+    border: 1px solid rgba(0,0,0,0.1); /* Thin, clean border */
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    cursor: pointer;
+    transition: all 0.2s ease;
 }
 
-input:focus {
-    outline: none;
+body.dark-mode li {
+    border: 1px solid rgba(255,255,255,0.1);
+}
+
+li:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
     border-color: var(--accent-blue);
-    box-shadow: 0 0 8px rgba(0, 122, 255, 0.25);
 }
 
-/* --- BUTTONS --- */
+/* =========================================
+   COMPONENTS: JUICY BUTTONS (The Fun Part)
+   ========================================= */
 button {
     background: var(--accent-blue);
-    border: none;
     color: var(--text-inverse);
+    border: none;
     padding: 14px 24px;
-    font-weight: 600;
-    border-radius: 12px;
-    box-shadow: 0 2px 8px var(--shadow-blue);
-    cursor: pointer;
-    transition: background-color 0.3s ease, box-shadow 0.3s ease;
+    font-weight: 700;
     font-size: 16px;
+    border-radius: 12px;
+    cursor: pointer;
+
+    /* 3D "Pressable" Effect */
+    box-shadow: 0 4px 0 var(--accent-blue-shadow);
+    transition: all 0.1s ease;
+    transform: translateY(0);
+    margin-top: 4px; /* Space for the shadow */
+    margin-bottom: 4px;
 }
 
 button:hover {
     background: var(--accent-blue-hover);
-    box-shadow: 0 4px 12px rgba(0, 94, 203, 0.4);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 0 var(--accent-blue-shadow);
+}
+
+button:active {
+    transform: translateY(4px); /* Pushes down to "click" */
+    box-shadow: 0 0 0 var(--accent-blue-shadow);
 }
 
 button:disabled {
     background: var(--disabled-bg);
+    color: var(--disabled-text);
+    box-shadow: none; /* No 3D effect for disabled */
+    transform: none;
     cursor: not-allowed;
-    box-shadow: none;
+    border: 1px solid transparent;
 }
 
+/* Red Cancel Button Variant */
 .cancel-button {
-    margin-top: 12px;
-    background-color: var(--danger-red);
-    color: #ffffff;
-    padding: 10px 16px;
-    border-radius: 10px;
-    border: none;
-    font-weight: 600;
-    cursor: pointer;
-    width: 100%;
+    background: var(--accent-red);
+    box-shadow: 0 4px 0 var(--accent-red-shadow);
 }
-
 .cancel-button:hover {
-    background-color: var(--danger-red-hover);
+    background: #ff6b6b;
+    box-shadow: 0 6px 0 var(--accent-red-shadow);
 }
-
-/* --- LISTS --- */
-ul {
-    list-style: none;
-    padding: 0;
-}
-
-li {
-    background: var(--bg-card);
-    color: var(--text-main);
-    padding: 16px 20px;
-    border-radius: 16px;
-    margin-bottom: 12px;
-    border: 1px solid var(--border-light);
-    box-shadow: 0 1px 3px var(--shadow-light);
-    cursor: pointer;
-    user-select: none;
-    transition: box-shadow 0.3s ease, background-color 0.3s ease;
-}
-
-li:hover {
-    box-shadow: 0 2px 10px var(--shadow-blue);
+.cancel-button:active {
+    box-shadow: 0 0 0 var(--accent-red-shadow);
 }
 
 /* =========================================
-   GAME COMPONENT STYLES
+   INPUTS
    ========================================= */
+input {
+    background-color: var(--bg-secondary);
+    border: 2px solid transparent;
+    color: var(--text-main);
+    padding: 14px;
+    font-size: 16px;
+    border-radius: 12px;
+    width: 100%;
+    box-sizing: border-box;
+    transition: all 0.2s ease;
+    margin-bottom: 20px;
+}
 
-/* Full-screen dim background */
+input:focus {
+    outline: none;
+    background-color: var(--bg-card);
+    border-color: var(--accent-blue);
+    box-shadow: 0 0 0 3px rgba(34, 139, 230, 0.2);
+}
+
+/* =========================================
+   MODALS
+   ========================================= */
 .guess-overlay {
     position: fixed;
-    inset: 0; /* top:0; right:0; bottom:0; left:0; */
-    background: var(--shadow-overlay);
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6); /* Standard dim overlay */
+    backdrop-filter: blur(4px);
     display: flex;
     justify-content: center;
     align-items: center;
     z-index: 1000;
-    backdrop-filter: blur(2px); /* Adds a nice blur effect like iOS */
 }
 
-/* Centered modal */
 .guess-modal {
     background: var(--bg-card);
     color: var(--text-main);
-    padding: 20px 24px;
-    border-radius: 16px;
-    min-width: 260px;
-    max-width: 90vw;
-    box-shadow: 0 18px 45px rgba(0, 0, 0, 0.4);
-}
-
-.guess-modal h4 {
-    margin-top: 0;
-    margin-bottom: 12px;
-}
-
-.guess-modal ul {
-    list-style: none;
-    padding: 0;
-    margin: 0 0 16px 0;
-}
-
-.guess-modal li + li {
-    margin-top: 8px;
-}
-
-/* Scrollable area for many names */
-.guess-list {
-    max-height: 320px;
-    overflow-y: auto;
-    margin: 8px 0 12px 0;
-}
-
-.guess-list ul {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-}
-
-.guess-list li + li {
-    margin-top: 8px;
-}
-
-/* Floating Action Bubble (Guess Bubble) */
-.guess-bubble {
-    position: absolute;
-    background: var(--bg-secondary);
-    color: var(--text-main);
+    padding: 24px;
     border-radius: 20px;
-    box-shadow: 0 8px 24px var(--shadow-light);
-    padding: 20px;
-    max-width: 280px;
-    z-index: 1000;
-    font-family: -apple-system, BlinkMacSystemFont, "San Francisco", "Helvetica Neue", Helvetica, Arial, sans-serif;
-
-    /* Additional styles from your original file merged here */
-    width: 100%;
-    box-sizing: border-box;
-    font-weight: 600;
-    font-size: 15px;
-    cursor: pointer;
-    transition: background-color 0.2s ease;
+    width: 90%;
+    max-width: 400px;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+    animation: popIn 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
-.guess-bubble h4 {
-    margin: 0 0 16px;
-    font-weight: 600;
-    font-size: 18px;
-}
-
-.guess-bubble ul {
-    list-style: none;
-    padding: 0;
-    margin: 0 0 12px;
-    max-height: 200px;
-    overflow-y: auto;
-}
-
-.guess-bubble li {
-    margin-bottom: 10px;
-    background: transparent; /* Reset standard li style for bubble items */
-    border: none;
-    padding: 0;
+.guess-list li {
+    padding: 10px;
+    margin-bottom: 8px;
+    border: 1px solid var(--bg-secondary);
     box-shadow: none;
 }
 
-.guess-bubble li button {
-    width: 100%;
-    padding: 12px 16px;
-    border: none;
-    border-radius: 14px;
-    background-color: var(--accent-blue);
-    color: white;
-    font-weight: 600;
-    font-size: 16px;
-    box-shadow: 0 3px 8px var(--shadow-blue);
-    cursor: pointer;
-    transition: background-color 0.3s ease, box-shadow 0.3s ease;
+/* =========================================
+   ANIMATIONS
+   ========================================= */
+@keyframes popIn {
+    0% { transform: scale(0.9); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
 }
-
-.guess-bubble li button:hover {
-    background-color: var(--accent-blue-hover);
-    box-shadow: 0 5px 15px rgba(0, 94, 203, 0.5);
-}
-
-/* --- ANIMATIONS --- */
+/* (Keep your spin/fade animations if they exist) */
 @keyframes spin {
-    to { transform: rotate(360deg); }
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
 }
 
 @keyframes fadeScaleIn {
-    from {
-        opacity: 0;
-        transform: scale(0.8);
-    }
-    to {
-        opacity: 1;
-        transform: scale(1);
-    }
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
 }
