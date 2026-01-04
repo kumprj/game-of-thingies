@@ -21,6 +21,16 @@ function randomGameId() {
   return result;
 }
 
+// Randomize turn order
+function shuffleArray(array: any[]) {
+  for (let i = array.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [array[i], array[j]] = [array[j], array[i]];
+  }
+  return array;
+}
+
+
 // Create Game
 router.post('/createGame', async (req, res) => {
   const gameId = randomGameId();
@@ -79,7 +89,8 @@ router.post('/games/:gameId/start', async (req, res) => {
     const entryItems = entries.Items || [];
     const players = entryItems.map((e: any) => e.authorName)
         .filter((v: any, i: number, a: any[]) => a.indexOf(v) === i);
-    const shuffled = players.sort(() => Math.random() - 0.5);
+
+    const shuffled = shuffleArray([...players]);
 
     await ddb.send(new UpdateCommand({
       TableName: 'Games',
