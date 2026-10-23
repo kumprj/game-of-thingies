@@ -28,9 +28,16 @@ struct ConfettiBurst: UIViewRepresentable {
 
 final class ConfettiView: UIView {
     // Same palette as useGameLogic.ts
-    private static let colors: [UIColor] = [0x26ccff, 0xa25afd, 0xff5e7e, 0x88ff5a, 0xfcff42, 0xffa62d, 0xff36ff]
-        .map { UIColor(red: CGFloat($0 >> 16 & 0xff) / 255, green: CGFloat($0 >> 8 & 0xff) / 255,
-                       blue: CGFloat($0 & 0xff) / 255, alpha: 1) }
+    private static let colors: [UIColor] = ([0x26ccff, 0xa25afd, 0xff5e7e, 0x88ff5a, 0xfcff42, 0xffa62d, 0xff36ff] as [Int])
+        .map(color(hex:))
+
+    // Spelled out with explicit types: as one inline closure, Swift 6.3 (Xcode 26) gives up type-checking it.
+    nonisolated private static func color(hex: Int) -> UIColor {
+        let red = CGFloat((hex >> 16) & 0xff) / 255
+        let green = CGFloat((hex >> 8) & 0xff) / 255
+        let blue = CGFloat(hex & 0xff) / 255
+        return UIColor(red: red, green: green, blue: blue, alpha: 1)
+    }
 
     private static let piece = UIGraphicsImageRenderer(size: CGSize(width: 10, height: 6)).image { context in
         UIColor.white.setFill()
