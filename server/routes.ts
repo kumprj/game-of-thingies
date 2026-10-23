@@ -30,6 +30,18 @@ function shuffleArray(array: any[]) {
   return array;
 }
 
+// Shuffle turn order, then move a random lowest-scoring player to the front.
+// Players with no Scores row count as 0. Exported for testing.
+export function buildTurnOrder(players: string[], scores: Record<string, number>) {
+  const shuffled = shuffleArray([...players]);
+  const scoreOf = (name: string) => scores[name] ?? 0;
+  const minScore = Math.min(...shuffled.map(scoreOf));
+  // shuffled is random, so the first lowest scorer in it is a random pick among ties
+  const firstIndex = shuffled.findIndex(name => scoreOf(name) === minScore);
+  if (firstIndex > 0) shuffled.unshift(...shuffled.splice(firstIndex, 1));
+  return shuffled;
+}
+
 
 // Create Game
 router.post('/createGame', async (req, res) => {
@@ -90,7 +102,15 @@ router.post('/games/:gameId/start', async (req, res) => {
     const players = entryItems.map((e: any) => e.authorName)
         .filter((v: any, i: number, a: any[]) => a.indexOf(v) === i);
 
-    const shuffled = shuffleArray([...players]);
+    const scoreResult = await ddb.send(new QueryCommand({
+      TableName: 'Scores',
+      KeyConditionExpression: 'gameId = :g',
+      ExpressionAttributeValues: {':g': gameId}
+    }));
+    const scores: Record<string, number> = {};
+    for (const s of scoreResult.Items || []) scores[s.playerName] = s.score;
+
+    const shuffled = buildTurnOrder(players, scores);
 
     await ddb.send(new UpdateCommand({
       TableName: 'Games',
