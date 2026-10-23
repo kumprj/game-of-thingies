@@ -1,12 +1,11 @@
 name: CI
 
 # Type checks and tests for the server and web client. Runs on every PR, whatever its base, so
-# stacked PRs are checked too. GitHub-hosted runners only: this repo is public, and fork PRs must
+# stacked PRs are checked too. Not on pushes to main: main is protected, so everything there was
+# already checked on its PR. GitHub-hosted runners only: this repo is public, and fork PRs must
 # not run on self-hosted machines.
 on:
   pull_request:
-  push:
-    branches: [main]
 
 permissions:
   contents: read

@@ -3,26 +3,43 @@ name: iOS CI
 # Builds the iOS app and runs its tests on a simulator when it changes. The macos-26 image
 # defaults to Xcode 26, the oldest the project supports (synchronized groups, MainActor default
 # isolation).
+#
+# Runs on every PR rather than using a `paths` filter: `ios` is a required check on main, and a
+# workflow skipped by `paths` never reports, which would block the merge. A skipped job does
+# report (as passing), so `changes` decides and `ios` is skipped when nothing iOS changed.
 on:
   pull_request:
-    paths:
-      - "apps/ios/**"
-      - ".github/workflows/ios.yml"
-  push:
-    branches: [main]
-    paths:
-      - "apps/ios/**"
-      - ".github/workflows/ios.yml"
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
   group: ios-ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  test:
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      ios: ${{ steps.diff.outputs.ios }}
+    steps:
+      - id: diff
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          files=$(gh api "repos/$GITHUB_REPOSITORY/pulls/${{ github.event.pull_request.number }}/files" \
+            --paginate --jq '.[].filename')
+          if echo "$files" | grep -qE '^(apps/ios/|\.github/workflows/ios\.yml$)'; then
+            echo "ios=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ios=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  ios:
+    needs: changes
+    if: needs.changes.outputs.ios == 'true'
     runs-on: macos-26
     timeout-minutes: 30
     defaults:
