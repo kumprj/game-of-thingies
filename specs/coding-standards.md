@@ -30,9 +30,11 @@ Conventions for this repo. `/code-review` treats these as the documented standar
 - Honour reduced motion: the app root uses `<MotionConfig reducedMotion="user">`; CSS animations need a `prefers-reduced-motion` branch.
 
 ## Testing
-- Server: `npm test` at the repo root (Vitest). Client: `npx vitest run` in `client/`.
+- Server: `npm run typecheck` and `npm test` at the repo root (Vitest). Client: `npm run build` (type-checks) and `npx vitest run` in `client/`. iOS: see `apps/ios/README.md`.
+- CI runs all of these on every PR (`.github/workflows/ci.yml`, and `ios.yml` when `apps/ios/` changes), on GitHub-hosted runners only: the repo is public, so fork PRs must never reach a self-hosted machine. CI doesn't rerun on pushes to `main`: `main` is protected, so changes only land through a PR whose `server`, `client` and `ios` checks passed.
 - New pure logic gets a unit test in the same change. Randomized logic is tested by property (who can be first, no player dropped), not by seed.
 - Run on Node 24 (`.nvmrc`).
+- iOS stays in Swift 6 language mode (`SWIFT_VERSION = 6.x` on every target); CI fails otherwise.
 
 ## Commits and PRs
 - One logical change per commit; subject in the imperative and accurate to the final behavior.

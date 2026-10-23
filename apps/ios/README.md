@@ -30,3 +30,6 @@ Note that the local server reads and writes the production DynamoDB tables.
 xcodebuild test -project apps/ios/GameOfThings.xcodeproj -scheme GameOfThings \
   -destination 'platform=iOS Simulator,name=iPhone 17'
 ```
+
+CI (`.github/workflows/ios.yml`) runs the same tests on GitHub's `macos-26` image (Xcode 26) for
+every PR that touches `apps/ios/`, and fails if any target leaves Swift 6 language mode.

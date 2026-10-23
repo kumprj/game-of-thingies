@@ -1,0 +1,47 @@
+name: CI
+
+# Type checks and tests for the server and web client. Runs on every PR, whatever its base, so
+# stacked PRs are checked too. Not on pushes to main: main is protected, so everything there was
+# already checked on its PR. GitHub-hosted runners only: this repo is public, and fork PRs must
+# not run on self-hosted machines.
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  server:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+  client:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: client/.nvmrc
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - run: npm ci
+      # tsc && vite build
+      - run: npm run build
+      - run: npx vitest run
