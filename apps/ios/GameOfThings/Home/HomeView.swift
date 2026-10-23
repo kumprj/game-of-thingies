@@ -74,7 +74,7 @@ struct HomeView: View {
             Section {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("How to Play").font(.headline)
-                    Text("The game host will enter a game title (this can be anything), and a question prompt to ask the room. When the host taps Create Game, a 4-letter code will be generated for them to share with people to join the game. Then, submit your answer along with your name. Once everyone has submitted and the group is ready, the host will tap to start the game to reveal the shuffled entries. When it is your turn, try to guess who wrote each entry—getting correct guesses earns points! Once all guesses are made, a new question box will pop up to start a new round. The player with the fewest points goes first.")
+                    Text("The game host will enter a game title (this can be anything), and a question prompt to ask the room. When the host taps Create Game, a 4-letter code will be generated for them to share with people to join the game. Then, submit your answer along with your name. Once everyone has submitted and the group is ready, the host will tap to start the game to reveal the shuffled entries. When it is your turn, try to guess who wrote each entry—getting correct guesses earns points! Once all guesses are made, a new question box will pop up to start a new round. The player who has gone the longest ago goes first.")
                     Text("Have fun and enjoy the Game of Things!")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
