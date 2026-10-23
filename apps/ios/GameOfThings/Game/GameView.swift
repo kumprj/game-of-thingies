@@ -172,7 +172,7 @@ struct GameView: View {
             }
             .disabled(store.newQuestion.trimmed.isEmpty || store.startNewRoundLoading)
         } footer: {
-            Text("The player with the fewest points goes first.")
+            Text("The player who has gone the longest ago goes first.")
         }
         .listSectionSpacing(.compact)
     }
@@ -240,7 +240,7 @@ struct GameView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Each person secretly writes an answer to the question and adds it to the list.")
                     Text("When the host starts the game, all answers are revealed. Taking turns, tap an answer and then choose who you think wrote it. If you're right, you go again!")
-                    Text("Correct guesses mark that person as guessed. Keep going until everyone has been guessed. Once you're the last remaining player, you can guess yourself for a free point to end the game. Then, ask a new question and start a new round—the player with the fewest points goes first.")
+                    Text("Correct guesses mark that person as guessed. Keep going until everyone has been guessed. Once you're the last remaining player, you can guess yourself for a free point to end the game. Then, ask a new question and start a new round—the player who has gone the longest ago goes first.")
                 }
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
