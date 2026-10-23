@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "A fun game with friends",
   "main": "server/index.ts",
+  "engines": {
+    "node": "24.x"
+  },
   "scripts": {
     "start": "tsx server/index.ts",
     "dev": "concurrently \"tsx watch server/index.ts\" \"npm start --prefix client\"",

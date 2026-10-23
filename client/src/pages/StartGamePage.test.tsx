@@ -1,5 +1,5 @@
 // src/StartGamePage.test.tsx
-import {render, screen, fireEvent} from '@testing-library/react';
+import {render, screen, fireEvent, act} from '@testing-library/react';
 import {describe, it, expect, vi} from 'vitest';
 import {BrowserRouter} from 'react-router-dom';
 import StartGamePage from './StartGamePage';
@@ -72,7 +72,7 @@ describe('StartGamePage', () => {
     expect(screen.getByText('Funny Answer')).toBeInTheDocument();
   });
 
-  it('calls addEntry when button is clicked', () => {
+  it('calls addEntry when button is clicked', async () => {
     const addEntryMock = vi.fn();
 
     // @ts-ignore
@@ -90,7 +90,9 @@ describe('StartGamePage', () => {
     );
 
     const button = screen.getByText('Add Answer');
-    fireEvent.click(button);
+    await act(async () => {
+      fireEvent.click(button);
+    });
 
     expect(addEntryMock).toHaveBeenCalled();
   });

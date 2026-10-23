@@ -9,3 +9,15 @@ vi.mock('canvas-confetti', () => ({
 
 // Mock ScrollIntoView (used by some browser logic)
 window.HTMLElement.prototype.scrollIntoView = vi.fn();
+
+// jsdom has no matchMedia (used by useDarkMode); report no media query matches
+window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+  matches: false,
+  media: query,
+  onchange: null,
+  addEventListener: vi.fn(),
+  removeEventListener: vi.fn(),
+  addListener: vi.fn(),
+  removeListener: vi.fn(),
+  dispatchEvent: vi.fn(),
+}));
