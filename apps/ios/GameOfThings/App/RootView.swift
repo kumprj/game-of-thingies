@@ -13,12 +13,10 @@ struct RootView: View {
                     GameView(gameId: gameId)
                 }
         }
-        #if DEBUG
-        // Lets a Debug launch open straight into a game: OPEN_GAME=ABCD
-        .onAppear {
-            if let gameId = ProcessInfo.processInfo.environment["OPEN_GAME"], path.isEmpty { path = [gameId] }
+        .onOpenURL { url in
+            // Replace whatever game is open rather than stacking games on top of each other
+            if let gameId = GameLink.gameId(from: url) { path = [gameId] }
         }
-        #endif
         .preferredColorScheme(theme == "dark" ? .dark : theme == "light" ? .light : nil)
     }
 }
