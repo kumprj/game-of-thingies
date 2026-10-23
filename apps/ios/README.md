@@ -19,6 +19,9 @@ Open `GameOfThings.xcodeproj` and run the **GameOfThings** scheme.
   *Scheme → Run → Arguments → Environment Variables*.
 - **Release** builds talk to production (`https://game-of-thingies.onrender.com`).
 
+Links like `gameofthings://ABCD` open that game directly (handy in the Simulator:
+`xcrun simctl openurl booted gameofthings://ABCD`).
+
 Note that the local server reads and writes the production DynamoDB tables.
 
 ## Tests
