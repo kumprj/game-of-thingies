@@ -7,7 +7,7 @@ small Socket.IO v4 client over `URLSessionWebSocketTask` (`Networking/RealtimeCl
 ## Requirements
 
 - Xcode 26 or later (the project uses file-system-synchronized groups and `MainActor` default isolation)
-- iOS 17+
+- iOS 18+
 
 ## Running
 
