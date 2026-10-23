@@ -23,7 +23,7 @@ function Collapse({children}: {children: React.ReactNode}) {
 
 // Overlay + dialog with matching enter/exit; children are the dialog body.
 function Modal({onClose, role, labelledBy, children}: {
-  onClose: () => void; role: string; labelledBy: string; children: React.ReactNode;
+  onClose: () => void; role: "dialog" | "alertdialog"; labelledBy: string; children: React.ReactNode;
 }) {
   return (
       <motion.div className="overlay" onClick={onClose}
@@ -119,7 +119,9 @@ export default function StartGamePage() {
     }
   };
 
-  const canAdd = !!entryText && !!authorName && !isLoading && !addEntryLoading && !hasSubmitted;
+  const roundOver = turnOrder.length < 1;
+  const inputsLocked = isLoading || addEntryLoading || hasSubmitted;
+  const canAdd = !!entryText && !!authorName && !inputsLocked;
 
   return (
       <div className="page">
@@ -141,18 +143,18 @@ export default function StartGamePage() {
         {(turnOrder.length > 0 || started) && (
             <motion.div
                 key={`turn-${currentPlayer}`}
-                className={`turn${turnOrder.length >= 1 ? "" : " done"}`}
+                className={`turn${roundOver ? " done" : ""}`}
                 initial={{opacity: 0, scale: 0.96}} animate={{opacity: 1, scale: 1}}
                 transition={{type: "spring", bounce: 0, duration: 0.4}}
             >
-              {turnOrder.length >= 1
-                  ? <span className="turn-dot" aria-hidden="true">➜</span>
-                  : <motion.span className="turn-dot" aria-hidden="true"
+              {roundOver
+                  ? <motion.span className="turn-dot" aria-hidden="true"
                                  initial={{scale: 0.8}} animate={{scale: 1}}
-                                 transition={{type: "spring", duration: 0.5, bounce: 0.25}}>✓</motion.span>}
+                                 transition={{type: "spring", duration: 0.5, bounce: 0.25}}>✓</motion.span>
+                  : <span className="turn-dot" aria-hidden="true">➜</span>}
               <div>
-                <div className="turn-eyebrow">{turnOrder.length >= 1 ? (isMyTurn ? "Your turn" : "Now guessing") : "Round over"}</div>
-                <div className="turn-name">{turnOrder.length >= 1 ? `${currentPlayer}'s turn!` : "All answers guessed!"}</div>
+                <div className="turn-eyebrow">{roundOver ? "Round over" : isMyTurn ? "Your turn" : "Now guessing"}</div>
+                <div className="turn-name">{roundOver ? "All answers guessed!" : `${currentPlayer}'s turn!`}</div>
               </div>
             </motion.div>
         )}
@@ -182,13 +184,13 @@ export default function StartGamePage() {
                   value={entryText}
                   onChange={e => setEntryText(e.target.value)}
                   placeholder="Your answer"
-                  disabled={isLoading || addEntryLoading || hasSubmitted}
+                  disabled={inputsLocked}
               />
               <input
                   value={authorName}
                   onChange={e => setAuthorName(e.target.value)}
                   placeholder="Your name"
-                  disabled={isLoading || addEntryLoading || hasSubmitted}
+                  disabled={inputsLocked}
               />
               <div className="row">
                 <button className="btn btn-primary" onClick={handleAddEntry} disabled={!canAdd}>
