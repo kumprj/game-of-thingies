@@ -41,7 +41,12 @@ nonisolated final class StubURLProtocol: URLProtocol {
     }
 }
 
+/// Suites that share StubURLProtocol's static state must not run in parallel with each other.
 @Suite(.serialized)
+struct StubbedNetworkTests {}
+
+extension StubbedNetworkTests {
+@Suite
 struct APIClientTests {
     let api = APIClient(baseURL: URL(string: "http://test.local")!, session: StubURLProtocol.session())
 
@@ -89,4 +94,5 @@ struct APIClientTests {
         StubURLProtocol.respond = { _ in (500, #"{"error":"Start failed"}"#) }
         await #expect(throws: APIError.self) { try await api.startGame("ABCD") }
     }
+}
 }
