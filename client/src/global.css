@@ -359,7 +359,6 @@ input:disabled { opacity: 0.6; }
     justify-content: center;
     padding: 16px;
     background: var(--scrim);
-    animation: fadeIn 0.2s ease-out;
 }
 
 .dialog {
@@ -374,7 +373,6 @@ input:disabled { opacity: 0.6; }
     -webkit-backdrop-filter: blur(40px) saturate(180%);
     box-shadow: var(--shadow-float);
     text-align: center;
-    animation: materialize 0.35s var(--spring);
 }
 .dialog h3 { margin-bottom: 8px; }
 .dialog p { margin-bottom: 20px; font-size: 15px; }
@@ -409,7 +407,6 @@ input:disabled { opacity: 0.6; }
     color: var(--text-main);
     font-size: 15px;
     font-weight: 600;
-    animation: slideDown 0.4s var(--spring);
 }
 .toast-dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--accent-green); }
 .toast.error .toast-dot { background: var(--accent-red); }
@@ -429,12 +426,8 @@ input:disabled { opacity: 0.6; }
    ANIMATIONS
    ========================================= */
 @keyframes spin { to { transform: rotate(360deg); } }
-@keyframes fadeIn { from { opacity: 0; } }
-@keyframes materialize { from { opacity: 0; transform: scale(1.08); } }
-@keyframes slideDown { from { opacity: 0; transform: translateY(-24px) scale(0.96); } }
 
 @media (prefers-reduced-motion: reduce) {
-    .dialog, .toast { animation: fadeIn 0.2s ease-out; }
     .btn:not(:disabled):active, .icon-btn:active { transform: none; }
 }
 

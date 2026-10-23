@@ -30,14 +30,15 @@ function shuffleArray(array: any[]) {
   return array;
 }
 
-// Shuffle turn order, then move a random lowest-scoring player to the front.
-// Players with no Scores row count as 0. Exported for testing.
-export function buildTurnOrder(players: string[], scores: Record<string, number>) {
+// Shuffle turn order, then move the player who has gone longest ago to the front.
+// lastTurn maps player -> timestamp of their last guess; players who never went
+// count as oldest. Exported for testing.
+export function buildTurnOrder(players: string[], lastTurn: Record<string, number>) {
   const shuffled = shuffleArray([...players]);
-  const scoreOf = (name: string) => scores[name] ?? 0;
-  const minScore = Math.min(...shuffled.map(scoreOf));
-  // shuffled is random, so the first lowest scorer in it is a random pick among ties
-  const firstIndex = shuffled.findIndex(name => scoreOf(name) === minScore);
+  const lastOf = (name: string) => lastTurn[name] ?? -Infinity;
+  const oldest = Math.min(...shuffled.map(lastOf));
+  // shuffled is random, so the first match in it is a random pick among ties
+  const firstIndex = shuffled.findIndex(name => lastOf(name) === oldest);
   if (firstIndex > 0) shuffled.unshift(...shuffled.splice(firstIndex, 1));
   return shuffled;
 }
@@ -102,15 +103,10 @@ router.post('/games/:gameId/start', async (req, res) => {
     const players = entryItems.map((e: any) => e.authorName)
         .filter((v: any, i: number, a: any[]) => a.indexOf(v) === i);
 
-    const scoreResult = await ddb.send(new QueryCommand({
-      TableName: 'Scores',
-      KeyConditionExpression: 'gameId = :g',
-      ExpressionAttributeValues: {':g': gameId}
-    }));
-    const scores: Record<string, number> = {};
-    for (const s of scoreResult.Items || []) scores[s.playerName] = s.score;
+    const gameData = await ddb.send(new GetCommand({TableName: 'Games', Key: {gameId}}));
+    const lastTurn: Record<string, number> = gameData.Item?.lastTurn || {};
 
-    const shuffled = buildTurnOrder(players, scores);
+    const shuffled = buildTurnOrder(players, lastTurn);
 
     await ddb.send(new UpdateCommand({
       TableName: 'Games',
@@ -152,6 +148,14 @@ router.post('/games/:gameId/entries/:entryId/guess', async (req, res) => {
     if (!item) return res.status(404).json({error: "Entry not found"});
 
     const isCorrect = item.authorName === guess;
+
+    // Record that the guesser just took a turn (drives next round's first player)
+    const game = await ddb.send(new GetCommand({TableName: 'Games', Key: {gameId}}));
+    await ddb.send(new UpdateCommand({
+      TableName: 'Games', Key: {gameId},
+      UpdateExpression: 'SET lastTurn = :lt',
+      ExpressionAttributeValues: {':lt': {...game.Item?.lastTurn, [guesserName]: Date.now()}}
+    }));
 
     if (isCorrect) {
       // Mark Guessed

@@ -118,7 +118,7 @@ export default function HomePage() {
             When it is your turn, try to guess who wrote each entry—getting correct guesses earns
             points!
             Once all guesses are made, a new question box will pop up to start a new round. The
-            player with the fewest points goes first.
+            player who has gone the longest ago goes first.
           </p>
           <p className="footnote">Have fun and enjoy the Game of Things!</p>
         </section>

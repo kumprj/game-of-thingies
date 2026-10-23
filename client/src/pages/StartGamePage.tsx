@@ -1,10 +1,44 @@
 import React, {useState, useEffect} from "react";
 import {Link} from "react-router-dom";
-import {motion} from "framer-motion";
+import {AnimatePresence, motion} from "framer-motion";
 import logo from "../assets/logo.jpg";
 import {useGameLogic} from "../hooks/useGameLogic";
 import Scoreboard from "../components/Scoreboard";
 import TopBar from "../components/TopBar";
+
+const EASE_OUT = [0.23, 1, 0.32, 1] as const;
+const EASE_IN_OUT = [0.77, 0, 0.175, 1] as const;
+
+// Expand/collapse wrapper shared by the scoreboard and how-to-play sections.
+function Collapse({children}: {children: React.ReactNode}) {
+  return (
+      <motion.div style={{overflow: "hidden"}}
+                  initial={{height: 0, opacity: 0}} animate={{height: "auto", opacity: 1}}
+                  exit={{height: 0, opacity: 0}}
+                  transition={{duration: 0.22, ease: EASE_IN_OUT}}>
+        {children}
+      </motion.div>
+  );
+}
+
+// Overlay + dialog with matching enter/exit; children are the dialog body.
+function Modal({onClose, role, labelledBy, children}: {
+  onClose: () => void; role: string; labelledBy: string; children: React.ReactNode;
+}) {
+  return (
+      <motion.div className="overlay" onClick={onClose}
+                  initial={{opacity: 0}} animate={{opacity: 1}} exit={{opacity: 0}}
+                  transition={{duration: 0.15, ease: EASE_OUT}}>
+        <motion.div className="dialog" role={role} aria-modal="true" aria-labelledby={labelledBy}
+                    onClick={e => e.stopPropagation()}
+                    initial={{opacity: 0, scale: 1.08}} animate={{opacity: 1, scale: 1}}
+                    exit={{opacity: 0, scale: 0.96}}
+                    transition={{duration: 0.2, ease: EASE_OUT}}>
+          {children}
+        </motion.div>
+      </motion.div>
+  );
+}
 
 export default function StartGamePage() {
   const {
@@ -111,7 +145,11 @@ export default function StartGamePage() {
                 initial={{opacity: 0, scale: 0.96}} animate={{opacity: 1, scale: 1}}
                 transition={{type: "spring", bounce: 0, duration: 0.4}}
             >
-              <span className="turn-dot" aria-hidden="true">{turnOrder.length >= 1 ? "➜" : "✓"}</span>
+              {turnOrder.length >= 1
+                  ? <span className="turn-dot" aria-hidden="true">➜</span>
+                  : <motion.span className="turn-dot" aria-hidden="true"
+                                 initial={{scale: 0.8}} animate={{scale: 1}}
+                                 transition={{type: "spring", duration: 0.5, bounce: 0.25}}>✓</motion.span>}
               <div>
                 <div className="turn-eyebrow">{turnOrder.length >= 1 ? (isMyTurn ? "Your turn" : "Now guessing") : "Round over"}</div>
                 <div className="turn-name">{turnOrder.length >= 1 ? `${currentPlayer}'s turn!` : "All answers guessed!"}</div>
@@ -174,7 +212,7 @@ export default function StartGamePage() {
                       onClick={startNewRound}>
                 {startNewRoundLoading ? <><span className="spinner"/>Starting...</> : "Start New Round"}
               </button>
-              <p className="footnote" style={{paddingLeft: 16}}>The player with the fewest points goes first.</p>
+              <p className="footnote" style={{paddingLeft: 16}}>The player who has gone the longest ago goes first.</p>
             </section>
         )}
 
@@ -197,9 +235,14 @@ export default function StartGamePage() {
                           onClick={() => onEntryClick(entry)}
                       >
                         <span>{entry.text}</span>
-                        {entry.guessed
-                            ? <span className="answer-author">{entry.authorName}</span>
-                            : <span className="chevron" aria-hidden="true">›</span>}
+                        <AnimatePresence initial={false} mode="popLayout">
+                          {entry.guessed
+                              ? <motion.span key="author" className="answer-author"
+                                             initial={{opacity: 0, x: 6}} animate={{opacity: 1, x: 0}}
+                                             transition={{duration: 0.15, ease: EASE_OUT}}>{entry.authorName}</motion.span>
+                              : <motion.span key="chevron" className="chevron" aria-hidden="true"
+                                             exit={{opacity: 0}} transition={{duration: 0.15, ease: EASE_OUT}}>›</motion.span>}
+                        </AnimatePresence>
                       </button>
                   ) : entry.authorName === authorName ? (
                       // PRE-GAME: my own entry is visible to me only
@@ -223,7 +266,9 @@ export default function StartGamePage() {
                       onClick={() => setShowScores(prev => !prev)}>
                 {showScores ? "Hide scoreboard" : "Show scoreboard"}
               </button>
-              {showScores && <Scoreboard scores={scores}/>}
+              <AnimatePresence initial={false}>
+                {showScores && <Collapse key="scores"><Scoreboard scores={scores}/></Collapse>}
+              </AnimatePresence>
             </div>
         )}
 
@@ -232,7 +277,9 @@ export default function StartGamePage() {
           <button className="btn-text" onClick={() => setShowHowToPlay(prev => !prev)} aria-expanded={showHowToPlay}>
             {showHowToPlay ? "Hide how to play" : "How to play"}
           </button>
+          <AnimatePresence initial={false}>
           {showHowToPlay && (
+              <Collapse key="how">
               <div className="card stack footnote" style={{marginTop: 8, fontSize: 15}}>
                 <p>
                   Each person secretly writes an answer to the question and adds it to the list.
@@ -245,17 +292,18 @@ export default function StartGamePage() {
                   Correct guesses mark that person as guessed. Keep going until everyone has
                   been guessed. Once you're the last remaining player, you can guess yourself for a
                   free point to end the game. Then, ask a new question and start a new round—the
-                  player with the fewest points goes first.
+                  player who has gone the longest ago goes first.
                 </p>
               </div>
+              </Collapse>
           )}
+          </AnimatePresence>
         </section>
 
         {/* Guess Modal */}
+        <AnimatePresence>
         {guessingEntry && (
-            <div className="overlay" onClick={() => setGuessingEntry(null)}>
-              <div className="dialog" role="dialog" aria-modal="true" aria-labelledby="guess-title"
-                   onClick={e => e.stopPropagation()}>
+            <Modal key="guess" onClose={() => setGuessingEntry(null)} role="dialog" labelledBy="guess-title">
                 <h3 id="guess-title">Who wrote this?</h3>
                 <p>“{guessingEntry.text}”</p>
                 <div className="stack">
@@ -276,15 +324,14 @@ export default function StartGamePage() {
                   )}
                   <button className="btn btn-gray btn-block" onClick={() => setGuessingEntry(null)}>Cancel</button>
                 </div>
-              </div>
-            </div>
+            </Modal>
         )}
+        </AnimatePresence>
 
         {/* Start Confirmation Modal */}
+        <AnimatePresence>
         {showStartConfirm && (
-            <div className="overlay" onClick={() => setShowStartConfirm(false)}>
-              <div className="dialog" role="alertdialog" aria-modal="true" aria-labelledby="start-title"
-                   onClick={e => e.stopPropagation()}>
+            <Modal key="start" onClose={() => setShowStartConfirm(false)} role="alertdialog" labelledBy="start-title">
                 <h3 id="start-title">Is everyone ready?</h3>
                 <p>Once you press Start, answers are revealed. Refresh your screens!</p>
                 <div className="stack">
@@ -297,19 +344,24 @@ export default function StartGamePage() {
                     Wait, Not Yet
                   </button>
                 </div>
-              </div>
-            </div>
+            </Modal>
         )}
+        </AnimatePresence>
 
         {/* Toast */}
+        <AnimatePresence>
         {toast && (
-            <div className="toast-wrap" role="status" aria-live="polite">
+            <motion.div key="toast" className="toast-wrap" role="status" aria-live="polite"
+                        initial={{opacity: 0, y: "-100%"}} animate={{opacity: 1, y: 0}}
+                        exit={{opacity: 0, y: "-100%"}}
+                        transition={{duration: 0.25, ease: EASE_OUT}}>
               <div className={`toast ${toast.type}`}>
                 <span className="toast-dot" aria-hidden="true"/>
                 {toast.message}
               </div>
-            </div>
+            </motion.div>
         )}
+        </AnimatePresence>
       </div>
   );
 }
