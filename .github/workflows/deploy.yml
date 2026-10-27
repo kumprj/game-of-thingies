@@ -27,9 +27,9 @@ jobs:
     # arm64, like the server image (sst.config.ts), so Docker builds it natively
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 45
-    environment:
-      name: production
-      url: https://gameofthings.fun
+    # No `environment:` on purpose. It would change the OIDC subject to
+    # repo:kumprj/game-of-thingies:environment:production, which the role doesn't trust; it trusts
+    # only refs/heads/main, and only merged PRs can push there.
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
