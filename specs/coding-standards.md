@@ -30,9 +30,13 @@ Conventions for this repo. `/code-review` treats these as the documented standar
 - Honour reduced motion: the app root uses `<MotionConfig reducedMotion="user">`; CSS animations need a `prefers-reduced-motion` branch.
 
 ## Testing
-- Server: `npm test` at the repo root (Vitest). Client: `npx vitest run` in `client/`.
-- New pure logic gets a unit test in the same change. Randomized logic is tested by property (who can be first, no player dropped), not by seed.
+- Server: `npm run typecheck`, `npm test` (unit) and `npm run test:integration` at the repo root (Vitest). The integration tests play whole games through the HTTP API and Socket.IO against DynamoDB Local (`docker run --rm -p 8000:8000 amazon/dynamodb-local`). Client: `npm run build` (type-checks) and `npx vitest run` in `client/`. iOS: see `apps/ios/README.md`.
+- A new route or socket event gets an integration test; new pure logic gets a unit test, in the same change.
+- CI runs all of these on every PR as parallel jobs (`.github/workflows/ci.yml`: `server`, `client`, `unit`, `integration`, `image`; `ios.yml`: `ios`, skipped when nothing in `apps/ios/` changed), on GitHub-hosted runners only: the repo is public, so fork PRs must never reach a self-hosted machine. CI doesn't rerun on pushes to `main`: `main` is protected, so changes only land through a PR whose checks all passed.
+- Tests never touch AWS. Local development uses your own SST stage (`npm run dev`), never production's tables.
+- Randomized logic is tested by property (who can be first, no player dropped), not by seed.
 - Run on Node 24 (`.nvmrc`).
+- iOS stays in Swift 6 language mode (`SWIFT_VERSION = 6.x` on every target); CI fails otherwise.
 
 ## Commits and PRs
 - One logical change per commit; subject in the imperative and accurate to the final behavior.

@@ -4,8 +4,9 @@ import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 /**
  * Initializes a DynamoDB client to interact with the AWS DynamoDB service.
  * Credentials come from the container's task role when deployed, and from `npx sst dev` locally.
+ * DYNAMODB_ENDPOINT points it at DynamoDB Local for the integration tests; it's unset elsewhere.
  */
-const client = new DynamoDBClient({ region: "us-east-1" });
+const client = new DynamoDBClient({ region: "us-east-1", endpoint: process.env.DYNAMODB_ENDPOINT });
 
 /**
  * Creates a DynamoDB Document Client from the base DynamoDB client.
