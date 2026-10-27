@@ -11,12 +11,12 @@ export function useDarkMode() {
   });
 
   useEffect(() => {
-    // Apply the class to the <body> tag
+    // Apply the class to the <html> tag (index.html does the same before first paint)
     if (isDark) {
-      document.body.classList.add("dark-mode");
+      document.documentElement.classList.add("dark-mode");
       localStorage.setItem("theme", "dark");
     } else {
-      document.body.classList.remove("dark-mode");
+      document.documentElement.classList.remove("dark-mode");
       localStorage.setItem("theme", "light");
     }
   }, [isDark]);

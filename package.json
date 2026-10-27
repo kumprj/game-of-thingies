@@ -3,14 +3,19 @@
   "version": "1.0.0",
   "description": "A fun game with friends",
   "main": "server/index.ts",
+  "engines": {
+    "node": "24.x"
+  },
   "scripts": {
     "start": "tsx server/index.ts",
     "dev": "concurrently \"tsx watch server/index.ts\" \"npm start --prefix client\"",
-    "build": "tsc server/index.ts --outDir dist --target es2020 && cd client && npm run build"
+    "build": "tsc server/index.ts --outDir dist --target es2020 && cd client && npm run build",
+    "test": "vitest run server"
   },
   "devDependencies": {
     "concurrently": "^9.1.0",
-    "typescript": "^5.3.0"
+    "typescript": "^5.3.0",
+    "vitest": "^5.0.5"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.958.0",

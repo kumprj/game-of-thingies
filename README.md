@@ -74,8 +74,8 @@ Base path: /api
 ## TESTING
 
 - Unit tests live alongside source files or in an __tests__ directory.
-- Run tests:
-  `npm test`
+- Run server tests: `npm test` (repo root). Run client tests: `npx vitest run` in `client/`.
+- Coding standards and feature specs live in `specs/`.
 - Tests use Vitest framework, can also run with:
   `npx vitest --ui`
 
