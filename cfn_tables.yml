@@ -1,11 +1,16 @@
 AWSTemplateFormatVersion: '2010-09-09'
 
-Description: "NextAuth DynamoDB tables for User, Account, Session, and VerificationToken with required GSIs"
+Description: "Game of Things production DynamoDB tables (Games, Entries, Scores). Items expire a day after their last write via TTL on expiresAt."
+
+# Deployed as the GameOfThings stack. sst.config.ts references these tables by name in production.
+#   aws cloudformation deploy --stack-name GameOfThings --template-file cfn_tables.yml
 
 Resources:
 
   GamesTable:
     Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: Games
       AttributeDefinitions:
@@ -15,9 +20,14 @@ Resources:
         - AttributeName: gameId
           KeyType: HASH
       BillingMode: PAY_PER_REQUEST
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
 
   EntriesTable:
     Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: Entries
       AttributeDefinitions:
@@ -30,10 +40,15 @@ Resources:
           KeyType: HASH # Partition key
         - AttributeName: entryId
           KeyType: RANGE # Sort key
-      BillingMode: PAY_PER_REQUEST # or use Provisioned with Read/Write specs
+      BillingMode: PAY_PER_REQUEST
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
 
   ScoresTable:
     Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: Scores
       AttributeDefinitions:
@@ -47,11 +62,17 @@ Resources:
         - AttributeName: playerName
           KeyType: RANGE      # Sort key
       BillingMode: PAY_PER_REQUEST
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
 
 Outputs:
 
-  UserTableName:
+  GamesTableName:
     Value: !Ref GamesTable
 
-  AccountTableName:
+  EntriesTableName:
     Value: !Ref EntriesTable
+
+  ScoresTableName:
+    Value: !Ref ScoresTable

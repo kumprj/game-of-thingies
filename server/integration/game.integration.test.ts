@@ -199,7 +199,7 @@ describe('a full round', () => {
     expect(afterRight.currentPlayer).toBe(afterRight.turnOrder[0]);
     await room.next('entriesUpdated', mark);
     expect((await entries(gameId)).find(e => e.entryId === target.entryId).guessed).toBe(true);
-    expect(await scores(gameId)).toEqual([{gameId, playerName: second, score: 1}]);
+    expect(await scores(gameId)).toEqual([{gameId, playerName: second, score: 1, expiresAt: expect.any(Number)}]);
 
     // A new round clears the answers and keeps the scores
     mark = room.events.length;
@@ -239,6 +239,37 @@ describe('a full round', () => {
     await roomOne.next('entriesUpdated', markOne);
     await new Promise(r => setTimeout(r, 200));
     expect(roomTwo.events.slice(mark)).toEqual([]);
+  });
+});
+
+describe('expiry', () => {
+  // DynamoDB's TTL deletes items once expiresAt passes; every write pushes it a day out
+  const aDayFromNow = () => {
+    const now = Math.floor(Date.now() / 1000);
+    return expect.toSatisfy((t: number) => t >= now + 86400 - 5 && t <= now + 86400 + 5);
+  };
+
+  it('stamps every game, answer and score a day ahead', async () => {
+    const gameId = await createGame('Ann');
+    expect((await game(gameId)).expiresAt).toEqual(aDayFromNow());
+    await addEntry(gameId, 'Ann', 'Mine');
+    await addEntry(gameId, 'Ben', 'Yours');
+    expect((await entries(gameId)).map(e => e.expiresAt)).toEqual([aDayFromNow(), aDayFromNow()]);
+
+    await api('POST', `/api/games/${gameId}/start`);
+    const {turnOrder} = await game(gameId);
+    const target = (await entries(gameId)).find(e => e.authorName !== turnOrder[0]);
+    await api('POST', `/api/games/${gameId}/entries/${target.entryId}/guess`,
+      {guesserName: turnOrder[0], guess: target.authorName});
+    expect((await scores(gameId))[0].expiresAt).toEqual(aDayFromNow());
+  });
+
+  it('pushes a game\'s expiry back when it is played again', async () => {
+    const gameId = await createGame('Ann');
+    const created = (await game(gameId)).expiresAt;
+    await new Promise(r => setTimeout(r, 1100));
+    await api('POST', `/api/games/${gameId}/reset`, {question: 'Round two'});
+    expect((await game(gameId)).expiresAt).toBeGreaterThan(created);
   });
 });
 

@@ -31,3 +31,15 @@ export const tables = {
   entries: requireEnv("ENTRIES_TABLE"),
   scores: requireEnv("SCORES_TABLE"),
 };
+
+/** How long a game, its answers and its scores live after they were last written to. */
+export const TTL_SECONDS = 24 * 60 * 60;
+
+/**
+ * The `expiresAt` value (epoch seconds) for an item written now. Every write sets it, so a game
+ * lives for a day after its last activity, then DynamoDB's TTL deletes it (sst.config.ts and
+ * cfn_tables.yml turn TTL on for this attribute).
+ */
+export function expiresAt(now = Date.now()): number {
+  return Math.floor(now / 1000) + TTL_SECONDS;
+}

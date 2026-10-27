@@ -25,3 +25,13 @@ describe('tables', () => {
     await expect(import('./db.js')).rejects.toThrow('GAMES_TABLE is not set');
   });
 });
+
+describe('expiresAt', () => {
+  it('is a day after the write, in epoch seconds as DynamoDB TTL expects', async () => {
+    vi.stubEnv('GAMES_TABLE', 'Games');
+    vi.stubEnv('ENTRIES_TABLE', 'Entries');
+    vi.stubEnv('SCORES_TABLE', 'Scores');
+    const {expiresAt} = await import('./db.js');
+    expect(expiresAt(Date.UTC(2026, 0, 1, 12, 0, 0, 999))).toBe(Date.UTC(2026, 0, 2, 12) / 1000);
+  });
+});
