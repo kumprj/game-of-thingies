@@ -14,15 +14,15 @@ small Socket.IO v4 client over `URLSessionWebSocketTask` (`Networking/RealtimeCl
 Open `GameOfThings.xcodeproj` and run the **GameOfThings** scheme.
 
 - **Debug** builds talk to `http://localhost:3001`, so start the server first with `npm run dev`
-  from the repo root (same as the web client). That works in the Simulator; on a physical
-  device, set `API_URL` (e.g. `https://game-of-thingies.onrender.com`) under
+  (`sst dev`) from the repo root, same as the web client. That works in the Simulator; on a physical
+  device, set `API_URL` (e.g. `https://api.gameofthings.fun`) under
   *Scheme → Run → Arguments → Environment Variables*.
-- **Release** builds talk to production (`https://game-of-thingies.onrender.com`).
+- **Release** builds talk to production (`https://api.gameofthings.fun`).
 
 Links like `gameofthings://ABCD` open that game directly (handy in the Simulator:
 `xcrun simctl openurl booted gameofthings://ABCD`).
 
-Note that the local server reads and writes the production DynamoDB tables.
+The local server uses your own SST stage's tables, not production's.
 
 ## Tests
 

@@ -3,7 +3,7 @@ import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 
 /**
  * Initializes a DynamoDB client to interact with the AWS DynamoDB service.
- * Ensure that AWS credentials are properly configured in environment variables or ~/.aws/credentials.
+ * Credentials come from the container's task role when deployed, and from `npx sst dev` locally.
  */
 const client = new DynamoDBClient({ region: "us-east-1" });
 
@@ -13,3 +13,20 @@ const client = new DynamoDBClient({ region: "us-east-1" });
  * the need to manually convert data to and from DynamoDB's native format.
  */
 export const ddb = DynamoDBDocumentClient.from(client);
+
+function requireEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) throw new Error(`${name} is not set. Run the server with \`npx sst dev\`.`);
+  return value;
+}
+
+/**
+ * Table names for the current SST stage, set by sst.config.ts. Production uses the original
+ * Games / Entries / Scores tables; every other stage has its own, so a local server can never
+ * write to production's by accident.
+ */
+export const tables = {
+  games: requireEnv("GAMES_TABLE"),
+  entries: requireEnv("ENTRIES_TABLE"),
+  scores: requireEnv("SCORES_TABLE"),
+};

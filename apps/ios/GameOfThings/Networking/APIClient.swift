@@ -50,11 +50,6 @@ struct APIClient {
         try await sendIgnoringResponse("POST", "api/games/\(gameId)/reset", body: ["question": question])
     }
 
-    /// Wakes the Render instance from its cold start; failures are irrelevant.
-    func warmUp() async {
-        _ = try? await session.data(from: baseURL.appending(path: "warmup"))
-    }
-
     // MARK: - Transport
 
     private func send<T: Decodable>(_ method: String, _ path: String, body: [String: String]? = nil) async throws -> T {

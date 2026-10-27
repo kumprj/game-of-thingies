@@ -33,8 +33,8 @@ app.use((req, res, next) => {
 // Mount the API routes under the '/api' path
 app.use('/api', router);
 
-// Define a warmup route to check server health
-app.get("/warmup", (req, res) => res.send("OK"));
+// Health check for the load balancer (sst.config.ts)
+app.get("/health", (req, res) => res.send("OK"));
 
 // Handle WebSocket connections
 io.on("connection", (socket) => {

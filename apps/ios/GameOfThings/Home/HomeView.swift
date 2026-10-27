@@ -86,7 +86,6 @@ struct HomeView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(removing: .title)
         .toolbar { ThemeToggleButton() }
-        .task { await api.warmUp() }
         .alert("Failed to create game. Please try again.", isPresented: $showCreateError) {}
     }
 
