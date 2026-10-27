@@ -48,8 +48,9 @@ Everything is defined in `sst.config.ts` (SST v4) and runs in AWS us-east-1:
 - **Server:** the `Dockerfile` image on ECS Fargate (one arm64 container) behind a load balancer
   at https://api.gameofthings.fun.
 - **Web client:** S3 + CloudFront at https://gameofthings.fun (www redirects to it).
-- **Tables:** production uses the existing Games / Entries / Scores tables; other stages get
-  their own.
+- **Tables:** production uses the existing Games / Entries / Scores tables (the `GameOfThings`
+  CloudFormation stack in `cfn_tables.yml`); other stages get their own. Every write sets
+  `expiresAt` a day ahead, and DynamoDB's TTL deletes games, answers and scores once it passes.
 
 `.github/workflows/deploy.yml` runs `npx sst deploy --stage production` after every merge to
 `main`, signing in to AWS through GitHub OIDC (`infra/ci-iam/template.yaml`). To deploy by hand:

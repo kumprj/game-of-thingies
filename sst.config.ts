@@ -19,23 +19,27 @@ export default $config({
 
     // Production keeps the tables it has always used (created by cfn_tables.yml), so no data
     // moves. Every other stage gets its own empty copies, so development never touches them.
+    // Both delete an item a day after its last write, using the expiresAt the server sets.
     const games = production
       ? sst.aws.Dynamo.get("Games", "Games")
       : new sst.aws.Dynamo("Games", {
           fields: { gameId: "string" },
           primaryIndex: { hashKey: "gameId" },
+          ttl: "expiresAt",
         });
     const entries = production
       ? sst.aws.Dynamo.get("Entries", "Entries")
       : new sst.aws.Dynamo("Entries", {
           fields: { gameId: "string", entryId: "string" },
           primaryIndex: { hashKey: "gameId", rangeKey: "entryId" },
+          ttl: "expiresAt",
         });
     const scores = production
       ? sst.aws.Dynamo.get("Scores", "Scores")
       : new sst.aws.Dynamo("Scores", {
           fields: { gameId: "string", playerName: "string" },
           primaryIndex: { hashKey: "gameId", rangeKey: "playerName" },
+          ttl: "expiresAt",
         });
 
     const zone = "gameofthings.fun";

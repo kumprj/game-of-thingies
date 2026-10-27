@@ -1,6 +1,6 @@
 import express from 'express';
 import {v4 as uuidv4} from 'uuid';
-import {ddb, tables} from './db';
+import {ddb, expiresAt, tables} from './db';
 import {buildTurnOrder} from './turnOrder';
 import {
   GetCommand,
@@ -37,12 +37,13 @@ router.post('/createGame', async (req, res) => {
     await ddb.send(new UpdateCommand({
       TableName: tables.games,
       Key: {gameId},
-      UpdateExpression: 'SET #q = :q, #c = :c, gameOwner = :go',
+      UpdateExpression: 'SET #q = :q, #c = :c, gameOwner = :go, expiresAt = :e',
       ExpressionAttributeNames: {'#q': 'question', '#c': 'createdAt'},
       ExpressionAttributeValues: {
         ':q': question || 'What is your favorite thing?',
         ':c': createdAt,
-        ':go': name
+        ':go': name,
+        ':e': expiresAt()
       },
       ReturnValues: 'ALL_NEW'
     }));
@@ -62,7 +63,7 @@ router.post('/games/:gameId/entries', async (req, res) => {
 
   await ddb.send(new PutCommand({
     TableName: tables.entries,
-    Item: {entryId, gameId, authorName, text, createdAt, revealed: false}
+    Item: {entryId, gameId, authorName, text, createdAt, revealed: false, expiresAt: expiresAt()}
   }));
 
   // Socket emit
@@ -93,8 +94,8 @@ router.post('/games/:gameId/start', async (req, res) => {
     await ddb.send(new UpdateCommand({
       TableName: tables.games,
       Key: {gameId},
-      UpdateExpression: 'SET turnOrder = :to, started = :s, lastTurn = if_not_exists(lastTurn, :empty)',
-      ExpressionAttributeValues: {':to': shuffled, ':s': true, ':empty': {}}
+      UpdateExpression: 'SET turnOrder = :to, started = :s, lastTurn = if_not_exists(lastTurn, :empty), expiresAt = :e',
+      ExpressionAttributeValues: {':to': shuffled, ':s': true, ':empty': {}, ':e': expiresAt()}
     }));
 
     // Reveal entries
@@ -102,8 +103,8 @@ router.post('/games/:gameId/start', async (req, res) => {
       await ddb.send(new UpdateCommand({
         TableName: tables.entries,
         Key: {gameId: gameId, entryId: entry.entryId},
-        UpdateExpression: 'set revealed = :r',
-        ExpressionAttributeValues: {':r': true}
+        UpdateExpression: 'set revealed = :r, expiresAt = :e',
+        ExpressionAttributeValues: {':r': true, ':e': expiresAt()}
       }));
     }
 
@@ -141,22 +142,24 @@ router.post('/games/:gameId/entries/:entryId/guess', async (req, res) => {
     // Single-key write so concurrent guesses can't overwrite each other's timestamps.
     await ddb.send(new UpdateCommand({
       TableName: tables.games, Key: {gameId},
-      UpdateExpression: 'SET lastTurn.#p = :t',
+      UpdateExpression: 'SET lastTurn.#p = :t, expiresAt = :e',
       ExpressionAttributeNames: {'#p': guesserName},
-      ExpressionAttributeValues: {':t': Date.now()}
+      ExpressionAttributeValues: {':t': Date.now(), ':e': expiresAt()}
     }));
 
     if (isCorrect) {
       // Mark Guessed
       await ddb.send(new UpdateCommand({
         TableName: tables.entries, Key: {gameId, entryId},
-        UpdateExpression: 'SET guessed = :val', ExpressionAttributeValues: {':val': true}
+        UpdateExpression: 'SET guessed = :val, expiresAt = :e',
+        ExpressionAttributeValues: {':val': true, ':e': expiresAt()}
       }));
 
       // Update Score
       await ddb.send(new UpdateCommand({
         TableName: tables.scores, Key: {gameId, playerName: guesserName},
-        UpdateExpression: 'ADD score :inc', ExpressionAttributeValues: {':inc': 1}
+        UpdateExpression: 'ADD score :inc SET expiresAt = :e',
+        ExpressionAttributeValues: {':inc': 1, ':e': expiresAt()}
       }));
 
       // Update Turn Order (Remove AUTHOR)
@@ -252,11 +255,12 @@ router.post('/games/:gameId/reset', async (req, res) => {
     await ddb.send(new UpdateCommand({
       TableName: tables.games,
       Key: {gameId},
-      UpdateExpression: 'SET question = :q, createdAt = :c, started = :started',
+      UpdateExpression: 'SET question = :q, createdAt = :c, started = :started, expiresAt = :e',
       ExpressionAttributeValues: {
         ':q': question?.trim() || 'What is your favorite thing?',
         ':c': new Date().toISOString(),
-        ':started': false
+        ':started': false,
+        ':e': expiresAt()
       },
       ReturnValues: 'ALL_NEW'
     }));
