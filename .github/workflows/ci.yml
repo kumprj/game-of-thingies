@@ -1,0 +1,112 @@
+name: CI
+
+# Checks for the server, web client and server image. Runs on every PR, whatever its base, so
+# stacked PRs are checked too. Not on pushes to main: main is protected, so everything there was
+# already checked on its PR. The jobs run in parallel. GitHub-hosted runners only: this repo is
+# public, and fork PRs must not run on self-hosted machines.
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  server:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+
+  client:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: client/.nvmrc
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - run: npm ci
+      # tsc && vite build
+      - run: npm run build
+
+  unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            client/package-lock.json
+      - run: npm ci
+      - name: Server unit tests
+        run: npm test
+      - run: npm ci
+        working-directory: client
+      - name: Client unit tests
+        run: npx vitest run
+        working-directory: client
+
+  # Plays whole games through the HTTP API and Socket.IO against DynamoDB Local
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      dynamodb:
+        image: amazon/dynamodb-local
+        ports:
+          - 8000:8000
+    env:
+      DYNAMODB_ENDPOINT: http://localhost:8000
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Server integration tests
+        run: |
+          if npm run | grep -q "test:integration"; then
+            npm run test:integration
+          else
+            echo "No integration tests configured on this branch, skipping."
+          fi
+
+  # The image the deploy ships (Dockerfile): it must build, start and pass its health check
+  image:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build and verify image
+        run: |
+          if [ -f Dockerfile ]; then
+            docker build -t game-of-things-api .
+            docker run -d --name api -p 3001:3001 \
+              -e GAMES_TABLE=Games -e ENTRIES_TABLE=Entries -e SCORES_TABLE=Scores game-of-things-api
+            curl --fail --silent --show-error --retry 10 --retry-delay 1 --retry-all-errors \
+              http://localhost:3001/health
+          else
+            echo "No Dockerfile on this branch, skipping image verification."
+          fi
+      - if: failure()
+        run: docker logs api

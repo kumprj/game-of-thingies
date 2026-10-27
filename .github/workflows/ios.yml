@@ -1,0 +1,104 @@
+name: iOS CI
+
+# Builds the iOS app and runs its tests on a simulator when it changes. The macos-26 image
+# defaults to Xcode 26, the oldest the project supports (synchronized groups, MainActor default
+# isolation).
+#
+# Runs on every PR rather than using a `paths` filter: `ios` is a required check on main, and a
+# workflow skipped by `paths` never reports, which would block the merge. A skipped job does
+# report (as passing), so `changes` decides and `ios` is skipped when nothing iOS changed.
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: ios-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      ios: ${{ steps.diff.outputs.ios }}
+    steps:
+      - id: diff
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          files=$(gh api "repos/$GITHUB_REPOSITORY/pulls/${{ github.event.pull_request.number }}/files" \
+            --paginate --jq '.[].filename')
+          if echo "$files" | grep -qE '^(apps/ios/|\.github/workflows/ios\.yml$)'; then
+            echo "ios=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ios=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  ios:
+    needs: changes
+    if: needs.changes.outputs.ios == 'true'
+    runs-on: macos-26
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: apps/ios
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Show Xcode and Swift
+        run: |
+          xcodebuild -version
+          swift --version
+
+      # Every target and configuration must stay in Swift 6 language mode
+      - name: Require Swift 6 language mode
+        run: |
+          versions=$(xcodebuild -project GameOfThings.xcodeproj -showBuildSettings -alltargets \
+            -configuration Debug | awk '$1 == "SWIFT_VERSION" { print $3 }' | sort -u)
+          versions+=$'\n'$(xcodebuild -project GameOfThings.xcodeproj -showBuildSettings -alltargets \
+            -configuration Release | awk '$1 == "SWIFT_VERSION" { print $3 }' | sort -u)
+          echo "SWIFT_VERSION values: $(echo "$versions" | sort -u | xargs)"
+          if echo "$versions" | grep -v '^6' | grep -q .; then
+            echo "::error::Every target must use Swift 6 language mode (SWIFT_VERSION = 6.x)"
+            exit 1
+          fi
+
+      - name: Pick a simulator
+        run: |
+          # The newest installed iOS runtime's first iPhone
+          id=$(xcrun simctl list devices available -j | python3 -c '
+          import json, re, sys
+          runtimes = json.load(sys.stdin)["devices"]
+          def version(key):
+              m = re.search(r"iOS-(\d+)-(\d+)", key)
+              return (int(m.group(1)), int(m.group(2))) if m else (0, 0)
+          for key in sorted(runtimes, key=version, reverse=True):
+              if version(key) == (0, 0):
+                  continue
+              for device in runtimes[key]:
+                  if device["name"].startswith("iPhone"):
+                      print(device["udid"])
+                      sys.exit(0)
+          ')
+          if [ -z "$id" ]; then echo "::error::No iPhone simulator installed"; exit 1; fi
+          echo "SIMULATOR_ID=$id" >> "$GITHUB_ENV"
+
+      - name: Build and test
+        run: |
+          xcodebuild test \
+            -project GameOfThings.xcodeproj \
+            -scheme GameOfThings \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
+            -resultBundlePath "$RUNNER_TEMP/GameOfThings.xcresult" \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-test-results
+          path: ${{ runner.temp }}/GameOfThings.xcresult
+          if-no-files-found: ignore
