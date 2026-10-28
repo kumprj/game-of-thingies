@@ -1,6 +1,6 @@
 import express from 'express';
 import {v4 as uuidv4} from 'uuid';
-import {ddb} from './db';
+import {ddb, expiresAt, tables} from './db';
 import {buildTurnOrder} from './turnOrder';
 import {
   GetCommand,
@@ -13,7 +13,7 @@ import {
 const router = express.Router();
 
 async function getGame(gameId: string) {
-  const result = await ddb.send(new GetCommand({TableName: 'Games', Key: {gameId}}));
+  const result = await ddb.send(new GetCommand({TableName: tables.games, Key: {gameId}}));
   return result.Item;
 }
 
@@ -35,14 +35,15 @@ router.post('/createGame', async (req, res) => {
 
   try {
     await ddb.send(new UpdateCommand({
-      TableName: 'Games',
+      TableName: tables.games,
       Key: {gameId},
-      UpdateExpression: 'SET #q = :q, #c = :c, gameOwner = :go',
+      UpdateExpression: 'SET #q = :q, #c = :c, gameOwner = :go, expiresAt = :e',
       ExpressionAttributeNames: {'#q': 'question', '#c': 'createdAt'},
       ExpressionAttributeValues: {
         ':q': question || 'What is your favorite thing?',
         ':c': createdAt,
-        ':go': name
+        ':go': name,
+        ':e': expiresAt()
       },
       ReturnValues: 'ALL_NEW'
     }));
@@ -61,8 +62,8 @@ router.post('/games/:gameId/entries', async (req, res) => {
   const createdAt = new Date().toISOString();
 
   await ddb.send(new PutCommand({
-    TableName: 'Entries',
-    Item: {entryId, gameId, authorName, text, createdAt, revealed: false}
+    TableName: tables.entries,
+    Item: {entryId, gameId, authorName, text, createdAt, revealed: false, expiresAt: expiresAt()}
   }));
 
   // Socket emit
@@ -77,7 +78,7 @@ router.post('/games/:gameId/start', async (req, res) => {
   const {gameId} = req.params;
   try {
     const entries = await ddb.send(new QueryCommand({
-      TableName: 'Entries',
+      TableName: tables.entries,
       KeyConditionExpression: 'gameId = :g',
       ExpressionAttributeValues: {':g': gameId}
     }));
@@ -91,19 +92,19 @@ router.post('/games/:gameId/start', async (req, res) => {
     const shuffled = buildTurnOrder(players, lastTurn);
 
     await ddb.send(new UpdateCommand({
-      TableName: 'Games',
+      TableName: tables.games,
       Key: {gameId},
-      UpdateExpression: 'SET turnOrder = :to, started = :s, lastTurn = if_not_exists(lastTurn, :empty)',
-      ExpressionAttributeValues: {':to': shuffled, ':s': true, ':empty': {}}
+      UpdateExpression: 'SET turnOrder = :to, started = :s, lastTurn = if_not_exists(lastTurn, :empty), expiresAt = :e',
+      ExpressionAttributeValues: {':to': shuffled, ':s': true, ':empty': {}, ':e': expiresAt()}
     }));
 
     // Reveal entries
     for (const entry of entryItems) {
       await ddb.send(new UpdateCommand({
-        TableName: 'Entries',
+        TableName: tables.entries,
         Key: {gameId: gameId, entryId: entry.entryId},
-        UpdateExpression: 'set revealed = :r',
-        ExpressionAttributeValues: {':r': true}
+        UpdateExpression: 'set revealed = :r, expiresAt = :e',
+        ExpressionAttributeValues: {':r': true, ':e': expiresAt()}
       }));
     }
 
@@ -124,7 +125,7 @@ router.post('/games/:gameId/entries/:entryId/guess', async (req, res) => {
 
   try {
     const entryResult = await ddb.send(new GetCommand({
-      TableName: 'Entries', Key: {gameId, entryId}
+      TableName: tables.entries, Key: {gameId, entryId}
     }));
     const item = entryResult.Item;
     if (!item) return res.status(404).json({error: "Entry not found"});
@@ -140,30 +141,32 @@ router.post('/games/:gameId/entries/:entryId/guess', async (req, res) => {
     // Record that the guesser just took a turn (drives next round's first player).
     // Single-key write so concurrent guesses can't overwrite each other's timestamps.
     await ddb.send(new UpdateCommand({
-      TableName: 'Games', Key: {gameId},
-      UpdateExpression: 'SET lastTurn.#p = :t',
+      TableName: tables.games, Key: {gameId},
+      UpdateExpression: 'SET lastTurn.#p = :t, expiresAt = :e',
       ExpressionAttributeNames: {'#p': guesserName},
-      ExpressionAttributeValues: {':t': Date.now()}
+      ExpressionAttributeValues: {':t': Date.now(), ':e': expiresAt()}
     }));
 
     if (isCorrect) {
       // Mark Guessed
       await ddb.send(new UpdateCommand({
-        TableName: 'Entries', Key: {gameId, entryId},
-        UpdateExpression: 'SET guessed = :val', ExpressionAttributeValues: {':val': true}
+        TableName: tables.entries, Key: {gameId, entryId},
+        UpdateExpression: 'SET guessed = :val, expiresAt = :e',
+        ExpressionAttributeValues: {':val': true, ':e': expiresAt()}
       }));
 
       // Update Score
       await ddb.send(new UpdateCommand({
-        TableName: 'Scores', Key: {gameId, playerName: guesserName},
-        UpdateExpression: 'ADD score :inc', ExpressionAttributeValues: {':inc': 1}
+        TableName: tables.scores, Key: {gameId, playerName: guesserName},
+        UpdateExpression: 'ADD score :inc SET expiresAt = :e',
+        ExpressionAttributeValues: {':inc': 1, ':e': expiresAt()}
       }));
 
       // Update Turn Order (Remove AUTHOR)
       turnOrder = turnOrder.filter((name: string) => name !== item.authorName);
 
       await ddb.send(new UpdateCommand({
-        TableName: 'Games', Key: {gameId},
+        TableName: tables.games, Key: {gameId},
         UpdateExpression: 'SET turnOrder = :to', ExpressionAttributeValues: {':to': turnOrder}
       }));
 
@@ -181,7 +184,7 @@ router.post('/games/:gameId/entries/:entryId/guess', async (req, res) => {
       if (turnOrder.length > 1) {
         turnOrder.push(turnOrder.shift()!);
         await ddb.send(new UpdateCommand({
-          TableName: 'Games', Key: {gameId},
+          TableName: tables.games, Key: {gameId},
           UpdateExpression: 'SET turnOrder = :to', ExpressionAttributeValues: {':to': turnOrder}
         }));
       }
@@ -210,7 +213,7 @@ router.get('/games/:gameId', async (req, res) => {
 router.get('/games/:gameId/entries', async (req, res) => {
   const {gameId} = req.params;
   const result = await ddb.send(new QueryCommand({
-    TableName: 'Entries',
+    TableName: tables.entries,
     KeyConditionExpression: 'gameId = :g',
     ExpressionAttributeValues: {':g': gameId}
   }));
@@ -220,7 +223,7 @@ router.get('/games/:gameId/entries', async (req, res) => {
 router.get('/games/:gameId/scores', async (req, res) => {
   const {gameId} = req.params;
   const result = await ddb.send(new QueryCommand({
-    TableName: 'Scores',
+    TableName: tables.scores,
     KeyConditionExpression: 'gameId = :g',
     ExpressionAttributeValues: {':g': gameId}
   }));
@@ -235,14 +238,14 @@ router.post('/games/:gameId/reset', async (req, res) => {
   try {
     // 1. DELETE ALL existing entries for this game
     const entriesData = await ddb.send(new QueryCommand({
-      TableName: 'Entries',
+      TableName: tables.entries,
       KeyConditionExpression: 'gameId = :g',
       ExpressionAttributeValues: {':g': gameId}
     }));
 
     const deletePromises = (entriesData.Items || []).map(entry =>
         ddb.send(new DeleteCommand({
-          TableName: 'Entries',
+          TableName: tables.entries,
           Key: {gameId: entry.gameId, entryId: entry.entryId}
         }))
     );
@@ -250,13 +253,14 @@ router.post('/games/:gameId/reset', async (req, res) => {
 
     // 2. Reset Game state
     await ddb.send(new UpdateCommand({
-      TableName: 'Games',
+      TableName: tables.games,
       Key: {gameId},
-      UpdateExpression: 'SET question = :q, createdAt = :c, started = :started',
+      UpdateExpression: 'SET question = :q, createdAt = :c, started = :started, expiresAt = :e',
       ExpressionAttributeValues: {
         ':q': question?.trim() || 'What is your favorite thing?',
         ':c': new Date().toISOString(),
-        ':started': false
+        ':started': false,
+        ':e': expiresAt()
       },
       ReturnValues: 'ALL_NEW'
     }));

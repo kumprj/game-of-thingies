@@ -10,4 +10,4 @@
 ## Code
 - `server/turnOrder.ts`: `buildTurnOrder(players, lastTurn)`, tested in `server/turnOrder.test.ts`.
 - `server/routes.ts`: records turns in the guess route; reads `lastTurn` in the start route.
-- UI copy: `HomePage.tsx` (How to play) and `StartGamePage.tsx` (Next Round footnote).
+- UI copy: `HomePage.tsx` (How to play) and `StartGamePage.tsx` (Next Round footnote); iOS: `apps/ios/GameOfThings/Home/HomeView.swift` (How to Play) and `apps/ios/GameOfThings/Game/GameView.swift` (Next Round footer, How to play).

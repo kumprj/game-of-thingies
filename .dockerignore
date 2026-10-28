@@ -1,0 +1,11 @@
+# The image only needs package*.json, server/ and types/ (see Dockerfile)
+*
+!package.json
+!package-lock.json
+!server/
+!types/
+server/**/*.test.ts
+
+
+# sst
+.sst

@@ -1,0 +1,52 @@
+name: Deploy
+
+# Deploys production (sst.config.ts) after every merge to main. Pull requests never deploy and
+# never get AWS credentials: this repo is public, and the AWS role trusts only main.
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      # Nothing here is part of the SST app
+      - "apps/ios/**"
+      - "specs/**"
+      - "**/*.md"
+  workflow_dispatch:
+
+# Queue deploys instead of cancelling one: stopping Pulumi partway can leave the stage locked.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  # Lets the job trade GitHub's OIDC token for AWS credentials (infra/ci-iam/template.yaml)
+  id-token: write
+
+jobs:
+  deploy:
+    # arm64, like the server image (sst.config.ts), so Docker builds it natively
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    # No `environment:` on purpose. It would change the OIDC subject to
+    # repo:kumprj/game-of-thingies:environment:production, which the role doesn't trust; it trusts
+    # only refs/heads/main, and only merged PRs can push there.
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: arn:aws:iam::875660052076:role/got-ci-deploy
+          aws-region: us-east-1
+      - run: npm ci
+      - run: npm ci
+        working-directory: client
+      - run: npx sst deploy --stage production
+
+      - name: Check the live site and API
+        run: |
+          curl --fail --silent --show-error --retry 5 --retry-delay 10 --retry-all-errors \
+            https://api.gameofthings.fun/health
+          curl --fail --silent --show-error --output /dev/null https://gameofthings.fun/

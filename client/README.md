@@ -5,7 +5,8 @@ This folder contains the frontend client for **Game of Thingies**, built with Re
 ## Requirements
 
 - Node.js (LTS recommended)
-- Backend running locally (typically on `http://localhost:3001`)
+- Backend running locally on `http://localhost:3001`. Easiest: `npm run dev` from the repo root,
+  which starts the server and this client together (`sst dev`).
 
 ## Project Layout
 
@@ -53,8 +54,9 @@ npx vitest --ui
 
 ## Environment / API Notes
 
-- In development, the client is expected to call the backend at `http://localhost:3001` (either directly via `src/gameConfig.ts` or through a Vite proxy if configured).
-- In production, the client should use your deployed backend URL (e.g., Render).
+- The backend URL comes from `VITE_API_URL` (`src/apiUrl.ts`). `sst.config.ts` sets it for each
+  deployed stage (production: `https://api.gameofthings.fun`); without it the client uses
+  `http://localhost:3001`.
 
 ## Tech Stack
 

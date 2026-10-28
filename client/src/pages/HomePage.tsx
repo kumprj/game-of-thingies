@@ -1,13 +1,11 @@
-import React, {useState, useEffect} from "react";
+import React, {useState} from "react";
 import axios from "axios";
 import {useNavigate} from "react-router-dom";
 import TopBar from "../components/TopBar";
 import logo from "../assets/logo.jpg";
+import {API_URL} from "../apiUrl";
 
-axios.defaults.baseURL = process.env.NODE_ENV === 'production'
-    ? 'https://game-of-thingies.onrender.com'  // Production
-    : 'http://localhost:3001'                  // Local dev
-// axios.defaults.baseURL = "https://game-of-thingies.onrender.com";
+axios.defaults.baseURL = API_URL;
 
 export default function HomePage() {
   const [gameName, setGameName] = useState("");
@@ -34,22 +32,6 @@ export default function HomePage() {
       setCreatingGame(false);
     }
   };
-
-  useEffect(() => {
-    const warmUp = async () => {
-      try {
-        await fetch("https://game-of-thingies.onrender.com/warmup", {
-          method: "GET",
-          cache: "no-store",
-        });
-      } catch (err) {
-        // Non‑fatal: just log, don’t show UI error
-        console.warn("Warm‑up failed (ignored):", err);
-      }
-    };
-
-    warmUp();
-  }, []);
 
   const createDisabled = creatingGame || !gameName.trim() || !questionText.trim();
 

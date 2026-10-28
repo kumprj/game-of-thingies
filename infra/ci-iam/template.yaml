@@ -1,0 +1,55 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Lets GitHub Actions deploy kumprj/game-of-thingies with short-lived credentials (GitHub OIDC, no
+  stored keys). Kept out of sst.config.ts on purpose: CI deploys the app with this role, so the app
+  must not manage it. Deploy by hand with an admin profile:
+    aws cloudformation deploy --stack-name game-of-things-ci-iam \
+      --template-file infra/ci-iam/template.yaml --capabilities CAPABILITY_NAMED_IAM
+
+Parameters:
+  # The account already has GitHub's OIDC provider (make-my-flight's ci-iam stack created it), and
+  # there can only be one per URL, so this reuses it.
+  GitHubOidcProviderArn:
+    Type: String
+    Default: arn:aws:iam::875660052076:oidc-provider/token.actions.githubusercontent.com
+
+Resources:
+  # Trusted only from main. The repo is public: pull request runs, including from forks, must never
+  # get AWS credentials, so no pull_request subject here. main is protected, so only merged PRs run.
+  # AdministratorAccess because an SST deploy touches many services (ECS, ELB, CloudFront, S3,
+  # Route 53, ACM, IAM, DynamoDB); narrow it later from CloudTrail history if wanted.
+  DeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: got-ci-deploy
+      Description: GitHub Actions production deploys for kumprj/game-of-thingies (pushes to main)
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Ref GitHubOidcProviderArn
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:sub: repo:kumprj/game-of-thingies:ref:refs/heads/main
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AdministratorAccess
+      Policies:
+        # Keeps a deploy from changing its own access. An admin role can still get around this, so
+        # it guards against mistakes, not attackers.
+        - PolicyName: protect-ci-access
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Deny
+                Action: "*"
+                Resource:
+                  - !Sub arn:aws:iam::${AWS::AccountId}:role/got-ci-*
+                  - !Ref GitHubOidcProviderArn
+                  - !Sub arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${AWS::StackName}/*
+
+Outputs:
+  DeployRoleArn:
+    Value: !GetAtt DeployRole.Arn
