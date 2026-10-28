@@ -60,8 +60,7 @@ struct GameView: View {
     private var header: some View {
         Section {
             VStack(spacing: 8) {
-                Image("Logo")
-                    .resizable()
+                AnimatedLogo()
                     .frame(width: 64, height: 64)
                     .clipShape(.rect(cornerRadius: 15, style: .continuous))
                     .accessibilityHidden(true)

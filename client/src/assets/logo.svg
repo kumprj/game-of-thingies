@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" role="img" aria-label="Game of Things">
+<style>
+  .ink { fill: #3f464d; }
+  .ring { fill: none; stroke: #3f464d; stroke-width: 9; }
+  .spin { fill: none; stroke-width: 9; stroke-linecap: round; transform-origin: 200px 200px; }
+  .a1 { stroke: #ff8a3d; stroke-dasharray: 90 2000; }
+  .a2 { stroke: #ffc53d; stroke-dasharray: 50 2000; rotate: 120deg; }
+  .a3 { stroke: #ff5e7e; stroke-dasharray: 30 2000; rotate: 240deg; }
+  .l { font: 900 30px "Avenir Next", "Nunito", "Arial Rounded MT Bold", system-ui, sans-serif;
+       fill: #3f464d; text-anchor: middle; dominant-baseline: central; }
+  .speed line { stroke: #ff8a3d; stroke-width: 6; stroke-linecap: round; stroke-dasharray: 26 60; }
+  .speed line:nth-child(2) { stroke: #ffc53d; }
+  .speed line:nth-child(3) { stroke: #ff5e7e; }
+  .puff { fill: #c9ced3; opacity: 0; }
+  .l { animation: wave 1.6s ease-in-out; transform-box: fill-box; transform-origin: center; }
+  #horse { animation: gallop 1.0s ease-in-out 2; transform-origin: 200.0px 230.0px; }
+  #mane { animation: flutter 0.5s ease-in-out 4; transform-origin: 277.4px 84.8px; }
+  #forelock { animation: flutter 0.5s ease-in-out 4 reverse; transform-origin: 293.0px 77.0px; }
+  #ffront { animation: swing 1.0s ease-in-out 2; transform-origin: 272.2px 184.6px; }
+  #fhind { animation: swing 1.0s ease-in-out 2 reverse; transform-origin: 183.8px 191.4px; }
+  .speed line { animation: zoom 1.0s linear 2; }
+  .speed line:nth-child(2) { animation-delay: -0.33s; }
+  .speed line:nth-child(3) { animation-delay: -0.67s; }
+  .puff { animation: puff 1.0s ease-out 2; transform-box: fill-box; transform-origin: center; }
+  .puff:nth-of-type(2) { animation-delay: 0.5s; }
+  .spark { animation: twinkle 1.0s ease-in-out 2; transform-box: fill-box; transform-origin: center; }
+  .spark:nth-of-type(2) { animation-delay: 0.4s; }
+  .spark:nth-of-type(3) { animation-delay: 0.8s; }
+  .spin { animation: orbit 3.0s ease-in-out; }
+
+  @keyframes gallop {
+    0%, 100% { transform: translateY(0) rotate(0deg); }
+    25% { transform: translateY(-10px) rotate(-4deg); }
+    50% { transform: translateY(-3px) rotate(0deg); }
+    75% { transform: translateY(-8px) rotate(3deg); }
+  }
+  @keyframes flutter {
+    0%, 100% { transform: none; }
+    25% { transform: rotate(-4deg) skewX(-6deg); }
+    75% { transform: rotate(5deg) skewX(4deg); }
+  }
+  @keyframes swing { 0%, 100% { transform: rotate(0deg); } 25% { transform: rotate(-14deg); } 75% { transform: rotate(16deg); } }
+  @keyframes zoom { from { stroke-dashoffset: 0; } to { stroke-dashoffset: 86; } }
+  @keyframes puff { 0% { opacity: .9; transform: translateX(0) scale(.4); } 100% { opacity: 0; transform: translateX(-26px) scale(1.4); } }
+  @keyframes wave { 0%, 60%, 100% { transform: translateY(0) scale(1); } 25% { transform: translateY(-7px) scale(1.12); fill: #ff8a3d; } }
+  @keyframes twinkle { 0%, 100% { opacity: 1; transform: scale(1) rotate(0deg); } 50% { opacity: .2; transform: scale(.4) rotate(90deg); } }
+  @keyframes orbit { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; } }
+</style>
+<circle cx="200" cy="200" r="190" fill="#fff"/>
+<circle class="ring" cx="200" cy="200" r="178"/>
+<circle class="spin a1" cx="200" cy="200" r="178"/>
+<circle class="spin a2" cx="200" cy="200" r="178"/>
+<circle class="spin a3" cx="200" cy="200" r="178"/>
+
+<g class="speed">
+  <line x1="70" y1="204" x2="138" y2="204"/>
+  <line x1="56" y1="220" x2="128" y2="220"/>
+  <line x1="72" y1="236" x2="134" y2="236"/>
+</g>
+<circle class="puff" cx="134" cy="258" r="8"/>
+<circle class="puff" cx="236" cy="246" r="6"/>
+
+<path class="spark" fill="#ffc53d" d="M190 40 l5 13 13 5 -13 5 -5 13 -5 -13 -13 -5 13 -5z"/>
+<path class="spark" fill="#ff5e7e" d="M96 108 l3.5 9 9 3.5 -9 3.5 -3.5 9 -3.5 -9 -9 -3.5 9 -3.5z"/>
+<path class="spark" fill="#ff8a3d" d="M338 176 l3 8 8 3 -8 3 -3 8 -3 -8 -8 -3 8 -3z"/>
+
+<g id="horse">
+  <g class="ink">
+    <g id="fhind"><path transform="translate(72 64) scale(0.52) translate(0 400) scale(0.1 -0.1)" d="M2055 1651 c-79 -20 -105 -44 -129 -117 -22 -68 -66 -135 -137 -212 -95 -101 -98 -96 169 -292 89 -66 186 -144 216 -174 30 -30 68 -62 85 -72 39 -23 43 -36 25 -80 -23 -55 -15 -94 24 -121 43 -28 135 -63 186 -71 l39 -5 -5 72 c-5 60 -13 89 -52 166 -60 121 -75 138 -219 247 -274 209 -277 218 -118 323 110 72 178 139 215 213 30 60 35 54 -85 95 -84 29 -168 40 -214 28z"/></g>
+    <g id="ffront"><path transform="translate(72 64) scale(0.52) translate(0 400) scale(0.1 -0.1)" d="M3742 1756 c-38 -44 -128 -116 -175 -141 -20 -11 -37 -23 -37 -26 0 -10 131 -85 266 -152 91 -46 113 -61 124 -87 25 -61 -7 -170 -95 -319 -54 -92 -84 -114 -113 -88 -24 22 -114 23 -136 2 -35 -36 -83 -224 -60 -237 36 -21 379 110 409 156 8 12 27 62 44 113 16 50 53 142 81 205 55 122 71 200 51 259 -9 28 -308 349 -325 349 -2 0 -17 -15 -34 -34z"/></g>
+    <g id="mane"><path transform="translate(72 64) scale(0.52) translate(0 400) scale(0.1 -0.1)" d="M3411 3840 c-51 -18 -131 -64 -131 -75 0 -2 12 0 28 6 82 33 236 4 312 -59 35 -29 24 -33 -45 -16 -109 25 -207 19 -320 -22 -227 -82 -300 -88 -406 -36 -47 23 -48 18 -10 -35 48 -66 103 -87 251 -93 l125 -6 -45 -21 c-83 -40 -167 -48 -297 -28 -222 34 -354 1 -468 -115 l-50 -51 60 27 c93 43 191 40 310 -10 161 -68 247 -97 307 -103 64 -6 75 -17 27 -27 -57 -11 -143 -6 -254 14 -139 26 -229 26 -301 0 -61 -21 -157 -88 -174 -121 -11 -19 -9 -20 27 -12 73 15 164 5 283 -32 66 -20 148 -38 193 -42 137 -11 93 -31 -94 -42 -146 -9 -191 -27 -246 -100 -40 -52 -39 -56 17 -36 62 22 145 19 227 -9 135 -46 143 -45 198 16 26 29 93 121 148 203 251 376 444 545 736 646 84 29 95 36 107 65 20 47 19 49 -29 51 -24 2 -94 21 -157 43 -137 47 -236 53 -329 20z"/></g>
+    <g id="forelock"><path transform="translate(72 64) scale(0.52) translate(0 400) scale(0.1 -0.1)" d="M4261 3806 c-25 -26 -55 -46 -70 -48 -41 -5 -44 -87 -4 -113 15 -10 51 -37 78 -60 92 -77 169 -96 244 -57 51 25 49 38 -4 34 -62 -5 -102 13 -132 62 -14 23 -35 51 -46 63 -17 19 -20 34 -18 93 1 38 1 70 -1 70 -2 0 -23 -20 -47 -44z"/></g>
+    <path transform="translate(72 64) scale(0.52) translate(0 400) scale(0.1 -0.1)" d="M4068 3841 c-43 -38 -99 -130 -111 -181 -5 -22 -16 -28 -77 -44 -89 -23 -246 -99 -330 -161 -149 -111 -251 -227 -428 -491 -236 -351 -407 -420 -878 -353 -334 48 -522 19 -695 -106 l-48 -35 -88 44 c-131 65 -185 80 -283 80 -143 -1 -179 -20 -392 -212 -158 -143 -271 -185 -393 -148 l-50 15 37 -33 c64 -56 165 -71 278 -41 75 20 79 19 40 -10 -116 -85 -300 -85 -458 1 l-63 34 18 -31 c106 -186 323 -255 522 -168 57 25 65 15 21 -22 -112 -93 -314 -102 -474 -22 l-51 25 44 -45 c111 -115 295 -156 485 -107 155 39 245 112 365 295 111 168 164 212 276 229 61 9 71 -3 46 -52 -59 -116 -65 -306 -17 -524 49 -219 27 -292 -126 -421 -81 -69 -84 -79 -93 -267 -7 -168 -20 -299 -41 -424 -19 -114 -14 -138 42 -177 41 -28 44 -33 44 -77 0 -76 1 -77 155 -80 156 -4 163 0 127 73 -27 55 -71 105 -133 151 -84 61 -95 114 -64 319 39 263 77 316 341 475 233 141 354 331 354 557 0 40 4 73 9 73 27 0 39 -204 15 -264 -6 -17 -4 -18 37 -10 100 20 175 9 348 -50 90 -31 207 -65 260 -76 91 -18 301 -38 301 -28 0 2 -7 26 -16 52 -12 35 -15 66 -11 112 9 99 23 109 31 25 12 -123 53 -187 237 -376 175 -179 181 -192 139 -260 -33 -54 -166 -162 -208 -170 -20 -3 -54 -18 -74 -32 -41 -27 -68 -21 -68 17 0 44 -95 69 -137 36 -55 -42 -133 -142 -133 -170 0 -18 57 -31 230 -51 186 -22 162 -29 309 98 71 63 161 135 200 161 75 51 106 98 117 179 6 38 -2 57 -74 202 -44 88 -91 190 -103 227 l-23 66 52 56 c32 33 67 86 87 129 l34 72 1 -41 c0 -58 -21 -121 -64 -188 -20 -32 -35 -60 -33 -62 9 -9 165 78 213 118 169 141 212 265 182 524 -10 93 -9 113 16 275 31 196 58 308 87 358 l20 33 -35 38 c-57 63 -69 96 -72 190 l-3 85 15 -50 c28 -91 38 -110 88 -163 56 -59 112 -82 205 -82 81 0 261 -78 299 -129 39 -54 51 -61 106 -61 63 1 136 35 154 71 6 15 15 54 18 86 6 59 6 59 -39 114 -94 110 -198 252 -241 327 -40 68 -51 80 -100 104 -29 15 -77 47 -105 72 -55 49 -100 76 -127 76 -13 0 -15 7 -11 33 4 17 9 66 12 107 3 41 8 85 11 98 6 31 -7 28 -58 -17z m217 -486 c34 -33 32 -55 -4 -55 -28 0 -81 46 -81 71 0 20 61 9 85 -16z"/>
+  </g>
+</g>
+
+<g transform="translate(78.5 273.6) rotate(58.8)"><text class="l" style="animation-delay:0.0s">G</text></g><g transform="translate(92.8 293.2) rotate(49.0)"><text class="l" style="animation-delay:0.1s">A</text></g><g transform="translate(110.3 310.0) rotate(39.2)"><text class="l" style="animation-delay:0.2s">M</text></g><g transform="translate(130.3 323.7) rotate(29.4)"><text class="l" style="animation-delay:0.3s">E</text></g><g transform="translate(164.0 337.4) rotate(14.7)"><text class="l" style="animation-delay:0.5s">O</text></g><g transform="translate(187.9 341.5) rotate(4.9)"><text class="l" style="animation-delay:0.6s">F</text></g><g transform="translate(224.2 339.9) rotate(-9.8)"><text class="l" style="animation-delay:0.8s">T</text></g><g transform="translate(247.6 333.8) rotate(-19.6)"><text class="l" style="animation-delay:0.9s">H</text></g><g transform="translate(269.7 323.7) rotate(-29.4)"><text class="l" style="animation-delay:1.0s">I</text></g><g transform="translate(289.7 310.0) rotate(-39.2)"><text class="l" style="animation-delay:1.1s">N</text></g><g transform="translate(307.2 293.2) rotate(-49.0)"><text class="l" style="animation-delay:1.2s">G</text></g><g transform="translate(321.5 273.6) rotate(-58.8)"><text class="l" style="animation-delay:1.3s">S</text></g>
+</svg>

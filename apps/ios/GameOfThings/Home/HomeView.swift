@@ -25,8 +25,7 @@ struct HomeView: View {
         Form {
             Section {
                 VStack(spacing: 6) {
-                    Image("Logo")
-                        .resizable()
+                    AnimatedLogo()
                         .frame(width: 96, height: 96)
                         .clipShape(.rect(cornerRadius: 22, style: .continuous))
                         .accessibilityHidden(true)
