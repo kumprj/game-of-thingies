@@ -1,7 +1,7 @@
 import React, {useState, useEffect} from "react";
 import {Link} from "react-router-dom";
 import {AnimatePresence, motion} from "framer-motion";
-import logo from "../assets/logo.jpg";
+import logo from "../assets/logo.svg";
 import {useGameLogic} from "../hooks/useGameLogic";
 import Scoreboard from "../components/Scoreboard";
 import TopBar from "../components/TopBar";

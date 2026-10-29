@@ -2,7 +2,7 @@ import React, {useState} from "react";
 import axios from "axios";
 import {useNavigate} from "react-router-dom";
 import TopBar from "../components/TopBar";
-import logo from "../assets/logo.jpg";
+import logo from "../assets/logo.svg";
 import {API_URL} from "../apiUrl";
 
 axios.defaults.baseURL = API_URL;
