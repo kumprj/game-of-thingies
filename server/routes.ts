@@ -1,6 +1,7 @@
 import {timingSafeEqual} from 'crypto';
 import express from 'express';
 import {v4 as uuidv4} from 'uuid';
+import {asyncHandler} from './http';
 import {ddb, expiresAt, tables} from './db';
 import {buildTurnOrder, rotate} from './turnOrder';
 import {validateGameSetup} from './gameSetup';
@@ -407,12 +408,11 @@ router.post('/games/:gameId/entries/:entryId/guess', async (req, res) => {
       ddb.send(new GetCommand({TableName: tables.entries, Key: {gameId, entryId}})),
       getGame(gameId)
     ]);
-    const item = entryResult.Item;
-    if (!item) return res.status(404).json({error: "Entry not found"});
+    if (!game) return res.status(404).json({error: "Game not found"});
 
-    const isCorrect = item.authorName === guess;
-
-    let turnOrder: string[] = game?.turnOrder || [];
+    // Turn state is checked before the entry lookup, so a request that is not allowed to guess
+    // gets the turn error whatever entry id it sends.
+    let turnOrder: string[] = game.turnOrder || [];
     if (!turnOrder.includes(guesserName)) {
       return res.status(400).json({error: "Guesser is not in the turn order"});
     }
@@ -421,11 +421,16 @@ router.post('/games/:gameId/entries/:entryId/guess', async (req, res) => {
     }
 
     const playerToken = req.header('x-player-token');
-    const existingTokens = game?.playerTokens || {};
+    const existingTokens = game.playerTokens || {};
     const normName = guesserName.toLowerCase();
     if (existingTokens[normName] && (!playerToken || existingTokens[normName] !== playerToken)) {
       return res.status(403).json({error: 'Player token mismatch'});
     }
+
+    const item = entryResult.Item;
+    if (!item) return res.status(404).json({error: "Entry not found"});
+    const isCorrect = item.authorName === guess;
+
     // The last player left may guess their own answer for a free point (ends the round).
     if (item.authorName === guesserName && turnOrder.length > 1) {
       return res.status(400).json({error: "You can't guess your own entry"});
@@ -557,9 +562,11 @@ router.delete('/games/:gameId/players/:playerName', async (req, res) => {
     if (!isHost(game, req)) return res.status(403).json({error: 'Only the host can remove players'});
     if (!game.started) return res.status(400).json({error: 'The game has not started yet'});
 
-    const turnOrder = (game.turnOrder || []).filter((name: string) => name !== playerName);
+    const current: string[] = game.turnOrder || [];
+    if (!current.includes(playerName)) return res.status(404).json({error: 'Player not found'});
+    const turnOrder = current.filter((name: string) => name !== playerName);
 
-    if (!await writeTurnOrder(gameId, game.turnOrder || [], turnOrder)) {
+    if (!await writeTurnOrder(gameId, current, turnOrder)) {
       return res.status(409).json({error: 'The game changed. Try again.'});
     }
 
@@ -616,7 +623,7 @@ router.post('/games/:gameId/transfer-host', async (req, res) => {
   }
 });
 
-router.get('/games/:gameId', async (req, res) => {
+router.get('/games/:gameId', asyncHandler(async (req, res) => {
   const {gameId} = req.params;
   // Never expose the host token or player tokens to players.
   const game = await getGame(gameId);
@@ -624,9 +631,9 @@ router.get('/games/:gameId', async (req, res) => {
   // Games created before the rename stored the title as `gameOwner`; they expire within a day.
   const {hostToken: _hostToken, playerTokens: _playerTokens, gameOwner, ...publicGame} = game;
   res.json({...publicGame, title: publicGame.title || gameOwner});
-});
+}));
 
-router.get('/games/:gameId/entries', async (req, res) => {
+router.get('/games/:gameId/entries', asyncHandler(async (req, res) => {
   const {gameId} = req.params;
   const [items, game] = await Promise.all([queryEntries(gameId), getGame(gameId)]);
   const started = Boolean(game?.started);
@@ -647,9 +654,9 @@ router.get('/games/:gameId/entries', async (req, res) => {
     if (mine || (started && guessed)) entry.authorName = e.authorName;
     return entry;
   }));
-});
+}));
 
-router.get('/games/:gameId/scores', async (req, res) => {
+router.get('/games/:gameId/scores', asyncHandler(async (req, res) => {
   const {gameId} = req.params;
   const result = await ddb.send(new QueryCommand({
     TableName: tables.scores,
@@ -657,7 +664,7 @@ router.get('/games/:gameId/scores', async (req, res) => {
     ExpressionAttributeValues: {':g': gameId}
   }));
   res.json(result.Items || []);
-});
+}));
 
 // Reset Game
 router.post('/games/:gameId/reset', async (req, res) => {
