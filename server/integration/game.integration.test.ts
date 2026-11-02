@@ -347,10 +347,11 @@ describe('finishing a round', () => {
     expect(await scores(gameId)).toEqual([]);
   });
 
-  it('gives a person who wrote several answers one place in the turn order', async () => {
+  it('gives each player one place in the turn order, since a second answer from the same name is rejected', async () => {
     const gameId = await createGame('Ann');
     await addEntry(gameId, 'Ann', 'One');
-    await addEntry(gameId, 'Ann', 'Two');
+    const second = await api('POST', `/api/games/${gameId}/entries`, {authorName: 'Ann', text: 'Two'});
+    expect(second.status).toBe(409);
     await addEntry(gameId, 'Ben', 'Three');
     await api('POST', `/api/games/${gameId}/start`);
     expect([...(await game(gameId)).turnOrder].sort()).toEqual(['Ann', 'Ben']);
