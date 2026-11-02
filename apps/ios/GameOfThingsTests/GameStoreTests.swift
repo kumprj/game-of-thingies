@@ -221,6 +221,28 @@ struct GameStoreTests {
         #expect(store.guessingEntry == nil && !store.guessLoading)
     }
 
+    @Test func startGameShowsServerMessageWhenRefused() async {
+        let store = await makeStore(entries: "[\(Self.entry("1", "Bo", "a", revealed: false))]")
+        defaults.set("tok", forKey: "hostToken.ABCD")
+        StubURLProtocol.respond = { _ in (400, #"{"error":"Need at least 2 players to start"}"#) }
+        await store.startGame()
+        #expect(store.toast?.style == .error)
+        #expect(store.toast?.message == "Need at least 2 players to start")
+        #expect(!store.started)
+    }
+
+    @Test func refusedGuessShowsServerMessage() async {
+        let store = await makeStore(entries: "[\(Self.entry("1", "Bo", "his"))]", game: #"{"turnOrder":["Ann","Bo"]}"#)
+        let entry = store.entries[0]
+        StubURLProtocol.respond = { request in
+            request.url!.path.hasSuffix("/guess") ? (409, #"{"error":"It's not your turn"}"#) : (200, "[]")
+        }
+        store.guessingEntry = entry
+        await store.guess(entry, author: "Bo")
+        #expect(store.toast?.message == "It's not your turn" && store.toast?.style == .error)
+        #expect(store.guessingEntry == nil && !store.guessLoading)
+    }
+
     @Test func startNewRoundSendsTrimmedQuestion() async {
         let store = await makeStore(entries: "[\(Self.entry("1", "Bo", "x", guessed: true))]")
         defaults.set("tok", forKey: "hostToken.ABCD")

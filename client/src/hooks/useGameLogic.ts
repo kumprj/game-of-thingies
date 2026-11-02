@@ -282,7 +282,7 @@ export function useGameLogic() {
         setTimeout(() => window.location.reload(), 1500);
         return;
       }
-      setToast({message: 'Failed to start game', type: 'error'});
+      setToast({message: error.response?.data?.error || 'Failed to start game', type: 'error'});
     } finally {
       setIsLoading(false);
       setShowStartConfirm(false);
@@ -341,7 +341,9 @@ export function useGameLogic() {
       }
     } catch (err) {
       console.error("Error submitting guess", err);
-      setToast({message: "Error submitting guess", type: "error"});
+      const serverMessage = (err as any)?.response?.data?.error;
+      setToast({message: serverMessage || "Error submitting guess", type: "error"});
+      if ((err as any)?.response?.status === 409) fetchEntries();
     } finally {
       setGuessLoading(false);
       setGuessingEntry(null);

@@ -270,7 +270,7 @@ final class GameStore {
         } catch let error as APIError where error.status == 403 {
             show("Only the host can start the game", .error)
         } catch {
-            show("Failed to start game", .error)
+            show((error as? APIError)?.serverMessage ?? "Failed to start game", .error)
         }
     }
 
@@ -310,7 +310,8 @@ final class GameStore {
                 show("Wrong answer!", .error, for: .seconds(7))
             }
         } catch {
-            show("Error submitting guess", .error)
+            show((error as? APIError)?.serverMessage ?? "Error submitting guess", .error)
+            if (error as? APIError)?.status == 409 { await fetchEntries() }
         }
     }
 

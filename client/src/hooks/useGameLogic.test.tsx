@@ -307,6 +307,14 @@ describe('useGameLogic actions', () => {
     expect(result.current.isLoading).toBe(false);
   });
 
+  it('shows the server\'s reason when the start is refused', async () => {
+    const {result} = await mount({entries: [entry('1', 'A', 'Ben')]});
+    await waitFor(() => expect(result.current.entries).toHaveLength(1));
+    (axios.post as any).mockRejectedValueOnce({response: {status: 400, data: {error: 'Need at least 2 players to start'}}});
+    await act(async () => { await result.current.startGame(); });
+    expect(result.current.toast).toMatchObject({message: 'Need at least 2 players to start', type: 'error'});
+  });
+
   it('reloads the page when someone else already started the game', async () => {
     const {result} = await mount({entries: [entry('1', 'A', 'Ben')]});
     await waitFor(() => expect(result.current.entries).toHaveLength(1));
@@ -385,6 +393,13 @@ describe('useGameLogic actions', () => {
       await guess(result, {isCorrect: false});
       expect(result.current.toast).toMatchObject({message: 'Wrong answer!', type: 'error', duration: 7000});
       expect(result.current.guessedEntryIds.size).toBe(0);
+    });
+
+    it('shows the server\'s message when a guess is refused', async () => {
+      const {result} = await mount({entries: [entry('e1', 'Offside', 'Ben')]});
+      await guess(result, Object.assign(new Error('409'), {response: {status: 409, data: {error: "It's not your turn"}}}));
+      expect(result.current.toast).toMatchObject({message: "It's not your turn", type: 'error'});
+      expect(result.current.guessLoading).toBe(false);
     });
 
     it('reports an error and lets the player try again', async () => {

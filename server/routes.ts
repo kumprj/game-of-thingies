@@ -146,6 +146,13 @@ router.post('/games/:gameId/start', async (req, res) => {
     const players = entryItems.map((e: any) => e.authorName)
         .filter((v: any, i: number, a: any[]) => a.indexOf(v) === i);
 
+    if (entryItems.length === 0) {
+      return res.status(400).json({error: 'Add at least one entry before starting'});
+    }
+    if (players.length < 2) {
+      return res.status(400).json({error: 'Need at least 2 players to start'});
+    }
+
     const lastTurn: Record<string, number> = game.lastTurn || {};
 
     const shuffled = buildTurnOrder(players, lastTurn);
@@ -207,6 +214,33 @@ router.post('/games/:gameId/entries/:entryId/guess', async (req, res) => {
     if (!turnOrder.includes(guesserName)) {
       return res.status(400).json({error: "Guesser is not in the turn order"});
     }
+    if (turnOrder[0] !== guesserName) {
+      return res.status(409).json({error: "It's not your turn"});
+    }
+    // The last player left may guess their own answer for a free point (ends the round).
+    if (item.authorName === guesserName && turnOrder.length > 1) {
+      return res.status(400).json({error: "You can't guess your own entry"});
+    }
+    if (item.guessed) {
+      return res.status(409).json({error: 'That entry has already been guessed'});
+    }
+
+    if (isCorrect) {
+      // Claim the entry first (conditional) so simultaneous guesses award only one point.
+      try {
+        await ddb.send(new UpdateCommand({
+          TableName: tables.entries, Key: {gameId, entryId},
+          UpdateExpression: 'SET guessed = :val, expiresAt = :e',
+          ConditionExpression: 'attribute_not_exists(guessed) OR guessed = :no',
+          ExpressionAttributeValues: {':val': true, ':no': false, ':e': expiresAt()}
+        }));
+      } catch (err: any) {
+        if (err?.name === 'ConditionalCheckFailedException') {
+          return res.status(409).json({error: 'That entry has already been guessed'});
+        }
+        throw err;
+      }
+    }
 
     // Record that the guesser just took a turn (drives next round's first player).
     // Single-key write so concurrent guesses can't overwrite each other's timestamps.
@@ -218,13 +252,6 @@ router.post('/games/:gameId/entries/:entryId/guess', async (req, res) => {
     }));
 
     if (isCorrect) {
-      // Mark Guessed
-      await ddb.send(new UpdateCommand({
-        TableName: tables.entries, Key: {gameId, entryId},
-        UpdateExpression: 'SET guessed = :val, expiresAt = :e',
-        ExpressionAttributeValues: {':val': true, ':e': expiresAt()}
-      }));
-
       // Update Score
       await ddb.send(new UpdateCommand({
         TableName: tables.scores, Key: {gameId, playerName: guesserName},
