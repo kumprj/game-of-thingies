@@ -35,11 +35,8 @@ export function createServer() {
   // Middleware to parse incoming JSON requests
   app.use(express.json({limit: JSON_BODY_LIMIT}));
 
-  // Middleware to attach the Socket.IO instance to the request object
-  app.use((req, res, next) => {
-    (req as any).io = io; // Attach 'io' to the request object
-    next(); // Proceed to the next middleware or route handler
-  });
+  // Handlers reach the Socket.IO instance through getIo(req) in http.ts
+  app.set('io', io);
 
   // Mount the API routes under the '/api' path
   app.use('/api', router);

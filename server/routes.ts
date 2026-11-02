@@ -1,7 +1,9 @@
 import {timingSafeEqual} from 'crypto';
 import express from 'express';
 import {v4 as uuidv4} from 'uuid';
-import {asyncHandler} from './http';
+import type {Server} from 'socket.io';
+import {asyncHandler, getIo} from './http';
+import type {EntryItem, GameItem} from './models';
 import {ddb, expiresAt, tables} from './db';
 import {buildTurnOrder, rotate} from './turnOrder';
 import {validateGameSetup} from './gameSetup';
@@ -31,13 +33,18 @@ router.param('entryId', validateParam);
 router.param('playerName', validateParam);
 const MAX_CODE_ATTEMPTS = 10;
 
-async function getGame(gameId: string) {
+async function getGame(gameId: string): Promise<GameItem | undefined> {
   const result = await ddb.send(new GetCommand({TableName: tables.games, Key: {gameId}}));
-  return result.Item;
+  return result.Item as GameItem | undefined;
+}
+
+async function getEntry(gameId: string, entryId: string): Promise<EntryItem | undefined> {
+  const result = await ddb.send(new GetCommand({TableName: tables.entries, Key: {gameId, entryId}}));
+  return result.Item as EntryItem | undefined;
 }
 
 /** True when the request's x-host-token header matches the game's stored host token. */
-function isHost(game: Record<string, any> | undefined, req: express.Request) {
+function isHost(game: GameItem | undefined, req: express.Request) {
   const stored = game?.hostToken;
   const given = req.header('x-host-token');
   if (typeof stored !== 'string' || typeof given !== 'string') return false;
@@ -52,13 +59,13 @@ function isConditionalCheckFailure(err: unknown) {
 }
 
 /** Every entry of a game, straight from the table (includes tokens; never send it to clients as is). */
-async function queryEntries(gameId: string): Promise<Record<string, any>[]> {
+async function queryEntries(gameId: string): Promise<EntryItem[]> {
   const result = await ddb.send(new QueryCommand({
     TableName: tables.entries,
     KeyConditionExpression: 'gameId = :g',
     ExpressionAttributeValues: {':g': gameId}
   }));
-  return result.Items || [];
+  return (result.Items || []) as EntryItem[];
 }
 
 /** True when two strings are equal, compared in constant time. */
@@ -73,13 +80,13 @@ function tokensMatch(stored: unknown, given: unknown) {
  * True when the entry is bound to a different device than the requester: either the entry's own
  * author token or the token its author's name was claimed with. Unbound entries match anyone.
  */
-function authorTokenMismatch(item: Record<string, any>, game: Record<string, any>, req: express.Request) {
+function authorTokenMismatch(item: EntryItem, game: GameItem, req: express.Request) {
   const playerToken = req.header('x-player-token');
   const boundToken = item.authorToken || game.playerTokens?.[item.authorName.toLowerCase()];
   return Boolean(boundToken && (!playerToken || boundToken !== playerToken));
 }
 
-function emitNextTurn(io: any, gameId: string, turnOrder: string[]) {
+function emitNextTurn(io: Server, gameId: string, turnOrder: string[]) {
   io.to(gameId).emit('nextTurn', {currentPlayer: turnOrder[0] || null, turnOrder});
 }
 
@@ -97,7 +104,7 @@ async function writeTurnOrder(gameId: string, previous: string[], next: string[]
       ExpressionAttributeValues: {':to': next, ':e': expiresAt(), ':prev': previous}
     }));
     return true;
-  } catch (err: any) {
+  } catch (err) {
     if (isConditionalCheckFailure(err)) return false;
     throw err;
   }
@@ -187,7 +194,7 @@ router.post('/games/:gameId/entries', async (req, res) => {
 
     const existing = await queryEntries(gameId);
     const taken = existing.some(
-        (e: any) => e.authorName.toLowerCase() === authorName.toLowerCase());
+        e => e.authorName.toLowerCase() === authorName.toLowerCase());
     if (taken) return res.status(409).json({error: 'That name is already taken in this game'});
 
     const entryId = uuidv4();
@@ -217,8 +224,8 @@ router.post('/games/:gameId/entries', async (req, res) => {
         }));
         try {
           await bindToken();
-        } catch (err: any) {
-          if (err?.name !== 'ValidationException') throw err;
+        } catch (err) {
+          if ((err as {name?: string})?.name !== 'ValidationException') throw err;
           // Game created before playerTokens existed on new games: create the map, then bind.
           await ddb.send(new UpdateCommand({
             TableName: tables.games,
@@ -233,7 +240,7 @@ router.post('/games/:gameId/entries', async (req, res) => {
       }
     }
 
-    const io = (req as any).io;
+    const io = getIo(req);
     io.to(gameId).emit("entriesUpdated");
 
     res.json({entryId});
@@ -262,10 +269,7 @@ router.patch('/games/:gameId/entries/:entryId', async (req, res) => {
     if (!game) return res.status(404).json({error: 'Game not found'});
     if (game.started) return res.status(400).json({error: 'The game has already started'});
 
-    const entryResult = await ddb.send(new GetCommand({
-      TableName: tables.entries, Key: {gameId, entryId}
-    }));
-    const item = entryResult.Item;
+    const item = await getEntry(gameId, entryId);
     if (!item) return res.status(404).json({error: 'Entry not found'});
 
     if (authorTokenMismatch(item, game, req)) {
@@ -280,7 +284,7 @@ router.patch('/games/:gameId/entries/:entryId', async (req, res) => {
       ExpressionAttributeValues: {':txt': text, ':e': expiresAt()}
     }));
 
-    const io = (req as any).io;
+    const io = getIo(req);
     io.to(gameId).emit('entriesUpdated');
 
     res.json({success: true});
@@ -298,10 +302,7 @@ router.delete('/games/:gameId/entries/:entryId', async (req, res) => {
     if (!game) return res.status(404).json({error: 'Game not found'});
     if (game.started) return res.status(400).json({error: 'The game has already started'});
 
-    const entryResult = await ddb.send(new GetCommand({
-      TableName: tables.entries, Key: {gameId, entryId}
-    }));
-    const item = entryResult.Item;
+    const item = await getEntry(gameId, entryId);
     if (!item) return res.status(404).json({error: 'Entry not found'});
 
     if (authorTokenMismatch(item, game, req)) {
@@ -327,7 +328,7 @@ router.delete('/games/:gameId/entries/:entryId', async (req, res) => {
       }
     }
 
-    const io = (req as any).io;
+    const io = getIo(req);
     io.to(gameId).emit('entriesUpdated');
 
     res.json({success: true});
@@ -347,7 +348,7 @@ router.post('/games/:gameId/start', async (req, res) => {
     if (game.started) return res.status(409).json({error: 'Game already started'});
 
     const entryItems = await queryEntries(gameId);
-    const players: string[] = [...new Set(entryItems.map((e: any) => e.authorName as string))];
+    const players: string[] = [...new Set(entryItems.map(e => e.authorName))];
 
     if (entryItems.length === 0) {
       return res.status(400).json({error: 'Add at least one entry before starting'});
@@ -371,7 +372,7 @@ router.post('/games/:gameId/start', async (req, res) => {
           ':to': shuffled, ':pl': players, ':s': true, ':empty': {}, ':e': expiresAt(), ':notStarted': false
         }
       }));
-    } catch (err: any) {
+    } catch (err) {
       if (isConditionalCheckFailure(err)) {
         return res.status(409).json({error: 'Game already started'});
       }
@@ -386,7 +387,7 @@ router.post('/games/:gameId/start', async (req, res) => {
       ExpressionAttributeValues: {':r': true, ':e': expiresAt()}
     }))));
 
-    const io = (req as any).io;
+    const io = getIo(req);
     io.to(gameId).emit("gameStarted", {turnOrder: shuffled});
     // Returned too so the host doesn't depend on its own socket event to see whose turn it is.
     res.json({success: true, turnOrder: shuffled});
@@ -402,13 +403,10 @@ router.post('/games/:gameId/entries/:entryId/guess', async (req, res) => {
   const parsed = validateGuess(req.body);
   if (!parsed.ok) return res.status(400).json({error: parsed.error});
   const {guesserName, guess} = parsed;
-  const io = (req as any).io;
+  const io = getIo(req);
 
   try {
-    const [entryResult, game] = await Promise.all([
-      ddb.send(new GetCommand({TableName: tables.entries, Key: {gameId, entryId}})),
-      getGame(gameId)
-    ]);
+    const [item, game] = await Promise.all([getEntry(gameId, entryId), getGame(gameId)]);
     if (!game) return res.status(404).json({error: "Game not found"});
 
     // Turn state is checked before the entry lookup, so a request that is not allowed to guess
@@ -428,7 +426,6 @@ router.post('/games/:gameId/entries/:entryId/guess', async (req, res) => {
       return res.status(403).json({error: 'Player token mismatch'});
     }
 
-    const item = entryResult.Item;
     if (!item) return res.status(404).json({error: "Entry not found"});
     const isCorrect = item.authorName === guess;
 
@@ -487,12 +484,13 @@ router.post('/games/:gameId/entries/:entryId/guess', async (req, res) => {
       } else {
         await ddb.send(new UpdateCommand(gameUpdate));
       }
-    } catch (err: any) {
+    } catch (err) {
       if (isConditionalCheckFailure(err)) {
         return res.status(409).json({error: 'The game changed while you were guessing. Try again.'});
       }
-      if (err?.name === 'TransactionCanceledException') {
-        const alreadyGuessed = err.CancellationReasons?.[0]?.Code === 'ConditionalCheckFailed';
+      const cancel = err as {name?: string; CancellationReasons?: {Code?: string}[]};
+      if (cancel?.name === 'TransactionCanceledException') {
+        const alreadyGuessed = cancel.CancellationReasons?.[0]?.Code === 'ConditionalCheckFailed';
         return res.status(409).json({
           error: alreadyGuessed ? 'That entry has already been guessed'
               : 'The game changed while you were guessing. Try again.'
@@ -540,11 +538,11 @@ router.post('/games/:gameId/skip-turn', async (req, res) => {
 
     const turnOrder = rotate(current);
 
-    if (!await writeTurnOrder(gameId, game.turnOrder, turnOrder)) {
+    if (!await writeTurnOrder(gameId, current, turnOrder)) {
       return res.status(409).json({error: 'The game changed. Try again.'});
     }
 
-    const io = (req as any).io;
+    const io = getIo(req);
     emitNextTurn(io, gameId, turnOrder);
 
     res.json({success: true, turnOrder});
@@ -571,7 +569,7 @@ router.delete('/games/:gameId/players/:playerName', async (req, res) => {
       return res.status(409).json({error: 'The game changed. Try again.'});
     }
 
-    const io = (req as any).io;
+    const io = getIo(req);
     io.to(gameId).emit('playerRemoved', {playerName, turnOrder});
     emitNextTurn(io, gameId, turnOrder);
 
@@ -611,7 +609,7 @@ router.post('/games/:gameId/transfer-host', async (req, res) => {
       }
     }));
 
-    const io = (req as any).io;
+    const io = getIo(req);
     io.to(gameId).emit('hostTransferred', {
       newHostName: targetPlayerName,
       hostToken: newHostToken
@@ -643,7 +641,7 @@ router.get('/games/:gameId/entries', asyncHandler(async (req, res) => {
   const started = Boolean(game?.started);
   const requester = req.header('x-player-token');
   // What the requester may see (#29): never authorToken; text and author only once they can't spoil the game.
-  res.json(items.map((e: any) => {
+  res.json(items.map(e => {
     const mine = tokensMatch(e.authorToken, requester);
     const guessed = Boolean(e.guessed);
     const entry: Record<string, unknown> = {
@@ -707,7 +705,7 @@ router.post('/games/:gameId/reset', async (req, res) => {
     }));
 
     // 3. Emit Reset Event
-    const io = (req as any).io;
+    const io = getIo(req);
     io.to(gameId).emit("gameReset");
 
     res.json({success: true, message: 'Game reset with fresh slate'});
