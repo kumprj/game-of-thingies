@@ -152,9 +152,12 @@ describe('useGameLogic socket events', () => {
     const {unmount} = await mount();
     expect(socket.emit).toHaveBeenCalledWith('joinGame', 'test-room-1');
     unmount();
-    for (const name of ['entriesUpdated', 'gameStarted', 'wrongAnswer', 'gameReset', 'scoreUpdated', 'nextTurn']) {
-      expect(socket.off).toHaveBeenCalledWith(name);
+    // Each listener is removed by its own handler, never by event name alone
+    for (const name of ['entriesUpdated', 'gameStarted', 'wrongAnswer', 'gameReset', 'scoreUpdated', 'nextTurn',
+      'connect', 'disconnect']) {
+      expect(socket.off).toHaveBeenCalledWith(name, handler(name));
     }
+    expect((socket.off as any).mock.calls.every((call: unknown[]) => call.length === 2)).toBe(true);
   });
 
   it('refetches the answers when someone adds one', async () => {
@@ -315,7 +318,7 @@ describe('useGameLogic actions', () => {
     await act(async () => { await result.current.addEntry(); });
     expect(axios.post).not.toHaveBeenCalled();
 
-    const started = await mount({entries: [entry('1', 'A', 'Ben', {revealed: true})]});
+    const started = await mount({game: {...game, started: true}, entries: [entry('1', 'A', 'Ben')]});
     await waitFor(() => expect(started.result.current.started).toBe(true));
     act(() => { started.result.current.setAuthorName('Ann'); started.result.current.setEntryText('Late'); });
     await act(async () => { await started.result.current.addEntry(); });
@@ -394,8 +397,15 @@ describe('useGameLogic actions', () => {
     }
   });
 
+  it('reads whether the game has started from the game, not from the answers', async () => {
+    const revealed = await mount({entries: [entry('1', 'A', 'Ben', {revealed: true})]});
+    expect(revealed.result.current.started).toBe(false);
+    const started = await mount({game: {...game, started: true}});
+    await waitFor(() => expect(started.result.current.started).toBe(true));
+  });
+
   it('starts a new round with a trimmed question and a clean slate', async () => {
-    const {result} = await mount({entries: [entry('1', 'A', 'Ben', {revealed: true})]});
+    const {result} = await mount({game: {...game, started: true}, entries: [entry('1', 'A', 'Ben')]});
     await waitFor(() => expect(result.current.started).toBe(true));
     act(() => result.current.setNewQuestion('  Best pizza?  '));
     (axios.post as any).mockResolvedValueOnce({});
@@ -419,12 +429,7 @@ describe('useGameLogic actions', () => {
     const guess = async (result: any, response: object | Error) => {
       if (response instanceof Error) (axios.post as any).mockRejectedValueOnce(response);
       else (axios.post as any).mockResolvedValueOnce({data: response});
-      vi.useFakeTimers(); // guessAuthor pauses 1.5s before it posts
-      await act(async () => {
-        const done = result.current.guessAuthor('e1', 'Ben');
-        await vi.advanceTimersByTimeAsync(1500);
-        await done;
-      });
+      await act(async () => { await result.current.guessAuthor('e1', 'Ben'); });
     };
 
     it('posts the guess as the current player and celebrates a right one', async () => {
@@ -435,23 +440,24 @@ describe('useGameLogic actions', () => {
       expect(axios.post).toHaveBeenCalledWith('/api/games/test-room-1/entries/e1/guess',
           {guesserName: 'Ann', guess: 'Ben'});
       expect(result.current.toast).toMatchObject({message: 'Correct!', type: 'success'});
-      expect(result.current.guessedEntryIds.has('e1')).toBe(true);
       expect(result.current.guessingEntry).toBeNull();
       expect(result.current.guessLoading).toBe(false);
     });
 
-    it('uses the updated answer the server sends back', async () => {
-      const {result} = await mount({entries: [entry('e1', 'Offside', 'Ben')]});
+    it('refetches the answers after a right guess', async () => {
+      const fixtures = {entries: [entry('e1', 'Offside', 'Ben')]};
+      const {result} = await mount(fixtures);
       await waitFor(() => expect(result.current.entries).toHaveLength(1));
-      await guess(result, {isCorrect: true, entry: entry('e1', 'Offside', 'Ben', {guessed: true})});
-      expect(result.current.entries[0]).toMatchObject({guessed: true});
+      expect(result.current.entries[0].guessed).toBeFalsy();
+      fixtures.entries = [entry('e1', 'Offside', 'Ben', {guessed: true})];
+      await guess(result, {isCorrect: true});
+      await waitFor(() => expect(result.current.entries[0]).toMatchObject({guessed: true}));
     });
 
     it('says so when the guess is wrong', async () => {
       const {result} = await mount({entries: [entry('e1', 'Offside', 'Ben')]});
       await guess(result, {isCorrect: false});
       expect(result.current.toast).toMatchObject({message: 'Wrong answer!', type: 'error', duration: 7000});
-      expect(result.current.guessedEntryIds.size).toBe(0);
     });
 
     it('shows the server\'s message when a guess is refused', async () => {
@@ -486,10 +492,11 @@ describe('useGameLogic derived state', () => {
     window.localStorage.clear();
   });
 
-  it('sorts answers alphabetically so they do not give away who wrote them', async () => {
-    const {result} = await mount({entries: [entry('1', 'banana', 'Ann'), entry('2', 'Apple', 'Ben')]});
+  it('sorts answers alphabetically once the game starts so they do not give away who wrote them', async () => {
+    const {result} = await mount({game: {...game, started: true},
+      entries: [entry('1', 'banana', 'Ann'), entry('2', 'Apple', 'Ben')]});
     await waitFor(() => expect(result.current.entries).toHaveLength(2));
-    expect(result.current.entries.map(e => e.text)).toEqual(['Apple', 'banana']);
+    expect(result.current.sortedEntriesForDisplay.map(e => e.text)).toEqual(['Apple', 'banana']);
   });
 
   it('lists answers in the order they came in until the game starts', async () => {
