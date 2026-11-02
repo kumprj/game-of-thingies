@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import {buildTurnOrder} from './turnOrder';
+import {buildTurnOrder, rotate} from './turnOrder';
 
 const players = ['Ann', 'Ben', 'Cy', 'Di'];
 
@@ -36,5 +36,24 @@ describe('buildTurnOrder', () => {
 
   it('ignores timestamps for names that are not players', () => {
     expect(buildTurnOrder(['Ann', 'Ben'], {Ann: 5, Ben: 9, Ghost: 1})[0]).toBe('Ann');
+  });
+});
+
+describe('rotate', () => {
+  it('moves the first player to the back', () => {
+    expect(rotate(['Ann', 'Ben', 'Cy'])).toEqual(['Ben', 'Cy', 'Ann']);
+  });
+
+  it('keeps a single player or an empty order as is', () => {
+    expect(rotate(['Ann'])).toEqual(['Ann']);
+    expect(rotate([])).toEqual([]);
+  });
+
+  it('returns a new array and does not mutate the input', () => {
+    const input = ['Ann', 'Ben'];
+    const out = rotate(input);
+    expect(input).toEqual(['Ann', 'Ben']);
+    expect(out).not.toBe(input);
+    expect(rotate(['Ann'])).not.toBe(input);
   });
 });

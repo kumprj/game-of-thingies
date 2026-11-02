@@ -6,36 +6,42 @@ import Foundation
 
 struct Entry: Decodable, Identifiable, Hashable {
     let entryId: String
-    let authorName: String
+    /// Hidden by the server until the entry is guessed (or it is yours).
+    let authorName: String?
+    /// Hidden by the server for other players' entries before the game starts.
     let text: String
     let createdAt: String
     let revealed: Bool
     let guessed: Bool
+    /// Written by this device (the server matches the x-player-token header).
+    let mine: Bool
 
     var id: String { entryId }
 
-    init(entryId: String, authorName: String, text: String, createdAt: String = "",
-         revealed: Bool = false, guessed: Bool = false) {
+    init(entryId: String, authorName: String? = nil, text: String = "", createdAt: String = "",
+         revealed: Bool = false, guessed: Bool = false, mine: Bool = false) {
         self.entryId = entryId
         self.authorName = authorName
         self.text = text
         self.createdAt = createdAt
         self.revealed = revealed
         self.guessed = guessed
+        self.mine = mine
     }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         entryId = try c.decode(String.self, forKey: .entryId)
-        authorName = try c.decode(String.self, forKey: .authorName)
-        text = try c.decode(String.self, forKey: .text)
+        authorName = try c.decodeIfPresent(String.self, forKey: .authorName)
+        text = try c.decodeIfPresent(String.self, forKey: .text) ?? ""
         createdAt = try c.decodeIfPresent(String.self, forKey: .createdAt) ?? ""
         revealed = try c.decodeIfPresent(Bool.self, forKey: .revealed) ?? false
         guessed = try c.decodeIfPresent(Bool.self, forKey: .guessed) ?? false
+        mine = try c.decodeIfPresent(Bool.self, forKey: .mine) ?? false
     }
 
     private enum CodingKeys: String, CodingKey {
-        case entryId, authorName, text, createdAt, revealed, guessed
+        case entryId, authorName, text, createdAt, revealed, guessed, mine
     }
 }
 
@@ -46,6 +52,8 @@ struct Game: Decodable {
     var started: Bool?
     var turnOrder: [String]?
     var hostName: String?
+    /// Everyone who answered this round; sent once the game has started.
+    var players: [String]?
 }
 
 struct Score: Decodable, Hashable {

@@ -19,3 +19,8 @@ export function buildTurnOrder(players: string[], lastTurn: Record<string, numbe
   if (firstIndex > 0) shuffled.unshift(...shuffled.splice(firstIndex, 1));
   return shuffled;
 }
+
+/** Moves the first player to the back. Returns a new array; zero or one players stay as they are. */
+export function rotate(turnOrder: string[]) {
+  return turnOrder.length > 1 ? [...turnOrder.slice(1), turnOrder[0]] : [...turnOrder];
+}

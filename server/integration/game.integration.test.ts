@@ -1,6 +1,7 @@
 import {afterAll, beforeAll, describe, expect, it, vi} from 'vitest';
 import type {AddressInfo} from 'net';
 import {CreateTableCommand, DeleteTableCommand, DynamoDBClient} from '@aws-sdk/client-dynamodb';
+import {DynamoDBDocumentClient, QueryCommand} from '@aws-sdk/lib-dynamodb';
 import {io as connect, type Socket} from 'socket.io-client';
 
 // Plays real games through the HTTP API and Socket.IO against DynamoDB Local, so every route,
@@ -87,7 +88,15 @@ async function addEntry(gameId: string, authorName: string, text: string) {
   return data.entryId;
 }
 
-const entries = async (gameId: string) => (await api<any[]>('GET', `/api/games/${gameId}/entries`)).data;
+/** Entries as stored (answers, authors and tokens included), read straight from DynamoDB for assertions. */
+const entries = async (gameId: string) => (await DynamoDBDocumentClient.from(dynamo).send(new QueryCommand({
+  TableName: tableNames.entries,
+  KeyConditionExpression: 'gameId = :g',
+  ExpressionAttributeValues: {':g': gameId},
+}))).Items as any[];
+/** Entries as the API shows them to a requester, who may identify as a player with a token (#29). */
+const entriesAs = async (gameId: string, token?: string) =>
+  (await api<any[]>('GET', `/api/games/${gameId}/entries`, undefined, token ? {'x-player-token': token} : {})).data;
 const game = async (gameId: string) => (await api<any>('GET', `/api/games/${gameId}`)).data;
 const scores = async (gameId: string) => (await api<any[]>('GET', `/api/games/${gameId}/scores`)).data;
 
@@ -187,7 +196,7 @@ describe('creating and loading games', () => {
 
   it('404s an unknown game but lists no entries or scores for it', async () => {
     expect(await api('GET', '/api/games/ZZZZ-unknown')).toEqual({status: 404, data: {error: 'Game not found'}});
-    expect(await entries('ZZZZ-unknown')).toEqual([]);
+    expect(await entriesAs('ZZZZ-unknown')).toEqual([]);
     expect(await scores('ZZZZ-unknown')).toEqual([]);
   });
 });
@@ -226,7 +235,7 @@ describe('a full round', () => {
       {guesserName: first, guess: 'Nobody'});
     expect(wrong).toEqual({status: 200, data: {isCorrect: false}});
     expect(await room.next('wrongAnswer', mark)).toEqual({
-      playerName: first, authorName: someoneElses.authorName, guess: someoneElses.text,
+      playerName: first, guess: someoneElses.text,
     });
     const afterWrong = await room.next('nextTurn', mark);
     expect(afterWrong.currentPlayer).toBe(second);
@@ -254,7 +263,7 @@ describe('a full round', () => {
     mark = room.events.length;
     expect((await api('POST', `/api/games/${gameId}/reset`, {question: '  Best pizza toppings  '})).status).toBe(200);
     await room.next('gameReset', mark);
-    expect(await entries(gameId)).toEqual([]);
+    expect(await entriesAs(gameId)).toEqual([]);
     expect(await game(gameId)).toMatchObject({question: 'Best pizza toppings', started: false});
     expect(await scores(gameId)).toHaveLength(1);
   });
@@ -677,9 +686,123 @@ describe('finishing a round', () => {
   });
 });
 
+describe('entry privacy (#29)', () => {
+  async function lobby() {
+    const gameId = await createGame('Host');
+    const ids = {
+      ann: (await api('POST', `/api/games/${gameId}/entries`, {authorName: 'Ann', text: 'Secret A'}, {'x-player-token': 'tok-ann'})).data.entryId as string,
+      ben: (await api('POST', `/api/games/${gameId}/entries`, {authorName: 'Ben', text: 'Secret B'}, {'x-player-token': 'tok-ben'})).data.entryId as string,
+      cy: (await api('POST', `/api/games/${gameId}/entries`, {authorName: 'Cy', text: 'Secret C'}, {'x-player-token': 'tok-cy'})).data.entryId as string,
+    };
+    return {gameId, ids};
+  }
+
+  it('before the game starts shows only your own text and author, flagged mine', async () => {
+    const {gameId, ids} = await lobby();
+    const list = await entriesAs(gameId, 'tok-ann');
+    expect(list).toHaveLength(3);
+    const mine = list.find(e => e.entryId === ids.ann);
+    expect(mine).toMatchObject({gameId, authorName: 'Ann', text: 'Secret A', mine: true, revealed: false, guessed: false});
+    for (const other of list.filter(e => e.entryId !== ids.ann)) {
+      expect(other).toMatchObject({gameId, mine: false, revealed: false, guessed: false});
+      expect(other).not.toHaveProperty('text');
+      expect(other).not.toHaveProperty('authorName');
+    }
+  });
+
+  it('shows a spectator or a wrong token no text, author or mine flag before the start', async () => {
+    const {gameId} = await lobby();
+    for (const list of [await entriesAs(gameId), await entriesAs(gameId, 'tok-unknown')]) {
+      expect(list).toHaveLength(3);
+      for (const e of list) {
+        expect(e).not.toHaveProperty('text');
+        expect(e).not.toHaveProperty('authorName');
+        expect(e.mine).toBe(false);
+      }
+    }
+  });
+
+  it('never returns the author token, before or after the start', async () => {
+    const {gameId} = await lobby();
+    const check = async () => {
+      for (const token of [undefined, 'tok-ann']) {
+        for (const e of await entriesAs(gameId, token)) expect(e).not.toHaveProperty('authorToken');
+      }
+    };
+    await check();
+    await api('POST', `/api/games/${gameId}/start`);
+    await check();
+  });
+
+  it('after the start shows every answer but only reveals authors that were guessed, plus your own', async () => {
+    const {gameId, ids} = await lobby();
+    await api('POST', `/api/games/${gameId}/start`);
+    const spectator = await entriesAs(gameId);
+    expect(spectator.map(e => e.text).sort()).toEqual(['Secret A', 'Secret B', 'Secret C']);
+    for (const e of spectator) {
+      expect(e).not.toHaveProperty('authorName');
+      expect(e).toMatchObject({revealed: true, guessed: false, mine: false});
+    }
+
+    const asBen = await entriesAs(gameId, 'tok-ben');
+    expect(asBen.find(e => e.entryId === ids.ben)).toMatchObject({authorName: 'Ben', mine: true});
+    expect(asBen.find(e => e.entryId === ids.ann)).not.toHaveProperty('authorName');
+  });
+
+  it('reveals the author once an answer is guessed correctly', async () => {
+    const {gameId, ids} = await lobby();
+    await api('POST', `/api/games/${gameId}/start`);
+    const first = (await game(gameId)).turnOrder[0] as string;
+    const names: Record<string, 'ann' | 'ben' | 'cy'> = {Ann: 'ann', Ben: 'ben', Cy: 'cy'};
+    const targetName = Object.keys(names).find(n => n !== first)!;
+    const guess = await api('POST', `/api/games/${gameId}/entries/${ids[names[targetName]]}/guess`,
+      {guesserName: first, guess: targetName}, {'x-player-token': `tok-${names[first]}`});
+    expect(guess.data).toEqual({isCorrect: true});
+
+    const spectator = await entriesAs(gameId);
+    expect(spectator.find(e => e.entryId === ids[names[targetName]])).toMatchObject({guessed: true, authorName: targetName});
+    expect(spectator.filter(e => e.guessed !== true).every(e => !('authorName' in e))).toBe(true);
+  });
+
+  it('keeps a wrong guess from naming the real author', async () => {
+    const {gameId, ids} = await lobby();
+    const room = await joinRoom(gameId);
+    await api('POST', `/api/games/${gameId}/start`);
+    const first = (await game(gameId)).turnOrder[0] as string;
+    const names: Record<string, 'ann' | 'ben' | 'cy'> = {Ann: 'ann', Ben: 'ben', Cy: 'cy'};
+    const targetName = Object.keys(names).find(n => n !== first)!;
+    const mark = room.events.length;
+    const wrong = await api('POST', `/api/games/${gameId}/entries/${ids[names[targetName]]}/guess`,
+      {guesserName: first, guess: 'Nobody'}, {'x-player-token': `tok-${names[first]}`});
+    expect(wrong.data).toEqual({isCorrect: false});
+    const payload = await room.next('wrongAnswer', mark);
+    expect(payload).not.toHaveProperty('authorName');
+    expect(payload).toEqual({playerName: first, guess: expect.stringMatching(/^Secret /)});
+    expect((await entriesAs(gameId)).every(e => e.guessed === false && !('authorName' in e))).toBe(true);
+  });
+
+  it('returns the player names with the game once it starts', async () => {
+    const {gameId} = await lobby();
+    expect(await game(gameId)).not.toHaveProperty('players');
+    await api('POST', `/api/games/${gameId}/start`);
+    const data = await game(gameId);
+    expect([...data.players].sort()).toEqual(['Ann', 'Ben', 'Cy']);
+    expect(data).not.toHaveProperty('hostToken');
+    expect(data).not.toHaveProperty('playerTokens');
+  });
+
+  it('still binds and checks player tokens with the single-update token write', async () => {
+    const {gameId, ids} = await lobby();
+    const stolen = await api('PATCH', `/api/games/${gameId}/entries/${ids.ann}`, {text: 'Hacked'}, {'x-player-token': 'tok-ben'});
+    expect(stolen.status).toBe(403);
+    const dupe = await api('POST', `/api/games/${gameId}/entries`, {authorName: 'ann', text: 'x'}, {'x-player-token': 'tok-ben'});
+    expect(dupe.status).toBe(403);
+  });
+});
+
 describe('unknown games', () => {
   it('lists no entries or scores, and 404s the game itself', async () => {
-    expect((await api('GET', '/api/games/ZZZZ/entries')).data).toEqual([]);
+    expect(await api('GET', '/api/games/ZZZZ/entries')).toEqual({status: 200, data: []});
     expect((await api('GET', '/api/games/ZZZZ/scores')).data).toEqual([]);
     expect(await api('GET', '/api/games/ZZZZ')).toEqual({status: 404, data: {error: 'Game not found'}});
   });
@@ -794,7 +917,7 @@ describe('editing and deleting entries (#52)', () => {
     const editRes = await api('PATCH', `/api/games/${gameId}/entries/${entryId}`, {text: 'Updated Text'}, {'x-player-token': token});
     expect(editRes.status).toBe(200);
     await room.next('entriesUpdated', mark1);
-    expect((await entries(gameId)).find(e => e.entryId === entryId).text).toBe('Updated Text');
+    expect((await entriesAs(gameId, token)).find(e => e.entryId === entryId).text).toBe('Updated Text');
 
     // Missing or wrong author token cannot delete
     const noTokenDel = await api('DELETE', `/api/games/${gameId}/entries/${entryId}`);
@@ -810,7 +933,7 @@ describe('editing and deleting entries (#52)', () => {
     const delRes = await api('DELETE', `/api/games/${gameId}/entries/${entryId}`, undefined, {'x-player-token': token});
     expect(delRes.status).toBe(200);
     await room.next('entriesUpdated', mark2);
-    expect((await entries(gameId)).find(e => e.entryId === entryId)).toBeUndefined();
+    expect((await entriesAs(gameId, token)).find(e => e.entryId === entryId)).toBeUndefined();
   });
 });
 

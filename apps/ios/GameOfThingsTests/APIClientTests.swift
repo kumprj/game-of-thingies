@@ -85,6 +85,22 @@ struct APIClientTests {
                                   createdAt: "2026-01-01T00:00:00Z", revealed: true, guessed: false)])
     }
 
+    @Test func entriesDecodeWithoutTextOrAuthorAndWithMine() async throws {
+        StubURLProtocol.respond = { _ in
+            (200, #"[{"entryId":"1","gameId":"G","createdAt":"t","revealed":false,"guessed":false},{"entryId":"2","gameId":"G","authorName":"Ann","text":"Tacos","createdAt":"t","revealed":false,"guessed":false,"mine":true}]"#)
+        }
+        let entries = try await api.entries("ABCD")
+        #expect(entries[0].authorName == nil && entries[0].text.isEmpty && !entries[0].mine)
+        #expect(entries[1].authorName == "Ann" && entries[1].text == "Tacos" && entries[1].mine)
+    }
+
+    @Test func entriesRequestSendsPlayerToken() async throws {
+        StubURLProtocol.respond = { _ in (200, "[]") }
+        _ = try await api.entries("ABCD")
+        let request = try #require(StubURLProtocol.requests.first)
+        #expect(request.value(forHTTPHeaderField: "x-player-token") == api.playerToken())
+    }
+
     @Test func unknownGameThrowsNotFound() async {
         StubURLProtocol.respond = { _ in (404, #"{"error":"Game not found"}"#) }
         do {

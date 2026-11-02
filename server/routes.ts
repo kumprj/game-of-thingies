@@ -2,7 +2,7 @@ import {timingSafeEqual} from 'crypto';
 import express from 'express';
 import {v4 as uuidv4} from 'uuid';
 import {ddb, expiresAt, tables} from './db';
-import {buildTurnOrder} from './turnOrder';
+import {buildTurnOrder, rotate} from './turnOrder';
 import {validateGameSetup} from './gameSetup';
 import {
   GetCommand,
@@ -31,6 +31,43 @@ function isHost(game: Record<string, any> | undefined, req: express.Request) {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
+/** True when a DynamoDB error is a failed ConditionExpression. */
+function isConditionalCheckFailure(err: unknown) {
+  return (err as {name?: string})?.name === 'ConditionalCheckFailedException';
+}
+
+/** Every entry of a game, straight from the table (includes tokens; never send it to clients as is). */
+async function queryEntries(gameId: string): Promise<Record<string, any>[]> {
+  const result = await ddb.send(new QueryCommand({
+    TableName: tables.entries,
+    KeyConditionExpression: 'gameId = :g',
+    ExpressionAttributeValues: {':g': gameId}
+  }));
+  return result.Items || [];
+}
+
+/** True when two strings are equal, compared in constant time. */
+function tokensMatch(stored: unknown, given: unknown) {
+  if (typeof stored !== 'string' || typeof given !== 'string') return false;
+  const a = Buffer.from(stored);
+  const b = Buffer.from(given);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+/**
+ * True when the entry is bound to a different device than the requester: either the entry's own
+ * author token or the token its author's name was claimed with. Unbound entries match anyone.
+ */
+function authorTokenMismatch(item: Record<string, any>, game: Record<string, any>, req: express.Request) {
+  const playerToken = req.header('x-player-token');
+  const boundToken = item.authorToken || game.playerTokens?.[item.authorName.toLowerCase()];
+  return Boolean(boundToken && (!playerToken || boundToken !== playerToken));
+}
+
+function emitNextTurn(io: any, gameId: string, turnOrder: string[]) {
+  io.to(gameId).emit('nextTurn', {currentPlayer: turnOrder[0] || null, turnOrder});
+}
+
 /**
  * Saves a new turn order only if it still equals `previous` (what the caller read), so two
  * simultaneous changes can't overwrite each other. Returns false when someone else changed it first.
@@ -46,7 +83,7 @@ async function writeTurnOrder(gameId: string, previous: string[], next: string[]
     }));
     return true;
   } catch (err: any) {
-    if (err?.name === 'ConditionalCheckFailedException') return false;
+    if (isConditionalCheckFailure(err)) return false;
     throw err;
   }
 }
@@ -83,13 +120,14 @@ router.post('/createGame', async (req, res) => {
             title: name,
             hostName: name,
             hostToken,
+            playerTokens: {},
             expiresAt: expiresAt()
           },
           ConditionExpression: 'attribute_not_exists(gameId)'
         }));
         return res.json({gameId, hostToken});
       } catch (error) {
-        if ((error as {name?: string}).name !== 'ConditionalCheckFailedException') throw error;
+        if (!isConditionalCheckFailure(error)) throw error;
       }
     }
     throw new Error(`No free game code after ${MAX_CODE_ATTEMPTS} attempts`);
@@ -133,12 +171,8 @@ router.post('/games/:gameId/entries', async (req, res) => {
       return res.status(403).json({error: 'A player with this name already exists in this game'});
     }
 
-    const existing = await ddb.send(new QueryCommand({
-      TableName: tables.entries,
-      KeyConditionExpression: 'gameId = :g',
-      ExpressionAttributeValues: {':g': gameId}
-    }));
-    const taken = (existing.Items || []).some(
+    const existing = await queryEntries(gameId);
+    const taken = existing.some(
         (e: any) => e.authorName.toLowerCase() === authorName.toLowerCase());
     if (taken) return res.status(409).json({error: 'That name is already taken in this game'});
 
@@ -160,19 +194,26 @@ router.post('/games/:gameId/entries', async (req, res) => {
 
     if (playerToken) {
       try {
-        await ddb.send(new UpdateCommand({
-          TableName: tables.games,
-          Key: {gameId},
-          UpdateExpression: 'SET playerTokens = if_not_exists(playerTokens, :empty), expiresAt = :e',
-          ExpressionAttributeValues: {':empty': {}, ':e': expiresAt()}
-        }));
-        await ddb.send(new UpdateCommand({
+        const bindToken = () => ddb.send(new UpdateCommand({
           TableName: tables.games,
           Key: {gameId},
           UpdateExpression: 'SET playerTokens.#p = :token, expiresAt = :e',
           ExpressionAttributeNames: {'#p': normName},
           ExpressionAttributeValues: {':token': playerToken, ':e': expiresAt()}
         }));
+        try {
+          await bindToken();
+        } catch (err: any) {
+          if (err?.name !== 'ValidationException') throw err;
+          // Game created before playerTokens existed on new games: create the map, then bind.
+          await ddb.send(new UpdateCommand({
+            TableName: tables.games,
+            Key: {gameId},
+            UpdateExpression: 'SET playerTokens = if_not_exists(playerTokens, :empty), expiresAt = :e',
+            ExpressionAttributeValues: {':empty': {}, ':e': expiresAt()}
+          }));
+          await bindToken();
+        }
       } catch (err) {
         console.error('Failed to save playerToken:', err);
       }
@@ -213,10 +254,7 @@ router.patch('/games/:gameId/entries/:entryId', async (req, res) => {
     const item = entryResult.Item;
     if (!item) return res.status(404).json({error: 'Entry not found'});
 
-    const playerToken = req.header('x-player-token');
-    const authorLower = item.authorName.toLowerCase();
-    const boundToken = item.authorToken || game.playerTokens?.[authorLower];
-    if (boundToken && (!playerToken || boundToken !== playerToken)) {
+    if (authorTokenMismatch(item, game, req)) {
       return res.status(403).json({error: 'Only the author can edit this entry'});
     }
 
@@ -252,12 +290,10 @@ router.delete('/games/:gameId/entries/:entryId', async (req, res) => {
     const item = entryResult.Item;
     if (!item) return res.status(404).json({error: 'Entry not found'});
 
-    const playerToken = req.header('x-player-token');
-    const authorLower = item.authorName.toLowerCase();
-    const boundToken = item.authorToken || game.playerTokens?.[authorLower];
-    if (boundToken && (!playerToken || boundToken !== playerToken)) {
+    if (authorTokenMismatch(item, game, req)) {
       return res.status(403).json({error: 'Only the author can delete this entry'});
     }
+    const authorLower = item.authorName.toLowerCase();
 
     await ddb.send(new DeleteCommand({
       TableName: tables.entries,
@@ -296,15 +332,8 @@ router.post('/games/:gameId/start', async (req, res) => {
     if (!isHost(game, req)) return res.status(403).json({error: 'Only the host can start the game'});
     if (game.started) return res.status(409).json({error: 'Game already started'});
 
-    const entries = await ddb.send(new QueryCommand({
-      TableName: tables.entries,
-      KeyConditionExpression: 'gameId = :g',
-      ExpressionAttributeValues: {':g': gameId}
-    }));
-
-    const entryItems = entries.Items || [];
-    const players = entryItems.map((e: any) => e.authorName)
-        .filter((v: any, i: number, a: any[]) => a.indexOf(v) === i);
+    const entryItems = await queryEntries(gameId);
+    const players: string[] = [...new Set(entryItems.map((e: any) => e.authorName as string))];
 
     if (entryItems.length === 0) {
       return res.status(400).json({error: 'Add at least one entry before starting'});
@@ -322,28 +351,26 @@ router.post('/games/:gameId/start', async (req, res) => {
       await ddb.send(new UpdateCommand({
         TableName: tables.games,
         Key: {gameId},
-        UpdateExpression: 'SET turnOrder = :to, started = :s, lastTurn = if_not_exists(lastTurn, :empty), expiresAt = :e',
+        UpdateExpression: 'SET turnOrder = :to, players = :pl, started = :s, lastTurn = if_not_exists(lastTurn, :empty), expiresAt = :e',
         ConditionExpression: 'attribute_not_exists(started) OR started = :notStarted',
         ExpressionAttributeValues: {
-          ':to': shuffled, ':s': true, ':empty': {}, ':e': expiresAt(), ':notStarted': false
+          ':to': shuffled, ':pl': players, ':s': true, ':empty': {}, ':e': expiresAt(), ':notStarted': false
         }
       }));
     } catch (err: any) {
-      if (err?.name === 'ConditionalCheckFailedException') {
+      if (isConditionalCheckFailure(err)) {
         return res.status(409).json({error: 'Game already started'});
       }
       throw err;
     }
 
     // Reveal entries
-    for (const entry of entryItems) {
-      await ddb.send(new UpdateCommand({
-        TableName: tables.entries,
-        Key: {gameId: gameId, entryId: entry.entryId},
-        UpdateExpression: 'set revealed = :r, expiresAt = :e',
-        ExpressionAttributeValues: {':r': true, ':e': expiresAt()}
-      }));
-    }
+    await Promise.all(entryItems.map(entry => ddb.send(new UpdateCommand({
+      TableName: tables.entries,
+      Key: {gameId: gameId, entryId: entry.entryId},
+      UpdateExpression: 'set revealed = :r, expiresAt = :e',
+      ExpressionAttributeValues: {':r': true, ':e': expiresAt()}
+    }))));
 
     const io = (req as any).io;
     io.to(gameId).emit("gameStarted", {turnOrder: shuffled});
@@ -362,15 +389,15 @@ router.post('/games/:gameId/entries/:entryId/guess', async (req, res) => {
   const io = (req as any).io;
 
   try {
-    const entryResult = await ddb.send(new GetCommand({
-      TableName: tables.entries, Key: {gameId, entryId}
-    }));
+    const [entryResult, game] = await Promise.all([
+      ddb.send(new GetCommand({TableName: tables.entries, Key: {gameId, entryId}})),
+      getGame(gameId)
+    ]);
     const item = entryResult.Item;
     if (!item) return res.status(404).json({error: "Entry not found"});
 
     const isCorrect = item.authorName === guess;
 
-    const game = await getGame(gameId);
     let turnOrder: string[] = game?.turnOrder || [];
     if (!turnOrder.includes(guesserName)) {
       return res.status(400).json({error: "Guesser is not in the turn order"});
@@ -400,7 +427,7 @@ router.post('/games/:gameId/entries/:entryId/guess', async (req, res) => {
     // Rotate on a wrong guess; drop the author on a correct one.
     const nextOrder = isCorrect
         ? turnOrder.filter((name: string) => name !== item.authorName)
-        : turnOrder.length > 1 ? [...turnOrder.slice(1), turnOrder[0]] : turnOrder;
+        : rotate(turnOrder);
 
     // The turn order is only written if it still equals what was read, so a simultaneous skip,
     // removal or guess can't be overwritten with a stale copy. lastTurn is a single-key write
@@ -441,7 +468,7 @@ router.post('/games/:gameId/entries/:entryId/guess', async (req, res) => {
         await ddb.send(new UpdateCommand(gameUpdate));
       }
     } catch (err: any) {
-      if (err?.name === 'ConditionalCheckFailedException') {
+      if (isConditionalCheckFailure(err)) {
         return res.status(409).json({error: 'The game changed while you were guessing. Try again.'});
       }
       if (err?.name === 'TransactionCanceledException') {
@@ -461,17 +488,17 @@ router.post('/games/:gameId/entries/:entryId/guess', async (req, res) => {
         authorName: item.authorName,
         guess: item.text
       });
-      io.to(gameId).emit("nextTurn", {currentPlayer: turnOrder[0] || null, turnOrder});
+      emitNextTurn(io, gameId, turnOrder);
       io.to(gameId).emit("entriesUpdated");
       return res.json({isCorrect: true});
     }
 
+    // No authorName here: a wrong guess must not reveal who really wrote the answer.
     io.to(gameId).emit("wrongAnswer", {
       playerName: guesserName,
-      authorName: item.authorName,
       guess: item.text
     });
-    io.to(gameId).emit("nextTurn", {currentPlayer: turnOrder[0] || null, turnOrder});
+    emitNextTurn(io, gameId, turnOrder);
     return res.json({isCorrect: false});
   } catch (err) {
     console.error(err);
@@ -491,14 +518,14 @@ router.post('/games/:gameId/skip-turn', async (req, res) => {
     const current: string[] = game.turnOrder || [];
     if (current.length === 0) return res.status(400).json({error: 'No turns to skip'});
 
-    const turnOrder = current.length > 1 ? [...current.slice(1), current[0]] : current;
+    const turnOrder = rotate(current);
 
     if (!await writeTurnOrder(gameId, game.turnOrder, turnOrder)) {
       return res.status(409).json({error: 'The game changed. Try again.'});
     }
 
     const io = (req as any).io;
-    io.to(gameId).emit('nextTurn', {currentPlayer: turnOrder[0] || null, turnOrder});
+    emitNextTurn(io, gameId, turnOrder);
 
     res.json({success: true, turnOrder});
   } catch (err) {
@@ -524,7 +551,7 @@ router.delete('/games/:gameId/players/:playerName', async (req, res) => {
 
     const io = (req as any).io;
     io.to(gameId).emit('playerRemoved', {playerName, turnOrder});
-    io.to(gameId).emit('nextTurn', {currentPlayer: turnOrder[0] || null, turnOrder});
+    emitNextTurn(io, gameId, turnOrder);
 
     res.json({success: true, turnOrder});
   } catch (err) {
@@ -573,8 +600,6 @@ router.post('/games/:gameId/transfer-host', async (req, res) => {
   }
 });
 
-// ... Add the other GET routes (get game, get entries, get scores) here ...
-// They follow the same pattern: fetch from DDB, return JSON.
 router.get('/games/:gameId', async (req, res) => {
   const {gameId} = req.params;
   // Never expose the host token or player tokens to players.
@@ -587,12 +612,25 @@ router.get('/games/:gameId', async (req, res) => {
 
 router.get('/games/:gameId/entries', async (req, res) => {
   const {gameId} = req.params;
-  const result = await ddb.send(new QueryCommand({
-    TableName: tables.entries,
-    KeyConditionExpression: 'gameId = :g',
-    ExpressionAttributeValues: {':g': gameId}
+  const [items, game] = await Promise.all([queryEntries(gameId), getGame(gameId)]);
+  const started = Boolean(game?.started);
+  const requester = req.header('x-player-token');
+  // What the requester may see (#29): never authorToken; text and author only once they can't spoil the game.
+  res.json(items.map((e: any) => {
+    const mine = tokensMatch(e.authorToken, requester);
+    const guessed = Boolean(e.guessed);
+    const entry: Record<string, unknown> = {
+      entryId: e.entryId,
+      gameId: e.gameId,
+      createdAt: e.createdAt,
+      revealed: Boolean(e.revealed),
+      guessed,
+      mine
+    };
+    if (started || mine) entry.text = e.text;
+    if (mine || (started && guessed)) entry.authorName = e.authorName;
+    return entry;
   }));
-  res.json(result.Items || []);
 });
 
 router.get('/games/:gameId/scores', async (req, res) => {
@@ -616,13 +654,9 @@ router.post('/games/:gameId/reset', async (req, res) => {
     if (!isHost(game, req)) return res.status(403).json({error: 'Only the host can reset the game'});
 
     // 1. DELETE ALL existing entries for this game
-    const entriesData = await ddb.send(new QueryCommand({
-      TableName: tables.entries,
-      KeyConditionExpression: 'gameId = :g',
-      ExpressionAttributeValues: {':g': gameId}
-    }));
+    const entriesData = await queryEntries(gameId);
 
-    const deletePromises = (entriesData.Items || []).map(entry =>
+    const deletePromises = entriesData.map(entry =>
         ddb.send(new DeleteCommand({
           TableName: tables.entries,
           Key: {gameId: entry.gameId, entryId: entry.entryId}

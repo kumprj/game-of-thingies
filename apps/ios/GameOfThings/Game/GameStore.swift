@@ -24,7 +24,8 @@ final class GameStore {
     private(set) var entries: [Entry] = []
     private(set) var scores: [Score] = []
     private(set) var turnOrder: [String] = []
-    private(set) var currentPlayer: String?
+    private(set) var players: [String] = []
+    var currentPlayer: String? { turnOrder.first }
     private(set) var started = false
     /// The server has no game with this code (404); polling stops and the view shows a way back.
     private(set) var gameNotFound = false
@@ -160,7 +161,6 @@ final class GameStore {
         case "gameStarted":
             let order = decode(GameStartedEvent.self)?.turnOrder ?? []
             turnOrder = order
-            currentPlayer = order.first
             Task { await sync() }
             show("‼️ The game has started ‼️")
         case "wrongAnswer":
@@ -181,7 +181,6 @@ final class GameStore {
         case "nextTurn":
             if let data = decode(NextTurnEvent.self) {
                 turnOrder = data.turnOrder
-                currentPlayer = data.currentPlayer
             }
         case "hostTransferred":
             if let data = decode(HostTransferredEvent.self) {
@@ -233,7 +232,9 @@ final class GameStore {
         }
         if let order = game.turnOrder {
             turnOrder = order
-            currentPlayer = order.first
+        }
+        if let players = game.players {
+            self.players = players
         }
         saveToRecentGames(title: gameTitle)
     }
@@ -311,7 +312,6 @@ final class GameStore {
             started = true
             if !order.isEmpty {
                 turnOrder = order
-                currentPlayer = order.first
             }
             await fetchEntries()
             await fetchScores()
@@ -336,6 +336,7 @@ final class GameStore {
             entries = []
             started = false
             roundStartScores = [:]
+            players = []
         } catch let error as APIError where error.status == 403 {
             show("Only the host can start a new round", .error)
         } catch {
@@ -367,7 +368,8 @@ final class GameStore {
     func skipTurn() async {
         guard isHost, started else { return }
         do {
-            try await api.skipTurn(gameId)
+            let order = try await api.skipTurn(gameId)
+            if !order.isEmpty { turnOrder = order }
             show("Turn skipped")
         } catch {
             show((error as? APIError)?.serverMessage ?? "Failed to skip turn", .error)
@@ -377,7 +379,8 @@ final class GameStore {
     func removePlayer(_ name: String) async {
         guard isHost, started else { return }
         do {
-            try await api.removePlayer(gameId: gameId, playerName: name)
+            let order = try await api.removePlayer(gameId: gameId, playerName: name)
+            if !order.isEmpty { turnOrder = order }
             show("Removed \(name)")
         } catch {
             show((error as? APIError)?.serverMessage ?? "Failed to remove player", .error)
@@ -387,7 +390,7 @@ final class GameStore {
     /// Other players in the room who can receive host duties.
     var otherPlayers: [String] {
         var names = Set<String>()
-        for e in entries { if !e.authorName.isEmpty { names.insert(e.authorName) } }
+        for e in entries { if let n = e.authorName, !n.isEmpty { names.insert(n) } }
         for t in turnOrder { if !t.isEmpty { names.insert(t) } }
         for s in scores { if !s.playerName.isEmpty { names.insert(s.playerName) } }
         names.remove(authorName)
@@ -479,21 +482,22 @@ final class GameStore {
             : entries.sorted { $0.createdAt < $1.createdAt }
     }
 
-    var guessedNames: [String] { Set(entries.filter(\.guessed).map(\.authorName)).sorted() }
-    var notGuessedNames: [String] { Set(entries.filter { !$0.guessed }.map(\.authorName)).sorted() }
+    /// Authors are only revealed once their entry is guessed.
+    var guessedNames: [String] { Set(entries.filter(\.guessed).compactMap(\.authorName)).sorted() }
+    var notGuessedNames: [String] {
+        let guessed = Set(guessedNames)
+        return Set(players).subtracting(guessed).sorted()
+    }
     var allGuessed: Bool { !entries.isEmpty && entries.allSatisfy(\.guessed) }
     var isLastEntry: Bool { entries.filter { !$0.guessed }.count == 1 }
     var isMyTurn: Bool { currentPlayer != nil && currentPlayer == authorName }
 
-    /// Authors in list order, for the guess picker.
-    var uniqueNames: [String] {
-        var seen = Set<String>()
-        return entries.map(\.authorName).filter { seen.insert($0).inserted }
-    }
+    /// Everyone who answered this round (from GET game once started), for the guess picker.
+    var uniqueNames: [String] { players }
 
     /// You can't guess your own answer unless it's the last one left (a free point to end the round).
     func canGuess(_ entry: Entry) -> Bool {
-        isMyTurn && !entry.guessed && !(entry.authorName == authorName && !isLastEntry)
+        isMyTurn && !entry.guessed && !(entry.mine && !isLastEntry)
     }
 
     /// Whether this name can be picked as the author: not fully guessed, and not yourself until you're the last player left.
@@ -501,8 +505,9 @@ final class GameStore {
         !isFullyGuessed(name) && !(name == authorName && turnOrder.count > 1)
     }
 
-    /// Every answer by this author has already been guessed.
+    /// Each player writes one answer per round and the server only reveals an author once their
+    /// answer is guessed, so a name is fully guessed exactly when it appears among guessed authors.
     func isFullyGuessed(_ name: String) -> Bool {
-        entries.filter { $0.authorName == name }.allSatisfy(\.guessed)
+        guessedNames.contains(name)
     }
 }

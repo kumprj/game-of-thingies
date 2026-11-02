@@ -131,7 +131,7 @@ describe('useGameLogic Hook', () => {
 // --- Socket events, actions and derived state ---
 
 const game = {question: 'What is cool?', title: 'Ann'};
-const entry = (entryId: string, text: string, authorName: string, extra: object = {}) =>
+const entry = (entryId: string, text: string, authorName: string | undefined, extra: object = {}) =>
     ({entryId, text, authorName, revealed: false, ...extra});
 
 /** Serve the three GET endpoints the hook polls; later calls see whatever the fixtures hold now. */
@@ -174,6 +174,50 @@ describe('useGameLogic socket events', () => {
       expect(socket.off).toHaveBeenCalledWith(name, handler(name));
     }
     expect((socket.off as any).mock.calls.every((call: unknown[]) => call.length === 2)).toBe(true);
+  });
+
+  it('rejoins the game room when the socket reconnects (#30)', async () => {
+    await mount();
+    (socket.emit as any).mockClear();
+    await act(async () => handler('connect')());
+    expect(socket.emit).toHaveBeenCalledWith('joinGame', 'test-room-1');
+  });
+
+  it('queues socket toasts instead of replacing the one on screen (#89)', async () => {
+    const {result} = await mount();
+    act(() => handler('gameReset')());
+    expect(result.current.toast?.message).toMatch(/new question/);
+    act(() => handler('wrongAnswer')({playerName: 'Ben', guess: 'Ann'}));
+    // The first toast is still showing; the second waits its turn
+    expect(result.current.toast?.message).toMatch(/new question/);
+    act(() => result.current.setToast(null));
+    expect(result.current.toast?.message).toMatch(/Ben guessed wrong/);
+    act(() => result.current.setToast(null));
+    expect(result.current.toast).toBeNull();
+  });
+
+  it('keeps the newest entries when responses arrive out of order (#89)', async () => {
+    const {result} = await mount();
+    let resolveOld: (v: any) => void = () => {};
+    let resolveNew: (v: any) => void = () => {};
+    (axios.get as any).mockImplementationOnce(() => new Promise(r => { resolveOld = r; }));
+    (axios.get as any).mockImplementationOnce(() => new Promise(r => { resolveNew = r; }));
+    act(() => { handler('entriesUpdated')(); handler('entriesUpdated')(); });
+    await act(async () => resolveNew({data: [entry('2', 'New', 'Ben')]}));
+    await act(async () => resolveOld({data: [entry('1', 'Old', 'Ann')]}));
+    expect(result.current.entries.map(e => e.entryId)).toEqual(['2']);
+  });
+
+  it('keeps the newest scores when responses arrive out of order (#89)', async () => {
+    const {result} = await mount();
+    let resolveOld: (v: any) => void = () => {};
+    let resolveNew: (v: any) => void = () => {};
+    (axios.get as any).mockImplementationOnce(() => new Promise(r => { resolveOld = r; }));
+    (axios.get as any).mockImplementationOnce(() => new Promise(r => { resolveNew = r; }));
+    act(() => { handler('scoreUpdated')({}); handler('scoreUpdated')({}); });
+    await act(async () => resolveNew({data: [{playerName: 'Ann', score: 2}]}));
+    await act(async () => resolveOld({data: [{playerName: 'Ann', score: 1}]}));
+    expect(result.current.scores).toEqual([{playerName: 'Ann', score: 2}]);
   });
 
   it('refetches the answers when someone adds one', async () => {
@@ -550,10 +594,11 @@ describe('useGameLogic derived state', () => {
   });
 
   it('works out who has been guessed and who is left', async () => {
-    const {result} = await mount({entries: [
+    // The server only names guessed entries' authors; the player list comes with the started game.
+    const {result} = await mount({game: {...game, started: true, players: ['Ann', 'Ben']}, entries: [
       entry('1', 'A', 'Ann', {revealed: true, guessed: true}),
-      entry('2', 'B', 'Ben', {revealed: true}),
-      entry('3', 'C', 'Ben', {revealed: true}),
+      entry('2', 'B', undefined, {revealed: true}),
+      entry('3', 'C', undefined, {revealed: true}),
     ]});
     await waitFor(() => expect(result.current.entries).toHaveLength(3));
     expect(result.current.guessedNames).toEqual(['Ann']);

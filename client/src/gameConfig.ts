@@ -2,13 +2,14 @@
 import axios from "axios";
 import { io } from 'socket.io-client';
 import { API_URL } from './apiUrl';
+import { getPlayerToken } from './playerToken';
 
 // Configure Axios
 axios.defaults.baseURL = API_URL;
 
 // Automatically attach player token to all requests
 axios.interceptors.request.use((config) => {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('got_playerToken') : null;
+  const token = getPlayerToken(); // created on first use
   if (token) {
     config.headers.set('x-player-token', token);
   }
