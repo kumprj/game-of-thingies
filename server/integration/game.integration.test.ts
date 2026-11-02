@@ -33,7 +33,7 @@ const sockets: Socket[] = [];
 const hostTokens = new Map<string, string>();
 
 async function api<T = any>(method: 'GET' | 'POST' | 'PATCH' | 'DELETE', path: string, body?: object, headers: Record<string, string> = {}): Promise<{status: number; data: T}> {
-  const gameId = path.match(/^\/api\/games\/([^/]+)\/(start|reset)$/)?.[1];
+  const gameId = path.match(/^\/api\/games\/([^/]+)\/(start|reset|skip-turn|players)/)?.[1];
   const token = gameId && hostTokens.get(gameId);
   const response = await fetch(`${baseUrl}${path}`, {
     method,
