@@ -3,6 +3,7 @@ import {useParams} from "react-router-dom";
 import confetti from "canvas-confetti";
 import axios, {socket} from "../gameConfig";
 import {Entry, Score} from "../../../types";
+import {getHostToken} from "../hostToken";
 
 /**
  * Custom hook to manage game logic and state.
@@ -260,6 +261,10 @@ export function useGameLogic() {
   /**
    * Starts the game.
    */
+  const hostToken = getHostToken(gameId);
+  const isHost = hostToken !== null;
+  const hostHeaders = {headers: {"x-host-token": hostToken ?? ""}};
+
   const startGame = async () => {
     if (!entries.length) {
       setToast({message: 'Add some entries first!', type: 'error'});
@@ -267,7 +272,7 @@ export function useGameLogic() {
     }
     setIsLoading(true);
     try {
-      await axios.post(`/api/games/${gameId}/start`);
+      await axios.post(`/api/games/${gameId}/start`, undefined, hostHeaders);
       setStarted(true);
       await fetchEntries();
       await fetchScores();
@@ -290,7 +295,7 @@ export function useGameLogic() {
   const startNewRound = async () => {
     setStartNewRoundLoading(true);
     try {
-      await axios.post(`/api/games/${gameId}/reset`, {question: newQuestion.trim()});
+      await axios.post(`/api/games/${gameId}/reset`, {question: newQuestion.trim()}, hostHeaders);
       setNewQuestion("");
       setEntries([]);
       setGuessedEntryIds(new Set());
@@ -374,6 +379,7 @@ export function useGameLogic() {
     turnOrder,
     currentPlayer,
     started,
+    isHost,
     entryText,
     setEntryText,
     authorName,

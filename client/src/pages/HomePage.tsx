@@ -4,6 +4,7 @@ import {useNavigate} from "react-router-dom";
 import TopBar from "../components/TopBar";
 import logo from "../assets/logo.svg";
 import {API_URL} from "../apiUrl";
+import {saveHostToken} from "../hostToken";
 
 axios.defaults.baseURL = API_URL;
 
@@ -24,6 +25,7 @@ export default function HomePage() {
         name: gameName.trim(),
         question: questionText.trim()
       });
+      if (data.hostToken) saveHostToken(data.gameId, data.hostToken);
       navigate(`/${data.gameId}`);
     } catch (error) {
       console.error("Create game failed", error);

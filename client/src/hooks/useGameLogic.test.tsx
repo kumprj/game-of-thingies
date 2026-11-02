@@ -27,6 +27,7 @@ vi.mock('../gameConfig', () => ({
 describe('useGameLogic Hook', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.localStorage.setItem('got_hostToken_test-room-1', 'secret-token');
     // Default GET response
     (axios.get as any).mockResolvedValue({ data: [] });
   });
@@ -96,7 +97,17 @@ describe('useGameLogic Hook', () => {
       await result.current.startGame();
     });
 
-    expect(axios.post).toHaveBeenCalledWith('/api/games/test-room-1/start');
+    expect(axios.post).toHaveBeenCalledWith(
+      '/api/games/test-room-1/start', undefined, {headers: {'x-host-token': 'secret-token'}});
+  });
+
+  it('is the host only when this device holds the game\'s token', () => {
+    const { result, unmount } = renderHook(() => useGameLogic());
+    expect(result.current.isHost).toBe(true);
+    unmount();
+    window.localStorage.removeItem('got_hostToken_test-room-1');
+    const { result: other } = renderHook(() => useGameLogic());
+    expect(other.current.isHost).toBe(false);
   });
 });
 

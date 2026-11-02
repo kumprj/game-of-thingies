@@ -15,6 +15,7 @@ describe('StartGamePage', () => {
     entries: [],
     scores: [],
     started: false,
+    isHost: true,
     isLoading: false,
     addEntryLoading: false,
     entryText: '',
@@ -95,6 +96,31 @@ describe('StartGamePage', () => {
     });
 
     expect(addEntryMock).toHaveBeenCalled();
+  });
+
+  it('shows Start to the host', () => {
+    // @ts-ignore
+    vi.spyOn(GameHook, 'useGameLogic').mockReturnValue({...defaultHookValues, isHost: true});
+    render(<BrowserRouter><StartGamePage/></BrowserRouter>);
+    expect(screen.getByRole('button', {name: 'Start'})).toBeInTheDocument();
+    expect(screen.queryByText(/Waiting for the host/)).not.toBeInTheDocument();
+  });
+
+  it('hides Start from other players and shows waiting text', () => {
+    // @ts-ignore
+    vi.spyOn(GameHook, 'useGameLogic').mockReturnValue({...defaultHookValues, isHost: false});
+    render(<BrowserRouter><StartGamePage/></BrowserRouter>);
+    expect(screen.queryByRole('button', {name: 'Start'})).not.toBeInTheDocument();
+    expect(screen.getByText(/Waiting for the host/)).toBeInTheDocument();
+  });
+
+  it('hides Start New Round from other players', () => {
+    // @ts-ignore
+    vi.spyOn(GameHook, 'useGameLogic').mockReturnValue({
+      ...defaultHookValues, isHost: false, started: true, allGuessed: true,
+    });
+    render(<BrowserRouter><StartGamePage/></BrowserRouter>);
+    expect(screen.queryByText('Start New Round')).not.toBeInTheDocument();
   });
 });
 

@@ -1,3 +1,4 @@
+import {timingSafeEqual} from 'crypto';
 import express from 'express';
 import {v4 as uuidv4} from 'uuid';
 import {ddb, expiresAt, tables} from './db';
@@ -18,6 +19,16 @@ async function getGame(gameId: string) {
   return result.Item;
 }
 
+/** True when the request's x-host-token header matches the game's stored host token. */
+function isHost(game: Record<string, any> | undefined, req: express.Request) {
+  const stored = game?.hostToken;
+  const given = req.header('x-host-token');
+  if (typeof stored !== 'string' || typeof given !== 'string') return false;
+  const a = Buffer.from(stored);
+  const b = Buffer.from(given);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
 function randomGameId() {
   const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
   let result = "";
@@ -32,6 +43,7 @@ function randomGameId() {
 router.post('/createGame', async (req, res) => {
   const {name, question} = req.body;
   const createdAt = new Date().toISOString();
+  const hostToken = uuidv4();
 
   try {
     // A random code can collide with a live game; never overwrite it, pick a new code instead
@@ -45,11 +57,12 @@ router.post('/createGame', async (req, res) => {
             question: question || 'What is your favorite thing?',
             createdAt,
             gameOwner: name,
+            hostToken,
             expiresAt: expiresAt()
           },
           ConditionExpression: 'attribute_not_exists(gameId)'
         }));
-        return res.json({gameId});
+        return res.json({gameId, hostToken});
       } catch (error) {
         if ((error as {name?: string}).name !== 'ConditionalCheckFailedException') throw error;
       }
@@ -118,6 +131,11 @@ router.post('/games/:gameId/entries', async (req, res) => {
 router.post('/games/:gameId/start', async (req, res) => {
   const {gameId} = req.params;
   try {
+    const game = await getGame(gameId);
+    if (!game) return res.status(404).json({error: 'Game not found'});
+    if (!isHost(game, req)) return res.status(403).json({error: 'Only the host can start the game'});
+    if (game.started) return res.status(409).json({error: 'Game already started'});
+
     const entries = await ddb.send(new QueryCommand({
       TableName: tables.entries,
       KeyConditionExpression: 'gameId = :g',
@@ -128,16 +146,27 @@ router.post('/games/:gameId/start', async (req, res) => {
     const players = entryItems.map((e: any) => e.authorName)
         .filter((v: any, i: number, a: any[]) => a.indexOf(v) === i);
 
-    const lastTurn: Record<string, number> = (await getGame(gameId))?.lastTurn || {};
+    const lastTurn: Record<string, number> = game.lastTurn || {};
 
     const shuffled = buildTurnOrder(players, lastTurn);
 
-    await ddb.send(new UpdateCommand({
-      TableName: tables.games,
-      Key: {gameId},
-      UpdateExpression: 'SET turnOrder = :to, started = :s, lastTurn = if_not_exists(lastTurn, :empty), expiresAt = :e',
-      ExpressionAttributeValues: {':to': shuffled, ':s': true, ':empty': {}, ':e': expiresAt()}
-    }));
+    // Conditional so two simultaneous starts can't both win and reshuffle the turn order.
+    try {
+      await ddb.send(new UpdateCommand({
+        TableName: tables.games,
+        Key: {gameId},
+        UpdateExpression: 'SET turnOrder = :to, started = :s, lastTurn = if_not_exists(lastTurn, :empty), expiresAt = :e',
+        ConditionExpression: 'attribute_not_exists(started) OR started = :notStarted',
+        ExpressionAttributeValues: {
+          ':to': shuffled, ':s': true, ':empty': {}, ':e': expiresAt(), ':notStarted': false
+        }
+      }));
+    } catch (err: any) {
+      if (err?.name === 'ConditionalCheckFailedException') {
+        return res.status(409).json({error: 'Game already started'});
+      }
+      throw err;
+    }
 
     // Reveal entries
     for (const entry of entryItems) {
@@ -248,7 +277,9 @@ router.post('/games/:gameId/entries/:entryId/guess', async (req, res) => {
 // They follow the same pattern: fetch from DDB, return JSON.
 router.get('/games/:gameId', async (req, res) => {
   const {gameId} = req.params;
-  res.json((await getGame(gameId)) || {});
+  // Never expose the host token to players.
+  const {hostToken: _hostToken, ...publicGame} = (await getGame(gameId)) || {};
+  res.json(publicGame);
 });
 
 router.get('/games/:gameId/entries', async (req, res) => {
@@ -277,6 +308,10 @@ router.post('/games/:gameId/reset', async (req, res) => {
   const {question} = req.body;
 
   try {
+    const game = await getGame(gameId);
+    if (!game) return res.status(404).json({error: 'Game not found'});
+    if (!isHost(game, req)) return res.status(403).json({error: 'Only the host can reset the game'});
+
     // 1. DELETE ALL existing entries for this game
     const entriesData = await ddb.send(new QueryCommand({
       TableName: tables.entries,

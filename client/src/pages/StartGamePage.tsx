@@ -50,6 +50,7 @@ export default function StartGamePage() {
     turnOrder,
     currentPlayer,
     started,
+    isHost,
     entryText,
     setEntryText,
     resetCount,
@@ -198,16 +199,19 @@ export default function StartGamePage() {
                 <button className="btn btn-primary" onClick={handleAddEntry} disabled={!canAdd}>
                   {addEntryLoading ? <><span className="spinner"/>Saving...</> : hasSubmitted ? 'Submitted!' : 'Add Answer'}
                 </button>
-                <button className="btn btn-success" onClick={() => setShowStartConfirm(true)}
-                        disabled={!entries.length || started || isLoading}>
-                  {isLoading ? <><span className="spinner"/>Starting...</> : 'Start'}
-                </button>
+                {isHost && (
+                    <button className="btn btn-success" onClick={() => setShowStartConfirm(true)}
+                            disabled={!entries.length || started || isLoading}>
+                      {isLoading ? <><span className="spinner"/>Starting...</> : 'Start'}
+                    </button>
+                )}
               </div>
+              {!isHost && <p className="footnote">Waiting for the host to start the game.</p>}
             </section>
         )}
 
         {/* New Round (End Game) */}
-        {allGuessed && (
+        {allGuessed && isHost && (
             <section className="stack">
               <h4 className="section-label">Next Round</h4>
               <input type="text" placeholder="Game Over! Ask a new question?" value={newQuestion}

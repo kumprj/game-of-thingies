@@ -19,11 +19,16 @@ struct APIError: LocalizedError {
 struct APIClient {
     var baseURL: URL = AppConfig.apiBaseURL
     var session: URLSession = .shared
+    var defaults: UserDefaults = .standard
+
+    /// The host token createGame returns; the server requires it (x-host-token) to start or reset.
+    private func hostTokenKey(_ gameId: String) -> String { "hostToken.\(gameId)" }
 
     func createGame(name: String, question: String) async throws -> String {
-        struct Response: Decodable { let gameId: String }
+        struct Response: Decodable { let gameId: String; let hostToken: String? }
         let response: Response = try await send("POST", "api/createGame",
                                                 body: ["name": name, "question": question])
+        if let token = response.hostToken { defaults.set(token, forKey: hostTokenKey(response.gameId)) }
         return response.gameId
     }
 
@@ -45,7 +50,7 @@ struct APIClient {
     }
 
     func startGame(_ gameId: String) async throws {
-        try await sendIgnoringResponse("POST", "api/games/\(gameId)/start")
+        try await sendIgnoringResponse("POST", "api/games/\(gameId)/start", headers: hostHeaders(gameId))
     }
 
     /// Returns whether the guess was correct.
@@ -57,7 +62,12 @@ struct APIClient {
     }
 
     func resetGame(_ gameId: String, question: String) async throws {
-        try await sendIgnoringResponse("POST", "api/games/\(gameId)/reset", body: ["question": question])
+        try await sendIgnoringResponse("POST", "api/games/\(gameId)/reset", body: ["question": question],
+                                       headers: hostHeaders(gameId))
+    }
+
+    private func hostHeaders(_ gameId: String) -> [String: String] {
+        defaults.string(forKey: hostTokenKey(gameId)).map { ["x-host-token": $0] } ?? [:]
     }
 
     // MARK: - Transport
@@ -68,9 +78,11 @@ struct APIClient {
     }
 
     @discardableResult
-    private func sendIgnoringResponse(_ method: String, _ path: String, body: [String: String]? = nil) async throws -> Data {
+    private func sendIgnoringResponse(_ method: String, _ path: String, body: [String: String]? = nil,
+                                          headers: [String: String] = [:]) async throws -> Data {
         var request = URLRequest(url: baseURL.appending(path: path))
         request.httpMethod = method
+        for (field, value) in headers { request.setValue(value, forHTTPHeaderField: field) }
         if let body {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONEncoder().encode(body)

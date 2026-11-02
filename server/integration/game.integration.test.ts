@@ -29,10 +29,15 @@ let baseUrl = '';
 let close: () => Promise<void>;
 const sockets: Socket[] = [];
 
-async function api<T = any>(method: 'GET' | 'POST', path: string, body?: object): Promise<{status: number; data: T}> {
+// Host tokens by game id, so tests call start/reset as the host without passing the token around
+const hostTokens = new Map<string, string>();
+
+async function api<T = any>(method: 'GET' | 'POST', path: string, body?: object, headers: Record<string, string> = {}): Promise<{status: number; data: T}> {
+  const gameId = path.match(/^\/api\/games\/([^/]+)\/(start|reset)$/)?.[1];
+  const token = gameId && hostTokens.get(gameId);
   const response = await fetch(`${baseUrl}${path}`, {
     method,
-    headers: body ? {'Content-Type': 'application/json'} : undefined,
+    headers: {...(body ? {'Content-Type': 'application/json'} : {}), ...(token ? {'x-host-token': token} : {}), ...headers},
     body: body ? JSON.stringify(body) : undefined,
   });
   return {status: response.status, data: await response.json().catch(() => undefined) as T};
@@ -69,9 +74,10 @@ async function joinRoom(gameId: string) {
 }
 
 async function createGame(name = 'Host', question?: string) {
-  const {status, data} = await api<{gameId: string}>('POST', '/api/createGame', {name, question});
+  const {status, data} = await api<{gameId: string; hostToken: string}>('POST', '/api/createGame', {name, question});
   expect(status).toBe(200);
   expect(data.gameId).toMatch(/^[A-Z]{4}$/);
+  hostTokens.set(data.gameId, data.hostToken);
   return data.gameId;
 }
 
@@ -256,6 +262,60 @@ describe('a full round', () => {
     await roomOne.next('entriesUpdated', markOne);
     await new Promise(r => setTimeout(r, 200));
     expect(roomTwo.events.slice(mark)).toEqual([]);
+  });
+});
+
+describe('host controls', () => {
+  const startAs = (gameId: string, token: string) =>
+    api('POST', `/api/games/${gameId}/start`, undefined, {'x-host-token': token});
+
+  async function gameWithPlayers() {
+    const gameId = await createGame('Ann');
+    for (const name of ['Ann', 'Ben', 'Cy', 'Di']) await addEntry(gameId, name, `${name}'s answer`);
+    return gameId;
+  }
+
+  it('returns the host token once and never exposes it via GET', async () => {
+    const gameId = await createGame('Ann');
+    expect(hostTokens.get(gameId)).toEqual(expect.any(String));
+    expect(await game(gameId)).not.toHaveProperty('hostToken');
+  });
+
+  it('rejects start and reset without the host token (403) and changes nothing', async () => {
+    const gameId = await gameWithPlayers();
+    hostTokens.delete(gameId); // calls below go out with no token unless a header is given
+    expect((await api('POST', `/api/games/${gameId}/start`)).status).toBe(403);
+    expect((await startAs(gameId, 'wrong-token')).status).toBe(403);
+    expect((await game(gameId)).started).toBeUndefined();
+    expect((await entries(gameId)).every(e => e.revealed === false)).toBe(true);
+
+    expect((await api('POST', `/api/games/${gameId}/reset`, {question: 'Hijack'})).status).toBe(403);
+    expect((await api('POST', `/api/games/${gameId}/reset`, {question: 'Hijack'}, {'x-host-token': 'nope'})).status).toBe(403);
+    expect(await entries(gameId)).toHaveLength(4);
+    expect((await game(gameId)).question).toBe('What is your favorite thing?');
+  });
+
+  it('returns 409 for a second start and leaves the turn order alone', async () => {
+    const gameId = await gameWithPlayers();
+    expect((await api('POST', `/api/games/${gameId}/start`)).status).toBe(200);
+    const {turnOrder} = await game(gameId);
+
+    for (let i = 0; i < 5; i++) {
+      expect((await api('POST', `/api/games/${gameId}/start`)).status).toBe(409);
+    }
+    expect((await game(gameId)).turnOrder).toEqual(turnOrder);
+  });
+
+  it('lets only one of several simultaneous starts win', async () => {
+    const gameId = await gameWithPlayers();
+    const results = await Promise.all([1, 2, 3, 4].map(() => api('POST', `/api/games/${gameId}/start`)));
+    expect(results.filter(r => r.status === 200)).toHaveLength(1);
+    expect(results.filter(r => r.status === 409)).toHaveLength(3);
+  });
+
+  it('returns 404 when starting or resetting an unknown game', async () => {
+    expect((await api('POST', '/api/games/NOPE/start', undefined, {'x-host-token': 'x'})).status).toBe(404);
+    expect((await api('POST', '/api/games/NOPE/reset', {}, {'x-host-token': 'x'})).status).toBe(404);
   });
 });
 
