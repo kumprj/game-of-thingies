@@ -4,6 +4,7 @@ import Testing
 
 /// Serves canned responses and records requests, so APIClient runs its real URLSession path.
 nonisolated final class StubURLProtocol: URLProtocol {
+    private static let lock = NSLock()
     nonisolated(unsafe) static var respond: (URLRequest) -> (Int, String) = { _ in (200, "{}") }
     nonisolated(unsafe) static var requests: [URLRequest] = []
 
@@ -32,8 +33,10 @@ nonisolated final class StubURLProtocol: URLProtocol {
             stream.close()
             request.httpBody = body
         }
-        Self.requests.append(request)
-        let (status, body) = Self.respond(request)
+        let (status, body) = Self.lock.withLock { () -> (Int, String) in
+            Self.requests.append(request)
+            return Self.respond(request)
+        }
         let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: Data(body.utf8))
@@ -46,7 +49,7 @@ nonisolated final class StubURLProtocol: URLProtocol {
 struct StubbedNetworkTests {}
 
 extension StubbedNetworkTests {
-@Suite
+@Suite(.serialized)
 struct APIClientTests {
     let defaults: UserDefaults
     let api: APIClient
