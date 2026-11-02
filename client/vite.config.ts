@@ -15,8 +15,7 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: ['src/**/*.{ts,tsx}'],
-      exclude: ['src/**/*.test.{ts,tsx}', 'src/setupTests.ts', 'src/**/*.d.ts', 'src/index.tsx',
-        'src/reportWebVitals.ts'],
+      exclude: ['src/**/*.test.{ts,tsx}', 'src/setupTests.ts', 'src/**/*.d.ts', 'src/index.tsx'],
       reporter: ['text-summary', 'text'],
     },
   },
