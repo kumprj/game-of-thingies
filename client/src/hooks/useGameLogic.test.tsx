@@ -196,8 +196,25 @@ describe('useGameLogic socket events', () => {
     expect(result.current.toast).toBeNull();
   });
 
+  it('refreshes the lobby answered names on entriesUpdated until the game starts (#42)', async () => {
+    const fixtures: {game: any} = {game: {...game, started: false, answeredNames: ['Ann']}};
+    const {result} = await mount(fixtures);
+    await waitFor(() => expect(result.current.answeredNames).toEqual(['Ann']));
+    fixtures.game = {...game, started: false, answeredNames: ['Ann', 'Ben']};
+    await act(async () => handler('entriesUpdated')());
+    await waitFor(() => expect(result.current.answeredNames).toEqual(['Ann', 'Ben']));
+    // Once started the game is no longer refetched on entry changes
+    fixtures.game = {...game, started: true};
+    await act(async () => handler('gameStarted')({turnOrder: ['Ann']}));
+    await waitFor(() => expect(result.current.answeredNames).toEqual([]));
+    (axios.get as any).mockClear();
+    await act(async () => handler('entriesUpdated')());
+    expect((axios.get as any).mock.calls.map((c: string[]) => c[0])).toEqual(['/api/games/test-room-1/entries']);
+  });
+
   it('keeps the newest entries when responses arrive out of order (#89)', async () => {
-    const {result} = await mount();
+    // Started, so entriesUpdated fetches only the entries (the lobby names refetch the game too)
+    const {result} = await mount({game: {...game, started: true}});
     let resolveOld: (v: any) => void = () => {};
     let resolveNew: (v: any) => void = () => {};
     (axios.get as any).mockImplementationOnce(() => new Promise(r => { resolveOld = r; }));

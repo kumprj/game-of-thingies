@@ -328,6 +328,32 @@ struct GameStoreTests {
         #expect(store.canPick("Cy"))
     }
 
+    @Test func lobbyLineListsWhoHasAnswered() async {
+        let store = await makeStore(game: #"{"started":false,"answeredNames":["Ann","Bo","Cy"]}"#)
+        #expect(store.answeredNames == ["Ann", "Bo", "Cy"])
+        #expect(store.lobbyAnswersLine == "Answers in (3): Ann, Bo, Cy")
+    }
+
+    @Test func lobbyLineIsNilWhenNobodyHasAnsweredOrGameStarted() async {
+        let empty = await makeStore(game: #"{"started":false,"answeredNames":[]}"#)
+        #expect(empty.lobbyAnswersLine == nil)
+        let started = await makeStore(game: #"{"started":true,"answeredNames":["Ann"]}"#)
+        #expect(started.lobbyAnswersLine == nil)
+        let missing = await makeStore(game: #"{"started":true,"players":["Ann","Bo"]}"#)
+        #expect(missing.answeredNames.isEmpty)
+    }
+
+    @Test func entriesUpdatedRefreshesLobbyNames() async {
+        let store = await makeStore(game: #"{"started":false,"answeredNames":["Ann"]}"#)
+        StubURLProtocol.respond = { request in
+            request.url!.path == "/api/games/ABCD"
+                ? (200, #"{"started":false,"answeredNames":["Ann","Bo"]}"#) : (200, "[]")
+        }
+        store.handle(event: "entriesUpdated", payload: nil)
+        for _ in 0..<50 where store.answeredNames.count < 2 { try? await Task.sleep(for: .milliseconds(20)) }
+        #expect(store.answeredNames == ["Ann", "Bo"])
+    }
+
     @Test func hiddenAuthorsDoNotCountAsGuessed() async {
         let hidden = #"{"entryId":"1","text":"x","createdAt":"","revealed":true,"guessed":false,"mine":false}"#
         let store = await makeStore(entries: "[\(hidden)]", game: #"{"turnOrder":["Ann"],"players":["Ann","Bo"]}"#)

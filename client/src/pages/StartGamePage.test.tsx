@@ -17,6 +17,7 @@ describe('StartGamePage', () => {
     entries: [],
     scores: [],
     started: false,
+    answeredNames: [] as string[],
     isHost: true,
     isLoading: false,
     addEntryLoading: false,
@@ -153,7 +154,7 @@ const answer = (entryId: string, text: string, authorName: string, extra: object
 const baseHook = {
   gameId: 'ABCD', gameTitle: 'Friday night', gameQuestion: 'Worst superpower?',
   entries: [] as any[], scores: [] as any[], turnOrder: [] as string[], currentPlayer: null as string | null,
-  started: false, isHost: true, entryText: '', authorName: '', newQuestion: '', resetCount: 0,
+  started: false, answeredNames: [] as string[], isHost: true, entryText: '', authorName: '', newQuestion: '', resetCount: 0,
   isLoading: false, addEntryLoading: false, startNewRoundLoading: false, guessLoading: false,
   guessingEntry: null as any, showStartConfirm: false, showHowToPlay: false, showScores: false,
   toast: null as any, guessedNames: [] as string[], notGuessedNames: [] as string[],
@@ -249,15 +250,21 @@ describe('StartGamePage in detail', () => {
   });
 
   describe('before the game starts', () => {
-    it('lets me read my own answer but blurs everyone else\'s', () => {
+    it('lets me read my own answer and lists who has answered instead of other answers', () => {
       renderPage({
-        authorName: 'Ann', entries: [answer('1', 'Mine', 'Ann'), answer('2', 'Theirs', 'Ben')],
+        authorName: 'Ann', answeredNames: ['Ann', 'Ben'], entries: [answer('1', 'Mine', 'Ann'), answer('2', 'Theirs', 'Ben')],
         sortedEntriesForDisplay: [answer('1', 'Mine', 'Ann'), answer('2', 'Theirs', 'Ben')],
       });
       expect(screen.getByText('Mine')).toHaveClass('mine');
       expect(screen.queryByText('Theirs')).not.toBeInTheDocument();
-      expect(screen.getByLabelText('Hidden answer')).toBeInTheDocument();
+      expect(screen.queryByLabelText('Hidden answer')).not.toBeInTheDocument();
+      expect(screen.getByTestId('answered-names')).toHaveTextContent('Answers in (2): Ann, Ben');
       expect(screen.getByText('Answers (2)')).toBeInTheDocument();
+    });
+
+    it('omits the answered line when nobody has answered', () => {
+      renderPage();
+      expect(screen.queryByTestId('answered-names')).not.toBeInTheDocument();
     });
 
     it('says when nothing has been added', () => {

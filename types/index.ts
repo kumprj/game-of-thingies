@@ -26,6 +26,13 @@ export interface Game {
   turnOrder: string[];
   /** Everyone who wrote an answer this round (set when the game starts), for the guess picker. */
   players?: string[];
+  /**
+   * Before the game starts only: who has answered, deduped and sorted alphabetically (case-insensitive),
+   * for the lobby line "Answers in (3): Alice, Bob, Carol". Names only. Never ordered or linked to
+   * entries, so it can't reveal which text belongs to whom. Absent once the game has started
+   * (`players` takes over).
+   */
+  answeredNames?: string[];
 }
 
 export interface Score {

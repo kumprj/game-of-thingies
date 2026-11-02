@@ -5,6 +5,7 @@ import {asyncHandler} from './http';
 import {ddb, expiresAt, tables} from './db';
 import {buildTurnOrder, rotate} from './turnOrder';
 import {validateGameSetup} from './gameSetup';
+import {answeredNames} from './lobby';
 import {
   checkNameLength,
   MAX_ANSWER_LENGTH,
@@ -630,7 +631,10 @@ router.get('/games/:gameId', asyncHandler(async (req, res) => {
   if (!game) return res.status(404).json({error: 'Game not found'});
   // Games created before the rename stored the title as `gameOwner`; they expire within a day.
   const {hostToken: _hostToken, playerTokens: _playerTokens, gameOwner, ...publicGame} = game;
-  res.json({...publicGame, title: publicGame.title || gameOwner});
+  const body: Record<string, unknown> = {...publicGame, title: publicGame.title || gameOwner};
+  // Lobby (#42): names only, sorted so neither order nor entry ids link a name to an answer.
+  if (!game.started) body.answeredNames = answeredNames(await queryEntries(gameId));
+  res.json(body);
 }));
 
 router.get('/games/:gameId/entries', asyncHandler(async (req, res) => {

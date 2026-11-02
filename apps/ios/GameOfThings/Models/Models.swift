@@ -55,6 +55,8 @@ struct Game: Decodable {
     var hostName: String?
     /// Everyone who answered this round; sent once the game has started.
     var players: [String]?
+    /// Who has answered, sent before the game starts (names only; #42).
+    var answeredNames: [String]?
 }
 
 struct Score: Decodable, Hashable {
