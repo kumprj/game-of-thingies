@@ -387,9 +387,14 @@ describe('expiry', () => {
 
 describe('guess validation', () => {
   it('returns 404 for an unknown answer', async () => {
+    // The guesser must be on turn for the entry lookup to be reached.
     const gameId = await createGame();
+    await addEntry(gameId, 'Ann', 'Something');
+    await addEntry(gameId, 'Ben', 'Something else');
+    await api('POST', `/api/games/${gameId}/start`);
+    const [onTurn] = (await game(gameId)).turnOrder;
     const {status} = await api('POST', `/api/games/${gameId}/entries/not-an-entry/guess`,
-      {guesserName: 'Ann', guess: 'Ben'});
+      {guesserName: onTurn, guess: 'Ben'});
     expect(status).toBe(404);
   });
 
@@ -808,6 +813,65 @@ describe('unknown games', () => {
   });
 });
 
+describe('request errors', () => {
+  const raw = async (body: string) => {
+    const response = await fetch(`${baseUrl}/api/createGame`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body
+    });
+    return {status: response.status, type: response.headers.get('content-type'), data: await response.json()};
+  };
+
+  it('answers malformed JSON with a JSON 400', async () => {
+    const res = await raw('{"name": ');
+    expect(res.status).toBe(400);
+    expect(res.type).toContain('application/json');
+    expect(res.data).toEqual({error: 'Request body must be valid JSON'});
+  });
+
+  it('answers an oversize body with a JSON 413', async () => {
+    const res = await raw(JSON.stringify({name: 'Ann', question: 'x'.repeat(20_000)}));
+    expect(res.status).toBe(413);
+    expect(res.type).toContain('application/json');
+    expect(res.data).toEqual({error: 'Request body is too large'});
+  });
+});
+
+describe('guess and remove-player status codes', () => {
+  async function started() {
+    const gameId = await createGame('Ann');
+    const ids: Record<string, string> = {};
+    for (const name of ['Ann', 'Ben', 'Cy']) ids[name] = await addEntry(gameId, name, `${name}'s answer`);
+    await api('POST', `/api/games/${gameId}/start`);
+    return {gameId, ids, turnOrder: (await game(gameId)).turnOrder as string[]};
+  }
+  const guessUrl = (gameId: string, entryId: string) => `/api/games/${gameId}/entries/${entryId}/guess`;
+
+  it('404s a guess in an unknown game', async () => {
+    const res = await api('POST', guessUrl('ZZZZ', 'nope'), {guesserName: 'Ann', guess: 'Ben'});
+    expect(res).toEqual({status: 404, data: {error: 'Game not found'}});
+  });
+
+  it('reports the turn error before an unknown entry', async () => {
+    const {gameId, turnOrder} = await started();
+    const offTurn = await api('POST', guessUrl(gameId, 'nope'), {guesserName: turnOrder[1], guess: 'Ann'});
+    expect(offTurn.status).toBe(409);
+    const stranger = await api('POST', guessUrl(gameId, 'nope'), {guesserName: 'Mallory', guess: 'Ann'});
+    expect(stranger.status).toBe(400);
+    const onTurn = await api('POST', guessUrl(gameId, 'nope'), {guesserName: turnOrder[0], guess: 'Ann'});
+    expect(onTurn).toEqual({status: 404, data: {error: 'Entry not found'}});
+  });
+
+  it('404s removing a player who is not in the turn order and leaves the order alone', async () => {
+    const {gameId, turnOrder} = await started();
+    const res = await api('DELETE', `/api/games/${gameId}/players/Nobody`);
+    expect(res).toEqual({status: 404, data: {error: 'Player not found'}});
+    expect((await game(gameId)).turnOrder).toEqual(turnOrder);
+    const again = await api('DELETE', `/api/games/${gameId}/players/${turnOrder[2]}`);
+    expect(again.status).toBe(200);
+    expect((await api('DELETE', `/api/games/${gameId}/players/${turnOrder[2]}`)).status).toBe(404);
+  });
+});
+
 describe('player identity (#67)', () => {
   it('claims a name with a token, allows reuse with matching token, rejects mismatch with 403', async () => {
     const gameId = await createGame('Host');
@@ -1029,5 +1093,63 @@ describe('host handoff', () => {
 
     const g = await game(gameId);
     expect(g.hostName).toBe('NewHost');
+  });
+});
+
+describe('request validation', () => {
+  const guessUrl = (gameId: string, entryId: string) => `/api/games/${gameId}/entries/${entryId}/guess`;
+
+  it('rejects a non-text or oversize reset question (400) and changes nothing', async () => {
+    const gameId = await createGame('Host', 'Original question');
+    await addEntry(gameId, 'Ann', 'Something');
+    for (const question of [5, true, ['a'], {a: 1}, 'q'.repeat(201)]) {
+      const {status, data} = await api('POST', `/api/games/${gameId}/reset`, {question});
+      expect(status).toBe(400);
+      expect(data.error).toEqual(expect.any(String));
+    }
+    expect((await game(gameId)).question).toBe('Original question');
+    expect(await entries(gameId)).toHaveLength(1);
+  });
+
+  it('still resets to the default question when none is given', async () => {
+    const gameId = await createGame('Host', 'Original question');
+    expect((await api('POST', `/api/games/${gameId}/reset`, {})).status).toBe(200);
+    expect((await game(gameId)).question).toBe('What is your favorite thing?');
+  });
+
+  it('returns 400, not 500, for a guess with non-text or oversize fields', async () => {
+    const gameId = await createGame('Ann');
+    const entryId = await addEntry(gameId, 'Ann', 'One');
+    await addEntry(gameId, 'Ben', 'Two');
+    await api('POST', `/api/games/${gameId}/start`);
+    const bodies: object[] = [
+      {}, {guesserName: 'Ann'}, {guess: 'Ben'}, {guesserName: 5, guess: 'Ben'},
+      {guesserName: {a: 1}, guess: 'Ben'}, {guesserName: 'Ann', guess: ['Ben']},
+      {guesserName: 'a'.repeat(31), guess: 'Ben'}, {guesserName: 'Ann', guess: 'b'.repeat(31)}
+    ];
+    for (const body of bodies) {
+      const {status, data} = await api('POST', guessUrl(gameId, entryId), body);
+      expect(status).toBe(400);
+      expect(data.error).toEqual(expect.any(String));
+    }
+    expect((await entries(gameId)).every(e => e.guessed === undefined)).toBe(true);
+  });
+
+  it('rejects an oversize host transfer target (400)', async () => {
+    const gameId = await createGame('Host');
+    const {status} = await api('POST', `/api/games/${gameId}/transfer-host`, {targetPlayerName: 'x'.repeat(31)});
+    expect(status).toBe(400);
+    expect((await game(gameId)).hostName).toBe('Host');
+  });
+
+  it('rejects oversize ids and token headers (400)', async () => {
+    const gameId = await createGame();
+    expect((await api('GET', `/api/games/${'A'.repeat(100)}`)).status).toBe(400);
+    expect((await api('DELETE', `/api/games/${gameId}/entries/${'e'.repeat(100)}`)).status).toBe(400);
+    expect((await api('DELETE', `/api/games/${gameId}/players/${'p'.repeat(100)}`)).status).toBe(400);
+    expect((await api('POST', `/api/games/${gameId}/entries`, {authorName: 'Ann', text: 'Hi'},
+      {'x-player-token': 't'.repeat(200)})).status).toBe(400);
+    expect((await api('POST', `/api/games/${gameId}/start`, undefined,
+      {'x-host-token': 't'.repeat(200)})).status).toBe(400);
   });
 });

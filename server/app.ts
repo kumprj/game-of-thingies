@@ -3,6 +3,10 @@ import http from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
 import router from './routes'; // Import your endpoints
+import {errorHandler} from './http';
+
+/** Largest JSON body accepted (the biggest legitimate payload is a few hundred bytes). */
+export const JSON_BODY_LIMIT = '10kb';
 
 /**
  * Builds the Express app, HTTP server and Socket.IO server without listening, so index.ts can
@@ -29,7 +33,7 @@ export function createServer() {
   app.use(cors());
 
   // Middleware to parse incoming JSON requests
-  app.use(express.json());
+  app.use(express.json({limit: JSON_BODY_LIMIT}));
 
   // Middleware to attach the Socket.IO instance to the request object
   app.use((req, res, next) => {
@@ -42,6 +46,9 @@ export function createServer() {
 
   // Health check for the load balancer (sst.config.ts)
   app.get("/health", (req, res) => res.send("OK"));
+
+  // Must come after the routes and body parser: turns their errors into JSON responses
+  app.use(errorHandler);
 
   // Handle WebSocket connections
   io.on("connection", (socket) => {
