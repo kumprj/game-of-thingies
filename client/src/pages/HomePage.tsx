@@ -2,8 +2,9 @@ import React, {useState, useEffect} from "react";
 import axios from "axios";
 import {errorMessage} from "../errorMessage";
 import {useNavigate} from "react-router-dom";
-import {AnimatePresence, motion} from "framer-motion";
+import {AnimatePresence} from "framer-motion";
 import TopBar from "../components/TopBar";
+import Toast from "../components/Toast";
 import logo from "../assets/logo.svg";
 import {API_URL} from "../apiUrl";
 import {saveHostToken} from "../hostToken";
@@ -11,7 +12,6 @@ import {getRecentGames, removeRecentGame, saveRecentGame, RecentGame} from "../r
 
 axios.defaults.baseURL = API_URL;
 
-const EASE_OUT = [0.23, 1, 0.32, 1] as const;
 
 // Same limits as the server (server/gameSetup.ts)
 const MAX_GAME_NAME_LENGTH = 50;
@@ -89,23 +89,7 @@ export default function HomePage() {
         </div>
 
         <AnimatePresence>
-          {toastMessage && (
-            <motion.div
-              key="toast"
-              className="toast-wrap"
-              role="status"
-              aria-live="polite"
-              initial={{opacity: 0, y: "-100%"}}
-              animate={{opacity: 1, y: 0}}
-              exit={{opacity: 0, y: "-100%"}}
-              transition={{duration: 0.25, ease: EASE_OUT}}
-            >
-              <div className="toast error">
-                <span className="toast-dot" aria-hidden="true"/>
-                {toastMessage}
-              </div>
-            </motion.div>
-          )}
+          {toastMessage && <Toast key="toast" message={toastMessage} type="error"/>}
         </AnimatePresence>
 
         <section className="stack">

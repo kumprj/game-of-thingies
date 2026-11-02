@@ -5,94 +5,14 @@ import logo from "../assets/logo.svg";
 import {useGameLogic} from "../hooks/useGameLogic";
 import Scoreboard from "../components/Scoreboard";
 import TopBar from "../components/TopBar";
+import Modal from "../components/Modal";
+import Collapse from "../components/Collapse";
+import Toast from "../components/Toast";
+import {EASE_OUT} from "../components/motion";
 import {Entry} from "../../../types";
 
 // Other players' answers are hidden by the server before the game starts; this stands in for them.
 const HIDDEN_PLACEHOLDER = "Hidden answer text";
-const EASE_OUT = [0.23, 1, 0.32, 1] as const;
-const EASE_IN_OUT = [0.77, 0, 0.175, 1] as const;
-
-// Expand/collapse wrapper shared by the scoreboard and how-to-play sections.
-function Collapse({children}: {children: React.ReactNode}) {
-  return (
-      <motion.div style={{overflow: "hidden"}}
-                  initial={{height: 0, opacity: 0}} animate={{height: "auto", opacity: 1}}
-                  exit={{height: 0, opacity: 0}}
-                  transition={{duration: 0.22, ease: EASE_IN_OUT}}>
-        {children}
-      </motion.div>
-  );
-}
-
-// Overlay + dialog with matching enter/exit; children are the dialog body.
-function Modal({onClose, role, labelledBy, children}: {
-  onClose: () => void; role: "dialog" | "alertdialog"; labelledBy: string; children: React.ReactNode;
-}) {
-  const dialogRef = React.useRef<HTMLDivElement>(null);
-  const previousActiveElement = React.useRef<HTMLElement | null>(null);
-
-  useEffect(() => {
-    previousActiveElement.current = document.activeElement as HTMLElement | null;
-
-    // Focus first focusable element inside modal or dialog itself
-    const focusable = dialogRef.current?.querySelectorAll<HTMLElement>(
-      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-    );
-    if (focusable && focusable.length > 0) {
-      focusable[0].focus();
-    } else {
-      dialogRef.current?.focus();
-    }
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        onClose();
-        return;
-      }
-      if (e.key === 'Tab') {
-        if (!dialogRef.current) return;
-        const els = Array.from(
-          dialogRef.current.querySelectorAll<HTMLElement>(
-            'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-          )
-        );
-        if (els.length === 0) return;
-        const first = els[0];
-        const last = els[els.length - 1];
-        if (e.shiftKey && document.activeElement === first) {
-          e.preventDefault();
-          last.focus();
-        } else if (!e.shiftKey && document.activeElement === last) {
-          e.preventDefault();
-          first.focus();
-        }
-      }
-    };
-
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown);
-      if (previousActiveElement.current && typeof previousActiveElement.current.focus === 'function') {
-        previousActiveElement.current.focus();
-      }
-    };
-  }, [onClose]);
-
-  return (
-      <motion.div className="overlay" onClick={onClose}
-                  initial={{opacity: 0}} animate={{opacity: 1}} exit={{opacity: 0}}
-                  transition={{duration: 0.15, ease: EASE_OUT}}>
-        <motion.div ref={dialogRef} tabIndex={-1} className="dialog" role={role} aria-modal="true" aria-labelledby={labelledBy}
-                    onClick={e => e.stopPropagation()}
-                    initial={{opacity: 0, scale: 1.08}} animate={{opacity: 1, scale: 1}}
-                    exit={{opacity: 0, scale: 0.96}}
-                    transition={{duration: 0.2, ease: EASE_OUT}}>
-          {children}
-        </motion.div>
-      </motion.div>
-  );
-}
 
 export default function StartGamePage() {
   const {
@@ -143,6 +63,8 @@ export default function StartGamePage() {
     allGuessed,
     isLastEntry,
     isMyTurn,
+    canGuess,
+    canPick,
     uniqueNames,
     roundRecap
   } = useGameLogic();
@@ -501,7 +423,7 @@ export default function StartGamePage() {
                   {started ? (
                       <button
                           className={`answer${entry.guessed ? " guessed" : ""}`}
-                          disabled={!isMyTurn || entry.guessed || (entry.mine && !isLastEntry)}
+                          disabled={!canGuess(entry)}
                           onClick={() => onEntryClick(entry)}
                       >
                         <span>{entry.text}</span>
@@ -640,11 +562,9 @@ export default function StartGamePage() {
                 <p>“{guessingEntry.text}”</p>
                 <div className="stack">
                   {uniqueNames.map(name => {
-                    const disabled = entries.filter(e => e.authorName === name).every(e => e.guessed)
-                        || (name === authorName && turnOrder.length > 1);
                     return (
                         <button key={name} className="btn btn-tinted btn-block"
-                                disabled={disabled || guessLoading}
+                                disabled={!canPick(name) || guessLoading}
                                 onClick={() => guessAuthor(guessingEntry.entryId, name)}>
                           {name}
                         </button>
@@ -725,17 +645,7 @@ export default function StartGamePage() {
 
         {/* Toast */}
         <AnimatePresence>
-        {toast && (
-            <motion.div key="toast" className="toast-wrap" role="status" aria-live="polite"
-                        initial={{opacity: 0, y: "-100%"}} animate={{opacity: 1, y: 0}}
-                        exit={{opacity: 0, y: "-100%"}}
-                        transition={{duration: 0.25, ease: EASE_OUT}}>
-              <div className={`toast ${toast.type}`}>
-                <span className="toast-dot" aria-hidden="true"/>
-                {toast.message}
-              </div>
-            </motion.div>
-        )}
+        {toast && <Toast key="toast" message={toast.message} type={toast.type}/>}
         </AnimatePresence>
       </div>
   );

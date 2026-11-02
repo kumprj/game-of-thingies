@@ -524,6 +524,13 @@ export function useGameLogic() {
   const isMyTurn = currentPlayer === authorName;
   const uniqueNames = players;
 
+  // Guess rules, mirroring iOS GameStore.canGuess/canPick.
+  // An answer can be picked on your turn, if unguessed, and not your own until it's the last one left.
+  const canGuess = (entry: Entry) => isMyTurn && !entry.guessed && !(entry.mine && !isLastEntry);
+  // A name can be picked if not fully guessed, and not yourself until you're the last player left.
+  const canPick = (name: string) =>
+      !guessedNames.includes(name) && !(name === authorName && turnOrder.length > 1);
+
   // Auto-open scoreboard when round completes
   useEffect(() => {
     if (allGuessed && !prevAllGuessedRef.current) {
@@ -599,6 +606,8 @@ export function useGameLogic() {
     allGuessed,
     isLastEntry,
     isMyTurn,
+    canGuess,
+    canPick,
     resetCount,
     uniqueNames,
     roundRecap

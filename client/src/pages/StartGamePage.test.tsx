@@ -11,6 +11,8 @@ vi.mock('./hooks/useGameLogic');
 describe('StartGamePage', () => {
   const defaultHookValues = {
     gameId: '123',
+    canGuess: () => false,
+    canPick: () => true,
     gameTitle: 'Test Game',
     entries: [],
     scores: [],
@@ -167,7 +169,11 @@ function renderPage(overrides: object = {}) {
     guessAuthor: vi.fn(), onEntryClick: vi.fn(), transferHost: vi.fn().mockResolvedValue(true),
   };
   // @ts-ignore
-  vi.spyOn(GameHook, 'useGameLogic').mockReturnValue({...baseHook, ...actions, ...overrides});
+  const hook: any = {...baseHook, ...actions, ...overrides};
+  // The page relies on the hook for the guess rules; derive them from the same state, as the real hook does.
+  hook.canGuess ??= (e: any) => hook.isMyTurn && !e.guessed && !(e.mine && !hook.isLastEntry);
+  hook.canPick ??= (n: string) => !hook.guessedNames.includes(n) && !(n === hook.authorName && hook.turnOrder.length > 1);
+  vi.spyOn(GameHook, 'useGameLogic').mockReturnValue(hook);
   render(<BrowserRouter><StartGamePage/></BrowserRouter>);
   return actions;
 }
