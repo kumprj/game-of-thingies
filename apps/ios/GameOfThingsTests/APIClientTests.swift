@@ -166,6 +166,11 @@ struct APIClientTests {
         }
     }
 
+    @Test func startReturnsTurnOrder() async throws {
+        StubURLProtocol.respond = { _ in (200, #"{"success":true,"turnOrder":["Bo","Ann"]}"#) }
+        #expect(try await api.startGame("ABCD") == ["Bo", "Ann"])
+    }
+
     @Test func startOmitsHeaderWithoutToken() async throws {
         try await api.startGame("ABCD")
         let request = try #require(StubURLProtocol.requests.first)

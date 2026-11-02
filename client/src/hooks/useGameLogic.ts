@@ -334,8 +334,13 @@ export function useGameLogic() {
     }
     setIsLoading(true);
     try {
-      await axios.post(`/api/games/${gameId}/start`, undefined, hostHeaders);
+      const res = await axios.post(`/api/games/${gameId}/start`, undefined, hostHeaders);
       setStarted(true);
+      const order: string[] | undefined = res?.data?.turnOrder;
+      if (order) {
+        setTurnOrder(order);
+        setCurrentPlayer(order[0] || null);
+      }
       const map: Record<string, number> = {};
       scoresRef.current.forEach(s => { map[s.playerName] = s.score; });
       roundStartScoresRef.current = map;

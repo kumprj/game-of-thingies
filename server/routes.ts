@@ -326,7 +326,8 @@ router.post('/games/:gameId/start', async (req, res) => {
 
     const io = (req as any).io;
     io.to(gameId).emit("gameStarted", {turnOrder: shuffled});
-    res.json({success: true});
+    // Returned too so the host doesn't depend on its own socket event to see whose turn it is.
+    res.json({success: true, turnOrder: shuffled});
   } catch (err) {
     console.error(err);
     res.status(500).json({error: 'Start failed'});
@@ -366,6 +367,10 @@ router.post('/games/:gameId/entries/:entryId/guess', async (req, res) => {
     // The last player left may guess their own answer for a free point (ends the round).
     if (item.authorName === guesserName && turnOrder.length > 1) {
       return res.status(400).json({error: "You can't guess your own entry"});
+    }
+    // Naming yourself as the author is only allowed once you're the last player left.
+    if (guess === guesserName && turnOrder.length > 1) {
+      return res.status(400).json({error: "You can't guess yourself until you're the last player left"});
     }
     if (item.guessed) {
       return res.status(409).json({error: 'That entry has already been guessed'});

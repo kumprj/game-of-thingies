@@ -290,8 +290,12 @@ final class GameStore {
         isStarting = true
         defer { isStarting = false }
         do {
-            try await api.startGame(gameId)
+            let order = try await api.startGame(gameId)
             started = true
+            if !order.isEmpty {
+                turnOrder = order
+                currentPlayer = order.first
+            }
             await fetchEntries()
             await fetchScores()
         } catch let error as APIError where error.status == 409 {
@@ -450,6 +454,11 @@ final class GameStore {
     /// You can't guess your own answer unless it's the last one left (a free point to end the round).
     func canGuess(_ entry: Entry) -> Bool {
         isMyTurn && !entry.guessed && !(entry.authorName == authorName && !isLastEntry)
+    }
+
+    /// Whether this name can be picked as the author: not fully guessed, and not yourself until you're the last player left.
+    func canPick(_ name: String) -> Bool {
+        !isFullyGuessed(name) && !(name == authorName && turnOrder.count > 1)
     }
 
     /// Every answer by this author has already been guessed.

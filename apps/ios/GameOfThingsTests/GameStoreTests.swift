@@ -121,6 +121,16 @@ struct GameStoreTests {
         #expect(last.guessedNames == ["Bo"] && last.notGuessedNames == ["Ann"])
     }
 
+    @Test func cannotPickYourselfUntilLastPlayer() async {
+        let entries = "[\(Self.entry("1", "Ann", "mine")),\(Self.entry("2", "Bo", "his"))]"
+        let store = await makeStore(entries: entries, game: #"{"turnOrder":["Ann","Bo"]}"#)
+        #expect(!store.canPick("Ann"))
+        #expect(store.canPick("Bo"))
+
+        let last = await makeStore(entries: entries, game: #"{"turnOrder":["Ann"]}"#)
+        #expect(last.canPick("Ann"))
+    }
+
     @Test func nothingIsGuessableOffTurn() async {
         let store = await makeStore(entries: "[\(Self.entry("1", "Bo", "his"))]", game: #"{"turnOrder":["Bo","Ann"]}"#)
         #expect(!store.isMyTurn)
@@ -284,6 +294,23 @@ struct GameStoreTests {
         #expect(post.url?.path == "/api/games/ABCD/reset")
         #expect(try! JSONDecoder().decode([String: String].self, from: post.httpBody!) == ["question": "Best pizza?"])
         #expect(store.entries.isEmpty && !store.started && store.newQuestion.isEmpty)
+    }
+
+    @Test func startGameAppliesTurnOrderFromResponse() async {
+        let store = await makeStore(entries: "[\(Self.entry("1", "Bo", "a", revealed: false))]")
+        defaults.set("tok", forKey: "hostToken.ABCD")
+        StubURLProtocol.respond = { request in
+            switch (request.httpMethod, request.url!.path) {
+            case ("POST", "/api/games/ABCD/start"): (200, #"{"success":true,"turnOrder":["Bo","Ann"]}"#)
+            case ("GET", _) where request.url!.path.hasSuffix("/entries"): (200, "[\(Self.entry("1", "Bo", "a", revealed: true))]")
+            case ("GET", _) where request.url!.path.hasSuffix("/scores"): (200, "[]")
+            default: (200, "{}")
+            }
+        }
+        await store.startGame()
+        #expect(store.started)
+        #expect(store.turnOrder == ["Bo", "Ann"])
+        #expect(store.currentPlayer == "Bo")
     }
 
     @Test func startWithoutEntriesWarns() async {

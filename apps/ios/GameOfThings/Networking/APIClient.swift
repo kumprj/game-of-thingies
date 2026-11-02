@@ -76,8 +76,11 @@ struct APIClient {
                                        headers: playerHeaders())
     }
 
-    func startGame(_ gameId: String) async throws {
-        try await sendIgnoringResponse("POST", "api/games/\(gameId)/start", headers: hostHeaders(gameId))
+    /// Returns the turn order so the host doesn't depend on its own socket event to see whose turn it is.
+    func startGame(_ gameId: String) async throws -> [String] {
+        struct Response: Decodable { let turnOrder: [String]? }
+        let response: Response = try await send("POST", "api/games/\(gameId)/start", headers: hostHeaders(gameId))
+        return response.turnOrder ?? []
     }
 
     func skipTurn(_ gameId: String) async throws {

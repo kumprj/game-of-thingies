@@ -204,8 +204,9 @@ describe('a full round', () => {
 
     // Start: everyone is in the turn order, and every answer is revealed
     mark = room.events.length;
-    expect((await api('POST', `/api/games/${gameId}/start`)).data).toEqual({success: true});
+    const started = (await api('POST', `/api/games/${gameId}/start`)).data;
     const {turnOrder} = await room.next('gameStarted', mark);
+    expect(started).toEqual({success: true, turnOrder});
     expect([...turnOrder].sort()).toEqual(['Ann', 'Ben', 'Cy']);
     expect(await game(gameId)).toMatchObject({started: true, turnOrder});
     expect((await entries(gameId)).every(e => e.revealed === true)).toBe(true);
@@ -472,6 +473,15 @@ describe('guess rules', () => {
     expect(await scores(gameId)).toEqual([]);
     expect((await game(gameId)).turnOrder).toEqual(turnOrder);
     expect((await entries(gameId)).find(e => e.entryId === ids[me]).guessed).toBeUndefined();
+  });
+
+  it('rejects naming yourself as the author of another entry (400) while others remain', async () => {
+    const {gameId, ids, turnOrder} = await started();
+    const me = turnOrder[0];
+    const other = turnOrder.find(n => n !== me)!;
+    const {status} = await api('POST', guessUrl(gameId, ids[other]), {guesserName: me, guess: me});
+    expect(status).toBe(400);
+    expect((await game(gameId)).turnOrder).toEqual(turnOrder);
   });
 
   it('rejects a repeat guess on a solved entry (409) with no second point', async () => {

@@ -621,7 +621,8 @@ export default function StartGamePage() {
                 <p>“{guessingEntry.text}”</p>
                 <div className="stack">
                   {uniqueNames.map(name => {
-                    const disabled = entries.filter(e => e.authorName === name).every(e => e.guessed);
+                    const disabled = entries.filter(e => e.authorName === name).every(e => e.guessed)
+                        || (name === authorName && turnOrder.length > 1);
                     return (
                         <button key={name} className="btn btn-tinted btn-block"
                                 disabled={disabled || guessLoading}

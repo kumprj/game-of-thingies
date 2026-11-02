@@ -1,5 +1,5 @@
 // src/StartGamePage.test.tsx
-import {render, screen, fireEvent, act, within} from '@testing-library/react';
+import {render, screen, fireEvent, act, within, cleanup} from '@testing-library/react';
 import {beforeEach, describe, it, expect, vi} from 'vitest';
 import {BrowserRouter} from 'react-router-dom';
 import StartGamePage from './StartGamePage';
@@ -359,6 +359,14 @@ describe('StartGamePage in detail', () => {
       renderPage(guessing({entries: [answer('1', 'Mine', 'Ann', {guessed: true}), answer('2', 'Theirs', 'Ben')]}));
       expect(within(screen.getByRole('dialog')).getByRole('button', {name: 'Ann'})).toBeDisabled();
       expect(within(screen.getByRole('dialog')).getByRole('button', {name: 'Ben'})).toBeEnabled();
+    });
+
+    it('rules out yourself until you are the last player left', () => {
+      renderPage(guessing());
+      expect(within(screen.getByRole('dialog')).getByRole('button', {name: 'Ann'})).toBeDisabled();
+      cleanup();
+      renderPage(guessing({turnOrder: ['Ann'], entries: [answer('1', 'Mine', 'Ann'), answer('2', 'Theirs', 'Ben', {guessed: true})]}));
+      expect(within(screen.getByRole('dialog')).getByRole('button', {name: 'Ann'})).toBeEnabled();
     });
 
     it('locks the choices while a guess is in flight', () => {
