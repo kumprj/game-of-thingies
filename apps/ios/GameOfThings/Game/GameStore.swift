@@ -27,9 +27,17 @@ final class GameStore {
     private(set) var currentPlayer: String?
     private(set) var started = false
 
-    var entryText = ""
+    static let maxNameLength = 30
+    static let maxAnswerLength = 200
+
+    var entryText = "" {
+        didSet {
+            if entryText.count > Self.maxAnswerLength { entryText = String(entryText.prefix(Self.maxAnswerLength)) }
+        }
+    }
     var authorName: String {
         didSet {
+            if authorName.count > Self.maxNameLength { authorName = String(authorName.prefix(Self.maxNameLength)) }
             if !authorName.trimmed.isEmpty { defaults.set(authorName, forKey: Self.authorNameKey) }
         }
     }
@@ -233,7 +241,11 @@ final class GameStore {
             hasSubmitted = true
             show("Entry added!")
         } catch {
-            show("Failed to add entry", .error)
+            if let message = (error as? APIError)?.serverMessage {
+                show(message, .error)
+            } else {
+                show("Failed to add entry", .error)
+            }
         }
     }
 

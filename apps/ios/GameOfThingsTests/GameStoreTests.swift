@@ -109,6 +109,28 @@ struct GameStoreTests {
         #expect(store.toast?.message == "Failed to add entry")
     }
 
+    @Test func addEntryShowsServerErrorMessage() async {
+        let store = await makeStore(entries: "[]")
+        StubURLProtocol.respond = { _ in (409, #"{"error":"That name is already taken in this game"}"#) }
+        store.entryText = "Tacos"
+        await store.addEntry()
+        #expect(!store.hasSubmitted)
+        #expect(store.toast?.message == "That name is already taken in this game")
+    }
+
+    @Test func inputIsLimitedAndBlankCannotSubmit() async {
+        let store = await makeStore(entries: "[]")
+        store.entryText = String(repeating: "a", count: 250)
+        store.authorName = String(repeating: "b", count: 40)
+        #expect(store.entryText.count == GameStore.maxAnswerLength)
+        #expect(store.authorName.count == GameStore.maxNameLength)
+        store.entryText = "   \n "
+        #expect(!store.canAddEntry)
+        store.entryText = "ok"
+        store.authorName = "  "
+        #expect(!store.canAddEntry)
+    }
+
     @Test func gameResetUnlocksAnswering() async {
         defaults.set(true, forKey: "submitted_ABCD")
         let store = await makeStore(entries: "[]")

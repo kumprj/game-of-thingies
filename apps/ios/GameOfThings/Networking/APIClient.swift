@@ -2,7 +2,17 @@ import Foundation
 
 struct APIError: LocalizedError {
     let status: Int
-    var errorDescription: String? { "Server responded with status \(status)" }
+    /// The server's `{ "error": "..." }` text, when it sent one.
+    var serverMessage: String? = nil
+    var errorDescription: String? { serverMessage ?? "Server responded with status \(status)" }
+
+    /// Extracts the `error` string from a JSON error body; nil if absent or blank.
+    static func message(from data: Data) -> String? {
+        struct Body: Decodable { let error: String? }
+        guard let text = (try? JSONDecoder().decode(Body.self, from: data))?.error?
+            .trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return nil }
+        return text
+    }
 }
 
 /// REST endpoints from server/routes.ts.
@@ -67,7 +77,7 @@ struct APIClient {
         }
         let (data, response) = try await session.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-        guard (200..<300).contains(status) else { throw APIError(status: status) }
+        guard (200..<300).contains(status) else { throw APIError(status: status, serverMessage: APIError.message(from: data)) }
         return data
     }
 }

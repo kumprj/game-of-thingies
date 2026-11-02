@@ -94,5 +94,28 @@ struct APIClientTests {
         StubURLProtocol.respond = { _ in (500, #"{"error":"Start failed"}"#) }
         await #expect(throws: APIError.self) { try await api.startGame("ABCD") }
     }
+
+    @Test func errorResponseCarriesServerMessage() async {
+        StubURLProtocol.respond = { _ in (409, #"{"error":"That name is already taken in this game"}"#) }
+        do {
+            try await api.addEntry(gameId: "ABCD", authorName: "Ann", text: "x")
+            Issue.record("expected throw")
+        } catch let error as APIError {
+            #expect(error.status == 409)
+            #expect(error.serverMessage == "That name is already taken in this game")
+            #expect(error.errorDescription == "That name is already taken in this game")
+        } catch { Issue.record("wrong error \(error)") }
+    }
+
+    @Test func errorWithoutJSONFallsBackToStatus() async {
+        StubURLProtocol.respond = { _ in (502, "<html>Bad gateway</html>") }
+        do {
+            try await api.startGame("ABCD")
+            Issue.record("expected throw")
+        } catch let error as APIError {
+            #expect(error.serverMessage == nil)
+            #expect(error.errorDescription == "Server responded with status 502")
+        } catch { Issue.record("wrong error \(error)") }
+    }
 }
 }
