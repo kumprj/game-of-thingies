@@ -1,4 +1,4 @@
-import {afterAll, beforeAll, describe, expect, it} from 'vitest';
+import {afterAll, beforeAll, describe, expect, it, vi} from 'vitest';
 import type {AddressInfo} from 'net';
 import {CreateTableCommand, DeleteTableCommand, DynamoDBClient} from '@aws-sdk/client-dynamodb';
 import {io as connect, type Socket} from 'socket.io-client';
@@ -135,6 +135,23 @@ describe('creating and loading games', () => {
   it('uses the default question when none is given', async () => {
     const gameId = await createGame('Ann');
     expect((await game(gameId)).question).toBe('What is your favorite thing?');
+  });
+
+  it('picks a new code instead of overwriting a live game on collision', async () => {
+    // Math.random() === 0 yields "AAAA"; the second game's first attempt collides, then it gets "BBBB"
+    const codes = [0, 0, 0, 0, 0, 0, 0, 0, 0.04, 0.04, 0.04, 0.04];
+    let call = 0;
+    const spy = vi.spyOn(Math, 'random').mockImplementation(() => codes[Math.min(call++, codes.length - 1)]);
+    try {
+      const first = await createGame('Ann', 'First question');
+      const second = await createGame('Bob', 'Second question');
+      expect(first).toBe('AAAA');
+      expect(second).toBe('BBBB');
+      expect(await game(first)).toMatchObject({gameOwner: 'Ann', question: 'First question'});
+      expect(await game(second)).toMatchObject({gameOwner: 'Bob', question: 'Second question'});
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it('returns an empty object, entries and scores for an unknown game', async () => {

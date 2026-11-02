@@ -11,6 +11,7 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 
 const router = express.Router();
+const MAX_CODE_ATTEMPTS = 10;
 
 async function getGame(gameId: string) {
   const result = await ddb.send(new GetCommand({TableName: tables.games, Key: {gameId}}));
@@ -29,25 +30,31 @@ function randomGameId() {
 
 // Create Game
 router.post('/createGame', async (req, res) => {
-  const gameId = randomGameId();
   const {name, question} = req.body;
   const createdAt = new Date().toISOString();
 
   try {
-    await ddb.send(new UpdateCommand({
-      TableName: tables.games,
-      Key: {gameId},
-      UpdateExpression: 'SET #q = :q, #c = :c, gameOwner = :go, expiresAt = :e',
-      ExpressionAttributeNames: {'#q': 'question', '#c': 'createdAt'},
-      ExpressionAttributeValues: {
-        ':q': question || 'What is your favorite thing?',
-        ':c': createdAt,
-        ':go': name,
-        ':e': expiresAt()
-      },
-      ReturnValues: 'ALL_NEW'
-    }));
-    res.json({gameId});
+    // A random code can collide with a live game; never overwrite it, pick a new code instead
+    for (let attempt = 0; attempt < MAX_CODE_ATTEMPTS; attempt++) {
+      const gameId = randomGameId();
+      try {
+        await ddb.send(new PutCommand({
+          TableName: tables.games,
+          Item: {
+            gameId,
+            question: question || 'What is your favorite thing?',
+            createdAt,
+            gameOwner: name,
+            expiresAt: expiresAt()
+          },
+          ConditionExpression: 'attribute_not_exists(gameId)'
+        }));
+        return res.json({gameId});
+      } catch (error) {
+        if ((error as {name?: string}).name !== 'ConditionalCheckFailedException') throw error;
+      }
+    }
+    throw new Error(`No free game code after ${MAX_CODE_ATTEMPTS} attempts`);
   } catch (error) {
     console.error('Create game failed:', error);
     res.status(500).json({error: 'Failed to create game'});
