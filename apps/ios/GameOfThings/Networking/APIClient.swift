@@ -25,6 +25,20 @@ struct APIClient {
     static func hostTokenKey(_ gameId: String) -> String { "hostToken.\(gameId)" }
     private func hostTokenKey(_ gameId: String) -> String { Self.hostTokenKey(gameId) }
 
+    /// Per-device player token (x-player-token) tying a name to the device.
+    static let playerTokenKey = "got_playerToken"
+    func playerToken() -> String {
+        if let token = defaults.string(forKey: Self.playerTokenKey) {
+            return token
+        }
+        let newToken = UUID().uuidString
+        defaults.set(newToken, forKey: Self.playerTokenKey)
+        return newToken
+    }
+    private func playerHeaders() -> [String: String] {
+        ["x-player-token": playerToken()]
+    }
+
     func createGame(name: String, question: String) async throws -> String {
         struct Response: Decodable { let gameId: String; let hostToken: String? }
         let response: Response = try await send("POST", "api/createGame",
@@ -47,18 +61,40 @@ struct APIClient {
 
     func addEntry(gameId: String, authorName: String, text: String) async throws {
         try await sendIgnoringResponse("POST", "api/games/\(gameId)/entries",
-                                       body: ["authorName": authorName, "text": text])
+                                       body: ["authorName": authorName, "text": text],
+                                       headers: playerHeaders())
+    }
+
+    func editEntry(gameId: String, entryId: String, text: String) async throws {
+        try await sendIgnoringResponse("PATCH", "api/games/\(gameId)/entries/\(entryId)",
+                                       body: ["text": text],
+                                       headers: playerHeaders())
+    }
+
+    func deleteEntry(gameId: String, entryId: String) async throws {
+        try await sendIgnoringResponse("DELETE", "api/games/\(gameId)/entries/\(entryId)",
+                                       headers: playerHeaders())
     }
 
     func startGame(_ gameId: String) async throws {
         try await sendIgnoringResponse("POST", "api/games/\(gameId)/start", headers: hostHeaders(gameId))
     }
 
+    func skipTurn(_ gameId: String) async throws {
+        try await sendIgnoringResponse("POST", "api/games/\(gameId)/skip-turn", headers: hostHeaders(gameId))
+    }
+
+    func removePlayer(gameId: String, playerName: String) async throws {
+        let encoded = playerName.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? playerName
+        try await sendIgnoringResponse("DELETE", "api/games/\(gameId)/players/\(encoded)", headers: hostHeaders(gameId))
+    }
+
     /// Returns whether the guess was correct.
     func guess(gameId: String, entryId: String, guesserName: String, guess: String) async throws -> Bool {
         struct Response: Decodable { let isCorrect: Bool }
         let response: Response = try await send("POST", "api/games/\(gameId)/entries/\(entryId)/guess",
-                                                body: ["guesserName": guesserName, "guess": guess])
+                                                body: ["guesserName": guesserName, "guess": guess],
+                                                headers: playerHeaders())
         return response.isCorrect
     }
 
@@ -73,8 +109,9 @@ struct APIClient {
 
     // MARK: - Transport
 
-    private func send<T: Decodable>(_ method: String, _ path: String, body: [String: String]? = nil) async throws -> T {
-        let data = try await sendIgnoringResponse(method, path, body: body)
+    private func send<T: Decodable>(_ method: String, _ path: String, body: [String: String]? = nil,
+                                    headers: [String: String] = [:]) async throws -> T {
+        let data = try await sendIgnoringResponse(method, path, body: body, headers: headers)
         return try JSONDecoder().decode(T.self, from: data)
     }
 

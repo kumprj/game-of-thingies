@@ -9,6 +9,7 @@ struct HomeView: View {
     @State private var joinCode = ""
     @State private var creatingGame = false
     @State private var createError: String?
+    @State private var recentGames: [RecentGameRecord] = []
 
     private let api = APIClient()
 
@@ -80,10 +81,42 @@ struct HomeView: View {
             }
             .listSectionSpacing(.compact)
 
+            if !recentGames.isEmpty {
+                Section("Recent Games") {
+                    ForEach(recentGames) { recent in
+                        Button {
+                            openGame(recent.gameId)
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(recent.title)
+                                        .font(.body.weight(.medium))
+                                        .foregroundStyle(.primary)
+                                    Text("Code: \(recent.gameId)")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.caption)
+                                    .foregroundStyle(.tertiary)
+                            }
+                        }
+                    }
+                    .onDelete(perform: deleteRecent)
+                }
+            }
+
             Section {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("How to Play").font(.headline)
-                    Text("The game host will enter a game title (this can be anything), and a question prompt to ask the room. When the host taps Create Game, a 4-letter code will be generated for them to share with people to join the game. Then, submit your answer along with your name. Once everyone has submitted and the group is ready, the host will tap to start the game to reveal the shuffled entries. When it is your turn, try to guess who wrote each entry—getting correct guesses earns points! Once all guesses are made, a new question box will pop up to start a new round. The player who has gone the longest ago goes first.")
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("1. **Create or join:** Host enters a title and question prompt. Share the 4-letter code with players.")
+                        Text("2. **Submit secretly:** Each player submits their answer and name before the game starts.")
+                        Text("3. **Take turns guessing:** The host starts the game to reveal the shuffled answers. On your turn, pick an answer and guess who wrote it.")
+                        Text("4. **Earn points:** Correct guesses earn points and keep your turn. Once all answers are guessed, the host can start a new round!")
+                    }
+                    .font(.subheadline)
                     Text("Have fun and enjoy the Game of Things!")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
@@ -96,6 +129,23 @@ struct HomeView: View {
         .toolbar(removing: .title)
         .toolbar { ThemeToggleButton() }
         .alert(createError ?? "", isPresented: Binding(get: { createError != nil }, set: { if !$0 { createError = nil } })) {}
+        .onAppear { loadRecentGames() }
+    }
+
+    private func loadRecentGames() {
+        if let data = UserDefaults.standard.data(forKey: "got_recent_games"),
+           let list = try? JSONDecoder().decode([RecentGameRecord].self, from: data) {
+            recentGames = list
+        } else {
+            recentGames = []
+        }
+    }
+
+    private func deleteRecent(at offsets: IndexSet) {
+        recentGames.remove(atOffsets: offsets)
+        if let data = try? JSONEncoder().encode(recentGames) {
+            UserDefaults.standard.set(data, forKey: "got_recent_games")
+        }
     }
 
     private func createGame() {
@@ -111,6 +161,13 @@ struct HomeView: View {
             }
         }
     }
+}
+
+struct RecentGameRecord: Codable, Identifiable {
+    var id: String { gameId }
+    let gameId: String
+    let title: String
+    let lastVisited: Double
 }
 
 extension String {

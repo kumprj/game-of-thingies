@@ -59,6 +59,7 @@ router.post('/createGame', async (req, res) => {
             gameId,
             question,
             createdAt,
+            title: name,
             gameOwner: name,
             hostToken,
             expiresAt: expiresAt()
@@ -104,6 +105,13 @@ router.post('/games/:gameId/entries', async (req, res) => {
     if (!game) return res.status(404).json({error: 'Game not found'});
     if (game.started) return res.status(400).json({error: 'The game has already started'});
 
+    const playerToken = req.header('x-player-token');
+    const existingTokens = game.playerTokens || {};
+    const normName = authorName.toLowerCase();
+    if (existingTokens[normName] && playerToken && existingTokens[normName] !== playerToken) {
+      return res.status(403).json({error: 'That name belongs to another player'});
+    }
+
     const existing = await ddb.send(new QueryCommand({
       TableName: tables.entries,
       KeyConditionExpression: 'gameId = :g',
@@ -117,8 +125,37 @@ router.post('/games/:gameId/entries', async (req, res) => {
     const createdAt = new Date().toISOString();
     await ddb.send(new PutCommand({
       TableName: tables.entries,
-      Item: {entryId, gameId, authorName, text, createdAt, revealed: false, expiresAt: expiresAt()}
+      Item: {
+        entryId,
+        gameId,
+        authorName,
+        authorToken: playerToken || undefined,
+        text,
+        createdAt,
+        revealed: false,
+        expiresAt: expiresAt()
+      }
     }));
+
+    if (playerToken) {
+      try {
+        await ddb.send(new UpdateCommand({
+          TableName: tables.games,
+          Key: {gameId},
+          UpdateExpression: 'SET playerTokens = if_not_exists(playerTokens, :empty), expiresAt = :e',
+          ExpressionAttributeValues: {':empty': {}, ':e': expiresAt()}
+        }));
+        await ddb.send(new UpdateCommand({
+          TableName: tables.games,
+          Key: {gameId},
+          UpdateExpression: 'SET playerTokens.#p = :token, expiresAt = :e',
+          ExpressionAttributeNames: {'#p': normName},
+          ExpressionAttributeValues: {':token': playerToken, ':e': expiresAt()}
+        }));
+      } catch (err) {
+        console.error('Failed to save playerToken:', err);
+      }
+    }
 
     const io = (req as any).io;
     io.to(gameId).emit("entriesUpdated");
@@ -127,6 +164,105 @@ router.post('/games/:gameId/entries', async (req, res) => {
   } catch (error) {
     console.error('Add entry failed:', error);
     res.status(500).json({error: 'Failed to add entry'});
+  }
+});
+
+// Edit Entry (Pre-Game only, Author only)
+router.patch('/games/:gameId/entries/:entryId', async (req, res) => {
+  const {gameId, entryId} = req.params;
+  const {text: rawText} = req.body ?? {};
+
+  if (typeof rawText !== 'string') {
+    return res.status(400).json({error: 'Answer must be text'});
+  }
+  const text = rawText.trim();
+  if (!text) return res.status(400).json({error: 'Answer is required'});
+  if (text.length > MAX_ANSWER_LENGTH) {
+    return res.status(400).json({error: `Answer must be ${MAX_ANSWER_LENGTH} characters or fewer`});
+  }
+
+  try {
+    const game = await getGame(gameId);
+    if (!game) return res.status(404).json({error: 'Game not found'});
+    if (game.started) return res.status(400).json({error: 'The game has already started'});
+
+    const entryResult = await ddb.send(new GetCommand({
+      TableName: tables.entries, Key: {gameId, entryId}
+    }));
+    const item = entryResult.Item;
+    if (!item) return res.status(404).json({error: 'Entry not found'});
+
+    const playerToken = req.header('x-player-token');
+    const authorLower = item.authorName.toLowerCase();
+    const boundToken = item.authorToken || game.playerTokens?.[authorLower];
+    if (boundToken && playerToken && boundToken !== playerToken) {
+      return res.status(403).json({error: 'Only the author can edit this entry'});
+    }
+
+    await ddb.send(new UpdateCommand({
+      TableName: tables.entries,
+      Key: {gameId, entryId},
+      UpdateExpression: 'SET #t = :txt, expiresAt = :e',
+      ExpressionAttributeNames: {'#t': 'text'},
+      ExpressionAttributeValues: {':txt': text, ':e': expiresAt()}
+    }));
+
+    const io = (req as any).io;
+    io.to(gameId).emit('entriesUpdated');
+
+    res.json({success: true});
+  } catch (err) {
+    console.error('Edit entry failed:', err);
+    res.status(500).json({error: 'Failed to edit entry'});
+  }
+});
+
+// Delete Entry (Pre-Game only, Author only)
+router.delete('/games/:gameId/entries/:entryId', async (req, res) => {
+  const {gameId, entryId} = req.params;
+  try {
+    const game = await getGame(gameId);
+    if (!game) return res.status(404).json({error: 'Game not found'});
+    if (game.started) return res.status(400).json({error: 'The game has already started'});
+
+    const entryResult = await ddb.send(new GetCommand({
+      TableName: tables.entries, Key: {gameId, entryId}
+    }));
+    const item = entryResult.Item;
+    if (!item) return res.status(404).json({error: 'Entry not found'});
+
+    const playerToken = req.header('x-player-token');
+    const authorLower = item.authorName.toLowerCase();
+    const boundToken = item.authorToken || game.playerTokens?.[authorLower];
+    if (boundToken && playerToken && boundToken !== playerToken) {
+      return res.status(403).json({error: 'Only the author can delete this entry'});
+    }
+
+    await ddb.send(new DeleteCommand({
+      TableName: tables.entries,
+      Key: {gameId, entryId}
+    }));
+
+    if (game.playerTokens?.[authorLower]) {
+      try {
+        await ddb.send(new UpdateCommand({
+          TableName: tables.games,
+          Key: {gameId},
+          UpdateExpression: 'REMOVE playerTokens.#p',
+          ExpressionAttributeNames: {'#p': authorLower}
+        }));
+      } catch (e) {
+        // Non-fatal if map key delete fails
+      }
+    }
+
+    const io = (req as any).io;
+    io.to(gameId).emit('entriesUpdated');
+
+    res.json({success: true});
+  } catch (err) {
+    console.error('Delete entry failed:', err);
+    res.status(500).json({error: 'Failed to delete entry'});
   }
 });
 
@@ -220,6 +356,13 @@ router.post('/games/:gameId/entries/:entryId/guess', async (req, res) => {
     if (turnOrder[0] !== guesserName) {
       return res.status(409).json({error: "It's not your turn"});
     }
+
+    const playerToken = req.header('x-player-token');
+    const playerTokens = game?.playerTokens || {};
+    const normGuesser = guesserName.toLowerCase();
+    if (playerTokens[normGuesser] && playerToken && playerTokens[normGuesser] !== playerToken) {
+      return res.status(403).json({error: 'You cannot guess as another player'});
+    }
     // The last player left may guess their own answer for a free point (ends the round).
     if (item.authorName === guesserName && turnOrder.length > 1) {
       return res.status(400).json({error: "You can't guess your own entry"});
@@ -303,15 +446,80 @@ router.post('/games/:gameId/entries/:entryId/guess', async (req, res) => {
   }
 });
 
+// Skip Turn (Host only, Game started)
+router.post('/games/:gameId/skip-turn', async (req, res) => {
+  const {gameId} = req.params;
+  try {
+    const game = await getGame(gameId);
+    if (!game) return res.status(404).json({error: 'Game not found'});
+    if (!isHost(game, req)) return res.status(403).json({error: 'Only the host can skip turns'});
+    if (!game.started) return res.status(400).json({error: 'The game has not started yet'});
+
+    let turnOrder: string[] = game.turnOrder || [];
+    if (turnOrder.length === 0) return res.status(400).json({error: 'No turns to skip'});
+
+    if (turnOrder.length > 1) {
+      turnOrder.push(turnOrder.shift()!);
+    }
+
+    await ddb.send(new UpdateCommand({
+      TableName: tables.games,
+      Key: {gameId},
+      UpdateExpression: 'SET turnOrder = :to, expiresAt = :e',
+      ExpressionAttributeValues: {':to': turnOrder, ':e': expiresAt()}
+    }));
+
+    const io = (req as any).io;
+    io.to(gameId).emit('nextTurn', {currentPlayer: turnOrder[0] || null, turnOrder});
+
+    res.json({success: true, turnOrder});
+  } catch (err) {
+    console.error('Skip turn failed:', err);
+    res.status(500).json({error: 'Failed to skip turn'});
+  }
+});
+
+// Remove Player (Host only, Game started)
+router.delete('/games/:gameId/players/:playerName', async (req, res) => {
+  const {gameId, playerName} = req.params;
+  try {
+    const game = await getGame(gameId);
+    if (!game) return res.status(404).json({error: 'Game not found'});
+    if (!isHost(game, req)) return res.status(403).json({error: 'Only the host can remove players'});
+    if (!game.started) return res.status(400).json({error: 'The game has not started yet'});
+
+    let turnOrder: string[] = game.turnOrder || [];
+    turnOrder = turnOrder.filter(name => name !== playerName);
+
+    await ddb.send(new UpdateCommand({
+      TableName: tables.games,
+      Key: {gameId},
+      UpdateExpression: 'SET turnOrder = :to, expiresAt = :e',
+      ExpressionAttributeValues: {':to': turnOrder, ':e': expiresAt()}
+    }));
+
+    const io = (req as any).io;
+    io.to(gameId).emit('playerRemoved', {playerName, turnOrder});
+    io.to(gameId).emit('nextTurn', {currentPlayer: turnOrder[0] || null, turnOrder});
+
+    res.json({success: true, turnOrder});
+  } catch (err) {
+    console.error('Remove player failed:', err);
+    res.status(500).json({error: 'Failed to remove player'});
+  }
+});
+
 // ... Add the other GET routes (get game, get entries, get scores) here ...
 // They follow the same pattern: fetch from DDB, return JSON.
 router.get('/games/:gameId', async (req, res) => {
   const {gameId} = req.params;
-  // Never expose the host token to players.
+  // Never expose the host token or player tokens to players.
   const game = await getGame(gameId);
   if (!game) return res.status(404).json({error: 'Game not found'});
-  const {hostToken: _hostToken, ...publicGame} = game;
-  res.json(publicGame);
+  const {hostToken: _hostToken, playerTokens: _playerTokens, ...publicGame} = game;
+  const title = publicGame.title || publicGame.gameOwner;
+  const gameOwner = publicGame.gameOwner || publicGame.title;
+  res.json({...publicGame, title, gameOwner});
 });
 
 router.get('/games/:gameId/entries', async (req, res) => {

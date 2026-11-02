@@ -5,9 +5,17 @@ struct GameView: View {
     @State private var store: GameStore
     @State private var showScores = false
     @State private var showHowToPlay = false
+    @State private var isChangingName = false
+    @State private var editingEntryId: String? = nil
+    @State private var editingEntryText = ""
+    @FocusState private var focusedField: AnswerField?
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    enum AnswerField: Hashable {
+        case answer, name
+    }
 
     init(gameId: String) {
         _store = State(initialValue: GameStore(gameId: gameId))
@@ -23,11 +31,15 @@ struct GameView: View {
                 if store.started { statusSection }
                 if !store.started { answerFormSections }
                 if store.allGuessed && store.isHost { nextRoundSections }
+                if store.allGuessed, let recap = store.roundRecapText {
+                    recapSection(recap)
+                }
                 answersSection
                 if !store.scores.isEmpty { scoreboardSection }
                 howToPlaySection
             }
         }
+        .refreshable { await store.sync() }
         .animation(.spring(duration: 0.3, bounce: 0), value: store.entries)
         .animation(.spring(duration: 0.3, bounce: 0), value: store.started)
         .navigationBarTitleDisplayMode(.inline)
@@ -58,6 +70,9 @@ struct GameView: View {
         .onChange(of: store.toast) { _, toast in
             if let toast { AccessibilityNotification.Announcement(toast.message).post() }
         }
+        .onChange(of: store.allGuessed) { _, allGuessed in
+            if allGuessed { showScores = true }
+        }
     }
 
     // MARK: - Sections
@@ -87,17 +102,33 @@ struct GameView: View {
                 Text(store.gameTitle ?? store.gameId)
                     .font(.title2.bold())
                     .multilineTextAlignment(.center)
-                Text(store.gameId)
-                    .font(.footnote.weight(.semibold).monospacedDigit())
-                    .tracking(1.2)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 3)
-                    .background(.fill.tertiary, in: .capsule)
-                    .accessibilityLabel("Game code \(store.gameId)")
-                    .contextMenu {
-                        Button("Copy Code", systemImage: "doc.on.doc") { UIPasteboard.general.string = store.gameId }
+                HStack(spacing: 8) {
+                    Button {
+                        UIPasteboard.general.string = store.gameId
+                        store.show("Copied code \(store.gameId)")
+                    } label: {
+                        Text(store.gameId)
+                            .font(.footnote.weight(.semibold).monospacedDigit())
+                            .tracking(1.2)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 3)
+                            .background(.fill.tertiary, in: .capsule)
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Game code \(store.gameId). Tap to copy.")
+
+                    if let shareURL = URL(string: "https://gameofthings.fun/\(store.gameId)") {
+                        ShareLink(item: shareURL) {
+                            Image(systemName: "square.and.arrow.up")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                                .padding(6)
+                                .background(.fill.tertiary, in: .circle)
+                        }
+                        .accessibilityLabel("Share game link")
+                    }
+                }
                 Group {
                     if let question = store.gameQuestion {
                         Text(question)
@@ -117,22 +148,49 @@ struct GameView: View {
     private var turnSection: some View {
         let inProgress = !store.turnOrder.isEmpty
         return Section {
-            HStack(spacing: 14) {
-                Image(systemName: inProgress ? "arrow.right" : "checkmark")
-                    .font(.title3.bold())
-                    .frame(width: 40, height: 40)
-                    .background(.white.opacity(0.2), in: .circle)
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(inProgress ? (store.isMyTurn ? "Your turn" : "Now guessing") : "Round over")
-                        .font(.footnote.weight(.semibold))
-                        .textCase(.uppercase)
-                        .opacity(0.75)
-                    Text(inProgress ? "\(store.currentPlayer ?? "")'s turn!" : "All answers guessed!")
-                        .font(.title2.bold())
-                        .contentTransition(.opacity)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 14) {
+                    Image(systemName: inProgress ? "arrow.right" : "checkmark")
+                        .font(.title3.bold())
+                        .frame(width: 40, height: 40)
+                        .background(.white.opacity(0.2), in: .circle)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(inProgress ? (store.isMyTurn ? "Your turn" : "Now guessing") : "Round over")
+                            .font(.footnote.weight(.semibold))
+                            .textCase(.uppercase)
+                            .opacity(0.75)
+                        Text(inProgress ? "\(store.currentPlayer ?? "")'s turn!" : "All answers guessed!")
+                            .font(.title2.bold())
+                            .contentTransition(.opacity)
+                    }
+                    Spacer(minLength: 0)
+                    if store.isHost && inProgress && !store.allGuessed {
+                        Button("Skip") {
+                            Task { await store.skipTurn() }
+                        }
+                        .font(.subheadline.bold())
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(.white.opacity(0.25), in: .capsule)
+                        .accessibilityLabel("Skip player's turn")
+                    }
                 }
-                Spacer(minLength: 0)
+                if inProgress && store.turnOrder.count > 1 {
+                    HStack(spacing: 4) {
+                        Text("Up next:")
+                            .font(.caption)
+                            .opacity(0.8)
+                        ForEach(Array(store.turnOrder.dropFirst().enumerated()), id: \.element) { index, name in
+                            if index > 0 { Text("→").font(.caption2).opacity(0.6) }
+                            Text(name)
+                                .font(.caption.bold())
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(.white.opacity(0.2), in: .capsule)
+                        }
+                    }
+                }
             }
             .foregroundStyle(.white)
             .padding(.vertical, 6)
@@ -155,10 +213,32 @@ struct GameView: View {
     @ViewBuilder private var answerFormSections: some View {
         Section {
             TextField("Your answer", text: $store.entryText, axis: .vertical)
-            TextField("Your name", text: $store.authorName)
-                .textContentType(.givenName)
-                .textInputAutocapitalization(.words)
-                .autocorrectionDisabled()
+                .accessibilityLabel("Your answer")
+                .focused($focusedField, equals: .answer)
+                .submitLabel(.next)
+                .onSubmit { focusedField = .name }
+
+            if !store.authorName.isEmpty && !isChangingName && !store.hasSubmitted {
+                HStack {
+                    Text("Playing as ") + Text(store.authorName).bold()
+                    Spacer()
+                    Button("change") { isChangingName = true }
+                        .font(.subheadline)
+                }
+            } else {
+                TextField("Your name", text: $store.authorName)
+                    .textContentType(.givenName)
+                    .textInputAutocapitalization(.words)
+                    .autocorrectionDisabled()
+                    .accessibilityLabel("Your name")
+                    .focused($focusedField, equals: .name)
+                    .submitLabel(.done)
+                    .onSubmit {
+                        if store.canAddEntry {
+                            Task { await store.addEntry() }
+                        }
+                    }
+            }
         }
         .disabled(store.isStarting || store.addEntryLoading || store.hasSubmitted)
         Section {
@@ -184,6 +264,28 @@ struct GameView: View {
             }
         }
         .listSectionSpacing(.compact)
+    }
+
+    @ViewBuilder private func recapSection(_ recap: (mostGuesses: String, leader: String)) -> some View {
+        Section("Round Recap") {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text("Most guesses:")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Text(recap.mostGuesses)
+                        .font(.subheadline.bold())
+                }
+                HStack {
+                    Text("Overall leader:")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Text(recap.leader)
+                        .font(.subheadline.bold())
+                }
+            }
+            .padding(.vertical, 4)
+        }
     }
 
     @ViewBuilder private var nextRoundSections: some View {
@@ -232,13 +334,52 @@ struct GameView: View {
                     .accessibilityHint(store.canGuess(entry) ? "Guess who wrote this" : "")
                 } else if entry.authorName == store.authorName {
                     // Pre-game: my own entry is visible to me only
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(entry.text)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(.blue)
-                        Text("Your submission, not viewable to others yet")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 6) {
+                        if editingEntryId == entry.entryId {
+                            TextField("Edit answer", text: $editingEntryText)
+                                .textFieldStyle(.roundedBorder)
+                            HStack {
+                                Button("Save") {
+                                    Task {
+                                        await store.editEntry(entryId: entry.entryId, text: editingEntryText)
+                                        editingEntryId = nil
+                                    }
+                                }
+                                .font(.caption.bold())
+                                Button("Cancel") { editingEntryId = nil }
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } else {
+                            Text(entry.text)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(.blue)
+                            HStack {
+                                Text("Your submission, not viewable to others yet")
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                Button("Edit") {
+                                    editingEntryText = entry.text
+                                    editingEntryId = entry.entryId
+                                }
+                                .font(.caption)
+                                Button("Remove", role: .destructive) {
+                                    Task { await store.withdrawEntry(entryId: entry.entryId) }
+                                }
+                                .font(.caption)
+                            }
+                        }
+                    }
+                    .swipeActions {
+                        Button("Remove", role: .destructive) {
+                            Task { await store.withdrawEntry(entryId: entry.entryId) }
+                        }
+                        Button("Edit") {
+                            editingEntryText = entry.text
+                            editingEntryId = entry.entryId
+                        }
+                        .tint(.blue)
                     }
                 } else {
                     // Pre-game: everyone else's entry is blurred
@@ -276,17 +417,17 @@ struct GameView: View {
     }
 
     private var toastOverlay: some View {
-        ZStack {
-            if let toast = store.toast {
+        VStack(spacing: 8) {
+            ForEach(store.toasts) { toast in
                 ToastView(toast: toast)
-                    .onTapGesture { store.dismissToast() }
+                    .onTapGesture { store.dismissToast(toast.id) }
                     .transition(.move(edge: .top).combined(with: .opacity))
                     .id(toast.id)
             }
         }
         .padding(.horizontal, 16)
         .padding(.top, 8)
-        .animation(.spring(duration: 0.35, bounce: 0), value: store.toast)
+        .animation(.spring(duration: 0.35, bounce: 0), value: store.toasts)
     }
 }
 

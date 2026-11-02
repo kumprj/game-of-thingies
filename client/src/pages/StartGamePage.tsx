@@ -5,6 +5,7 @@ import logo from "../assets/logo.svg";
 import {useGameLogic} from "../hooks/useGameLogic";
 import Scoreboard from "../components/Scoreboard";
 import TopBar from "../components/TopBar";
+import {Entry} from "../../../types";
 
 const EASE_OUT = [0.23, 1, 0.32, 1] as const;
 const EASE_IN_OUT = [0.77, 0, 0.175, 1] as const;
@@ -25,11 +26,62 @@ function Collapse({children}: {children: React.ReactNode}) {
 function Modal({onClose, role, labelledBy, children}: {
   onClose: () => void; role: "dialog" | "alertdialog"; labelledBy: string; children: React.ReactNode;
 }) {
+  const dialogRef = React.useRef<HTMLDivElement>(null);
+  const previousActiveElement = React.useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    previousActiveElement.current = document.activeElement as HTMLElement | null;
+
+    // Focus first focusable element inside modal or dialog itself
+    const focusable = dialogRef.current?.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    );
+    if (focusable && focusable.length > 0) {
+      focusable[0].focus();
+    } else {
+      dialogRef.current?.focus();
+    }
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+        return;
+      }
+      if (e.key === 'Tab') {
+        if (!dialogRef.current) return;
+        const els = Array.from(
+          dialogRef.current.querySelectorAll<HTMLElement>(
+            'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+          )
+        );
+        if (els.length === 0) return;
+        const first = els[0];
+        const last = els[els.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      if (previousActiveElement.current && typeof previousActiveElement.current.focus === 'function') {
+        previousActiveElement.current.focus();
+      }
+    };
+  }, [onClose]);
+
   return (
       <motion.div className="overlay" onClick={onClose}
                   initial={{opacity: 0}} animate={{opacity: 1}} exit={{opacity: 0}}
                   transition={{duration: 0.15, ease: EASE_OUT}}>
-        <motion.div className="dialog" role={role} aria-modal="true" aria-labelledby={labelledBy}
+        <motion.div ref={dialogRef} tabIndex={-1} className="dialog" role={role} aria-modal="true" aria-labelledby={labelledBy}
                     onClick={e => e.stopPropagation()}
                     initial={{opacity: 0, scale: 1.08}} animate={{opacity: 1, scale: 1}}
                     exit={{opacity: 0, scale: 0.96}}
@@ -73,7 +125,12 @@ export default function StartGamePage() {
     setShowScores,
     buttonRefs,
     toast,
+    setToast,
     addEntry,
+    editEntry,
+    deleteEntry,
+    skipTurn,
+    removePlayer,
     startGame,
     startNewRound,
     guessAuthor,
@@ -84,10 +141,16 @@ export default function StartGamePage() {
     allGuessed,
     isLastEntry,
     isMyTurn,
-    uniqueNames
+    uniqueNames,
+    roundRecap
   } = useGameLogic();
 
   const [hasSubmitted, setHasSubmitted] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(false);
+  const [isChangingName, setIsChangingName] = useState(false);
+  const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
+  const [editText, setEditText] = useState("");
+  const [editLoading, setEditLoading] = useState(false);
 
   // Check if user already submitted for this specific Game ID
   useEffect(() => {
@@ -103,27 +166,102 @@ export default function StartGamePage() {
   useEffect(() => {
     if (resetCount > 0) {
       setHasSubmitted(false);
+      setEditingEntryId(null);
       if (gameId) {
         localStorage.removeItem(`submitted_${gameId}`);
       }
     }
   }, [resetCount, gameId]);
 
+  const roundOver = turnOrder.length < 1;
+  const inputsLocked = isLoading || addEntryLoading || hasSubmitted;
+  const canAdd = !!entryText.trim() && !!authorName.trim() && !inputsLocked;
+
+  // Tab title and vibration for "Your Turn" (#43)
+  useEffect(() => {
+    const originalTitle = document.title;
+    if (isMyTurn && !roundOver && started) {
+      document.title = "(Your turn) Game of Things";
+      if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+        try { navigator.vibrate(200); } catch {}
+      }
+    } else {
+      document.title = "Game of Things";
+    }
+    return () => {
+      document.title = originalTitle || "Game of Things";
+    };
+  }, [isMyTurn, roundOver, started]);
+
   // Wrapper to save to DB AND LocalStorage
   const handleAddEntry = async () => {
-    // 1. Call the original hook function
     await addEntry();
-
-    // 2. Lock the UI
     setHasSubmitted(true);
     if (gameId) {
       localStorage.setItem(`submitted_${gameId}`, 'true');
     }
+    localStorage.setItem("got_name_remembered", "true");
   };
 
-  const roundOver = turnOrder.length < 1;
-  const inputsLocked = isLoading || addEntryLoading || hasSubmitted;
-  const canAdd = !!entryText.trim() && !!authorName.trim() && !inputsLocked;
+  const handleCopyCode = async () => {
+    if (!gameId) return;
+    try {
+      await navigator.clipboard.writeText(gameId);
+      setCopiedCode(true);
+      setTimeout(() => setCopiedCode(false), 2000);
+    } catch {}
+  };
+
+  const handleShare = async () => {
+    if (typeof window === "undefined" || !gameId) return;
+    const url = window.location.href;
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: "Game of Things",
+          text: `Join my Game of Things game! Code: ${gameId}`,
+          url
+        });
+        return;
+      } catch (err: any) {
+        if (err.name === 'AbortError') return;
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      if (setToast) setToast({message: "Game link copied to clipboard!", type: "success"});
+    } catch {
+      handleCopyCode();
+    }
+  };
+
+  const handleStartEdit = (entry: Entry) => {
+    setEditingEntryId(entry.entryId);
+    setEditText(entry.text);
+  };
+
+  const handleSaveEdit = async (entryId: string) => {
+    if (!editText.trim() || !editEntry) return;
+    setEditLoading(true);
+    const ok = await editEntry(entryId, editText.trim());
+    if (ok) setEditingEntryId(null);
+    setEditLoading(false);
+  };
+
+  const handleRemoveSubmission = async (entryId: string) => {
+    if (!deleteEntry) return;
+    const ok = await deleteEntry(entryId);
+    if (ok) {
+      setHasSubmitted(false);
+      if (gameId) localStorage.removeItem(`submitted_${gameId}`);
+    }
+  };
+
+  const hasRememberedName = Boolean(
+    authorName &&
+    typeof window !== 'undefined' &&
+    window.localStorage.getItem("got_name_remembered") === "true"
+  );
 
   if (gameNotFound) {
     return (
@@ -150,7 +288,38 @@ export default function StartGamePage() {
         <div className="game-header">
           <Link to="/"><img src={logo} alt="Game of Things" className="app-icon" width={64} height={64}/></Link>
           <h2 style={{marginTop: 8}}>{gameTitle ?? gameId}</h2>
-          {gameId && <span className="code-pill" aria-label={`Game code ${gameId}`}>{gameId}</span>}
+          {gameId && (
+            <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 4, flexWrap: 'wrap'}}>
+              <button
+                type="button"
+                className="code-pill btn-text"
+                onClick={handleCopyCode}
+                aria-label={`Game code ${gameId}`}
+                style={{cursor: 'pointer', border: 'none'}}
+              >
+                {copiedCode ? "✓ Copied!" : gameId}
+              </button>
+              <button
+                type="button"
+                className="btn btn-tinted"
+                style={{padding: '4px 10px', fontSize: 13, borderRadius: 16}}
+                onClick={handleShare}
+                aria-label="Share game link"
+              >
+                Share
+              </button>
+              <Link
+                to={`/${gameId}/watch`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn btn-gray"
+                style={{padding: '4px 10px', fontSize: 13, borderRadius: 16}}
+                aria-label="Watch on TV"
+              >
+                Watch on TV
+              </Link>
+            </div>
+          )}
           <p className="question" style={{marginTop: 8, minHeight: 29}}>
             {gameQuestion ? gameQuestion : <span style={{opacity: 0.4}}>Loading question...</span>}
           </p>
@@ -169,10 +338,32 @@ export default function StartGamePage() {
                                  initial={{scale: 0.8}} animate={{scale: 1}}
                                  transition={{type: "spring", duration: 0.5, bounce: 0.25}}>✓</motion.span>
                   : <span className="turn-dot" aria-hidden="true">➜</span>}
-              <div>
+              <div style={{flex: 1}}>
                 <div className="turn-eyebrow">{roundOver ? "Round over" : isMyTurn ? "Your turn" : "Now guessing"}</div>
                 <div className="turn-name">{roundOver ? "All answers guessed!" : `${currentPlayer}'s turn!`}</div>
+                {!roundOver && turnOrder.length > 1 && (
+                  <div className="up-next" style={{fontSize: 13, marginTop: 4, opacity: 0.8}}>
+                    <span>Up next: </span>
+                    {turnOrder.slice(1).map((p, idx) => (
+                      <span key={p}>
+                        {idx > 0 && " → "}
+                        <strong>{p}</strong>
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
+              {started && isHost && !roundOver && (
+                <button
+                  type="button"
+                  className="btn btn-tinted"
+                  style={{fontSize: 13, padding: '4px 8px', alignSelf: 'center'}}
+                  onClick={skipTurn}
+                  aria-label="Skip turn"
+                >
+                  Skip
+                </button>
+              )}
             </motion.div>
         )}
 
@@ -193,37 +384,65 @@ export default function StartGamePage() {
               </div>
             </dl>
         )}
+        {started && isHost && !roundOver && turnOrder.length > 1 && (
+          <div style={{display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', fontSize: 13, padding: '4px 8px'}}>
+            <span style={{opacity: 0.7}}>Remove player:</span>
+            {turnOrder.map(name => (
+              <button
+                key={name}
+                type="button"
+                className="btn-text btn-destructive"
+                style={{color: '#ff3b30', fontSize: 12, padding: '2px 6px'}}
+                onClick={() => removePlayer && removePlayer(name)}
+                aria-label={`Remove player ${name}`}
+              >
+                {name} ✕
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Input Section (Pre-Game) */}
         {!started && (
-            <section className="stack">
+            <form onSubmit={e => { e.preventDefault(); handleAddEntry(); }} className="stack">
               <input
                   value={entryText}
                   onChange={e => setEntryText(e.target.value)}
                   placeholder="Your answer"
+                  aria-label="Your answer"
                   maxLength={200}
                   disabled={inputsLocked}
               />
+              {hasRememberedName && !isChangingName && !hasSubmitted ? (
+                <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: 'rgba(120,120,128,0.1)', borderRadius: 10}}>
+                  <span>Playing as <strong>{authorName}</strong></span>
+                  <button type="button" className="btn-text" onClick={() => setIsChangingName(true)} disabled={inputsLocked}>
+                    change
+                  </button>
+                </div>
+              ) : null}
               <input
                   value={authorName}
                   onChange={e => setAuthorName(e.target.value)}
                   placeholder="Your name"
+                  aria-label="Your name"
                   maxLength={30}
                   disabled={inputsLocked}
+                  style={hasRememberedName && !isChangingName && !hasSubmitted ? {display: 'none'} : undefined}
               />
               <div className="row">
-                <button className="btn btn-primary" onClick={handleAddEntry} disabled={!canAdd}>
+                <button type="submit" className="btn btn-primary" disabled={!canAdd}>
                   {addEntryLoading ? <><span className="spinner"/>Saving...</> : hasSubmitted ? 'Submitted!' : 'Add Answer'}
                 </button>
                 {isHost && (
-                    <button className="btn btn-success" onClick={() => setShowStartConfirm(true)}
+                    <button type="button" className="btn btn-success" onClick={() => setShowStartConfirm(true)}
                             disabled={!entries.length || started || isLoading}>
                       {isLoading ? <><span className="spinner"/>Starting...</> : 'Start'}
                     </button>
                 )}
               </div>
               {!isHost && <p className="footnote">Waiting for the host to start the game.</p>}
-            </section>
+            </form>
         )}
 
         {/* New Round (End Game) */}
@@ -233,7 +452,7 @@ export default function StartGamePage() {
               <input type="text" placeholder="Game Over! Ask a new question?" value={newQuestion}
                      onChange={e => setNewQuestion(e.target.value)} disabled={startNewRoundLoading}/>
               <button className="btn btn-success btn-block" disabled={!newQuestion.trim() || startNewRoundLoading}
-                      onClick={startNewRound}>
+                       onClick={startNewRound}>
                 {startNewRoundLoading ? <><span className="spinner"/>Starting...</> : "Start New Round"}
               </button>
               <p className="footnote" style={{paddingLeft: 16}}>The player who has gone the longest ago goes first.</p>
@@ -270,9 +489,60 @@ export default function StartGamePage() {
                       </button>
                   ) : entry.authorName === authorName ? (
                       // PRE-GAME: my own entry is visible to me only
-                      <div>
-                        <div className="mine">{entry.text}</div>
-                        <div className="footnote">Your submission, not viewable to others yet</div>
+                      <div className="my-submission" style={{width: '100%'}}>
+                        {editingEntryId === entry.entryId ? (
+                          <div className="stack" style={{gap: 6}}>
+                            <input
+                              value={editText}
+                              onChange={e => setEditText(e.target.value)}
+                              aria-label="Edit answer"
+                              maxLength={200}
+                              disabled={editLoading}
+                            />
+                            <div className="row" style={{gap: 6}}>
+                              <button
+                                type="button"
+                                className="btn btn-primary"
+                                disabled={!editText.trim() || editLoading}
+                                onClick={() => handleSaveEdit(entry.entryId)}
+                              >
+                                {editLoading ? 'Saving...' : 'Save'}
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-gray"
+                                onClick={() => setEditingEntryId(null)}
+                                disabled={editLoading}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div>
+                            <div className="mine">{entry.text}</div>
+                            <div className="footnote" style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 4}}>
+                              <span>Your submission, not viewable to others yet</span>
+                              <span style={{display: 'flex', gap: 10}}>
+                                <button
+                                  type="button"
+                                  className="btn-text"
+                                  onClick={() => handleStartEdit(entry)}
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn-text btn-destructive"
+                                  style={{color: '#ff3b30'}}
+                                  onClick={() => handleRemoveSubmission(entry.entryId)}
+                                >
+                                  Remove
+                                </button>
+                              </span>
+                            </div>
+                          </div>
+                        )}
                       </div>
                   ) : (
                       // PRE-GAME: everyone else's entry is blurred
@@ -282,6 +552,17 @@ export default function StartGamePage() {
             ))}
           </ul>
         </section>
+
+        {/* End of Round Recap */}
+        {allGuessed && roundRecap && (
+          <section className="card stack" style={{background: 'rgba(52, 199, 89, 0.1)', border: '1px solid rgba(52, 199, 89, 0.3)'}}>
+            <h4 style={{margin: 0, color: '#34c759'}}>Round Recap</h4>
+            <div style={{fontSize: 15}}>
+              <div><strong>Most guesses this round:</strong> {roundRecap.mostGuessesRound}</div>
+              <div style={{marginTop: 4}}><strong>Overall leader:</strong> {roundRecap.overallLeader}</div>
+            </div>
+          </section>
+        )}
 
         {/* Scoreboard */}
         {scores.length > 0 && (

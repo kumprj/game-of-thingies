@@ -1,5 +1,8 @@
 # Project notes
 
+## Keep Web and iOS in sync
+Always make updates for both iOS and Web. When implementing game features, UI changes, networking, or bug fixes, keep the web client (`client/`) and iOS client (`apps/ios/`) aligned and supported across both platforms.
+
 ## Never commit sensitive or personal values
 This repo is public, and `main` auto-deploys to production. Before every commit or push, check
 `git diff --cached` for:
