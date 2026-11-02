@@ -18,7 +18,9 @@ export function createServer() {
   // Initialize a Socket.IO server with CORS configuration
   const io = new Server(httpServer, {
     cors: {
-      origin: "*", // Allow all origins (adjust for production)
+      // "*" is intentional: the API is public and has no cookie or credential auth, and the web
+      // and iOS clients connect from varying origins. The REST API (cors() below) is open the same way.
+      origin: "*",
       methods: ["GET", "POST"] // Allow only GET and POST methods
     }
   });
