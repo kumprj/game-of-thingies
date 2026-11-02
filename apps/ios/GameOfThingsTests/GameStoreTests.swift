@@ -40,7 +40,7 @@ struct GameStoreTests {
     @Test func syncLoadsGameAndDerivesTurn() async {
         let store = await makeStore(
             entries: "[\(Self.entry("1", "Bo", "zebra")),\(Self.entry("2", "Ann", "Apple"))]",
-            game: #"{"gameOwner":"Friday","question":"Q?","turnOrder":["Ann","Bo"]}"#,
+            game: #"{"title":"Friday","question":"Q?","turnOrder":["Ann","Bo"]}"#,
             scores: #"[{"playerName":"Bo","score":1},{"playerName":"Ann","score":3}]"#)
         #expect(store.gameTitle == "Friday")
         #expect(store.gameQuestion == "Q?")

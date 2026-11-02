@@ -29,6 +29,13 @@ export default function HomePage() {
     setRecentGames(getRecentGames());
   }, []);
 
+  // The error toast clears itself, since it no longer comes with a blocking alert.
+  useEffect(() => {
+    if (!toastMessage) return;
+    const timer = setTimeout(() => setToastMessage(null), 5000);
+    return () => clearTimeout(timer);
+  }, [toastMessage]);
+
   const createGame = async () => {
     if (!gameName.trim() || !questionText.trim()) return;
 
@@ -48,9 +55,6 @@ export default function HomePage() {
       const serverMessage = (error as any)?.response?.data?.error;
       const msg = serverMessage || "Failed to create game. Please try again.";
       setToastMessage(msg);
-      if (typeof window !== 'undefined' && typeof window.alert === 'function') {
-        window.alert(msg);
-      }
     } finally {
       setCreatingGame(false);
     }

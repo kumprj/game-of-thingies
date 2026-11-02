@@ -87,7 +87,8 @@ describe('HomePage', () => {
       await user.type(title(), 'Friday night');
       await user.type(question(), 'Worst superpower?');
       await user.click(create());
-      await waitFor(() => expect(alert).toHaveBeenCalledWith('Title is required'));
+      expect(await screen.findByText('Title is required')).toBeInTheDocument();
+      expect(alert).not.toHaveBeenCalled();
     });
 
     it('tells the host when it fails and lets them try again', async () => {
@@ -99,7 +100,8 @@ describe('HomePage', () => {
       await user.type(title(), 'Friday night');
       await user.type(question(), 'Worst superpower?');
       await user.click(create());
-      await waitFor(() => expect(alert).toHaveBeenCalledWith('Failed to create game. Please try again.'));
+      expect(await screen.findByText('Failed to create game. Please try again.')).toBeInTheDocument();
+      expect(alert).not.toHaveBeenCalled();
       expect(screen.queryByText(/In game/)).not.toBeInTheDocument();
       expect(create()).toBeEnabled();
     });

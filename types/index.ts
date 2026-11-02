@@ -11,8 +11,7 @@ export interface Entry {
 
 export interface Game {
   gameId: string;
-  title?: string;
-  gameOwner: string;
+  title: string;
   hostName?: string;
   question: string;
   createdAt: string;

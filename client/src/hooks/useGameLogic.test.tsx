@@ -130,7 +130,7 @@ describe('useGameLogic Hook', () => {
 
 // --- Socket events, actions and derived state ---
 
-const game = {question: 'What is cool?', gameOwner: 'Ann'};
+const game = {question: 'What is cool?', title: 'Ann'};
 const entry = (entryId: string, text: string, authorName: string, extra: object = {}) =>
     ({entryId, text, authorName, revealed: false, ...extra});
 

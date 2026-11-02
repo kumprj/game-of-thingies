@@ -135,13 +135,20 @@ describe('health', () => {
 describe('creating and loading games', () => {
   it('stores the owner and question', async () => {
     const gameId = await createGame('Ann', 'Things you find in a fridge');
-    expect(await game(gameId)).toMatchObject({gameId, gameOwner: 'Ann', question: 'Things you find in a fridge'});
+    expect(await game(gameId)).toMatchObject({gameId, title: 'Ann', question: 'Things you find in a fridge'});
+  });
+
+  it('exposes the title but no gameOwner', async () => {
+    const gameId = await createGame('Ann');
+    const data = await game(gameId);
+    expect(data.title).toBe('Ann');
+    expect(data).not.toHaveProperty('gameOwner');
   });
 
   it('stores the trimmed title and question', async () => {
     const {status, data} = await api('POST', '/api/createGame', {name: '  Ann ', question: ' Worst power? '});
     expect(status).toBe(200);
-    expect(await game(data.gameId)).toMatchObject({gameOwner: 'Ann', question: 'Worst power?'});
+    expect(await game(data.gameId)).toMatchObject({title: 'Ann', question: 'Worst power?'});
   });
 
   it.each([
@@ -171,8 +178,8 @@ describe('creating and loading games', () => {
       const second = await createGame('Bob', 'Second question');
       expect(first).toBe('AAAA');
       expect(second).toBe('BBBB');
-      expect(await game(first)).toMatchObject({gameOwner: 'Ann', question: 'First question'});
-      expect(await game(second)).toMatchObject({gameOwner: 'Bob', question: 'Second question'});
+      expect(await game(first)).toMatchObject({title: 'Ann', question: 'First question'});
+      expect(await game(second)).toMatchObject({title: 'Bob', question: 'Second question'});
     } finally {
       spy.mockRestore();
     }
@@ -508,6 +515,33 @@ describe('guess rules', () => {
     expect(await scores(gameId)).toEqual([expect.objectContaining({playerName: first, score: 1})]);
     const order = (await game(gameId)).turnOrder as string[];
     expect(order).toEqual(turnOrder.filter(n => n !== target));
+  });
+
+  it('never loses a turn-order change when a guess races a skip or a removal (#31)', async () => {
+    for (const hostAction of ['skip', 'remove'] as const) {
+      const {gameId, ids, turnOrder} = await started(['Ann', 'Ben', 'Cy', 'Di']);
+      const first = turnOrder[0];
+      const target = turnOrder[1];
+      const removed = turnOrder[3];
+      const [guessRes, hostRes] = await Promise.all([
+        api('POST', guessUrl(gameId, ids[target]), {guesserName: first, guess: target}),
+        hostAction === 'skip'
+          ? api('POST', `/api/games/${gameId}/skip-turn`)
+          : api('DELETE', `/api/games/${gameId}/players/${removed}`)
+      ]);
+      // Whichever interleaving happens, each request either took effect fully or got a 409.
+      expect([200, 409]).toContain(guessRes.status);
+      expect([200, 409]).toContain(hostRes.status);
+      let expected = turnOrder;
+      if (guessRes.status === 200) expected = expected.filter(n => n !== target);
+      if (hostRes.status === 200) {
+        expected = hostAction === 'skip'
+          ? (expected.length > 1 ? [...expected.slice(1), expected[0]] : expected)
+          : expected.filter(n => n !== removed);
+      }
+      expect((await game(gameId)).turnOrder).toEqual(expected);
+      expect(await scores(gameId)).toHaveLength(guessRes.status === 200 ? 1 : 0);
+    }
   });
 });
 
