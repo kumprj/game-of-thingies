@@ -148,6 +148,38 @@ struct GameStoreTests {
         #expect(store.toast?.message == "Entry added!")
     }
 
+    @Test func secondAddEntryWhileOneIsInFlightIsIgnored() async {
+        let store = await makeStore(entries: "[]")
+        store.entryText = "Tacos"
+        store.authorName = "Ann"
+        async let first: Void = store.addEntry()
+        async let second: Void = store.addEntry()
+        _ = await (first, second)
+        let posts = StubURLProtocol.requests.filter { $0.httpMethod == "POST" }
+        #expect(posts.count == 1)
+        #expect(store.toast?.message == "Entry added!")
+    }
+
+    @Test func missingGameIsFlaggedAndStopsSyncing() async {
+        StubURLProtocol.respond = { _ in (404, #"{"error":"Game not found"}"#) }
+        let store = GameStore(gameId: "ABCD", api: api, realtime: RealtimeClient(baseURL: api.baseURL), defaults: defaults)
+        await store.sync()
+        #expect(store.gameNotFound)
+        StubURLProtocol.requests = []
+        await store.sync()
+        #expect(StubURLProtocol.requests.isEmpty)
+    }
+
+    @Test func otherFetchFailuresAreNotNotFound() async {
+        StubURLProtocol.respond = { _ in (500, "{}") }
+        let store = GameStore(gameId: "ABCD", api: api, realtime: RealtimeClient(baseURL: api.baseURL), defaults: defaults)
+        await store.sync()
+        #expect(!store.gameNotFound)
+        StubURLProtocol.requests = []
+        await store.sync()
+        #expect(!StubURLProtocol.requests.isEmpty)
+    }
+
     @Test func failedAddEntryDoesNotLock() async {
         let store = await makeStore(entries: "[]")
         StubURLProtocol.respond = { _ in (500, "{}") }

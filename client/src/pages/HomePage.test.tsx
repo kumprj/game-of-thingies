@@ -72,6 +72,24 @@ describe('HomePage', () => {
       await screen.findByText('In game ABCD');
     });
 
+    it('limits the title and question to the server\'s lengths', () => {
+      renderHome();
+      expect(title()).toHaveAttribute('maxLength', '50');
+      expect(question()).toHaveAttribute('maxLength', '200');
+    });
+
+    it('shows the server\'s message when it rejects the game', async () => {
+      const alert = vi.spyOn(window, 'alert').mockImplementation(() => {});
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      (axios.post as any).mockRejectedValueOnce({response: {data: {error: 'Title is required'}}});
+      const user = userEvent.setup();
+      renderHome();
+      await user.type(title(), 'Friday night');
+      await user.type(question(), 'Worst superpower?');
+      await user.click(create());
+      await waitFor(() => expect(alert).toHaveBeenCalledWith('Title is required'));
+    });
+
     it('tells the host when it fails and lets them try again', async () => {
       const alert = vi.spyOn(window, 'alert').mockImplementation(() => {});
       vi.spyOn(console, 'error').mockImplementation(() => {});

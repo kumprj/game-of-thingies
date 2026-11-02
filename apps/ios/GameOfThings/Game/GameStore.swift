@@ -26,6 +26,8 @@ final class GameStore {
     private(set) var turnOrder: [String] = []
     private(set) var currentPlayer: String?
     private(set) var started = false
+    /// The server has no game with this code (404); polling stops and the view shows a way back.
+    private(set) var gameNotFound = false
 
     static let maxNameLength = 30
     static let maxAnswerLength = 200
@@ -125,6 +127,7 @@ final class GameStore {
     }
 
     private func startPolling() {
+        guard !gameNotFound else { return }
         pollTask?.cancel()
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
@@ -184,6 +187,7 @@ final class GameStore {
     // MARK: - Fetching
 
     func sync() async {
+        guard !gameNotFound else { return }
         async let game: Void = fetchGame()
         async let entries: Void = fetchEntries()
         async let scores: Void = fetchScores()
@@ -191,7 +195,17 @@ final class GameStore {
     }
 
     private func fetchGame() async {
-        guard let game = try? await api.game(gameId) else { return }
+        let game: Game
+        do {
+            game = try await api.game(gameId)
+        } catch let error as APIError where error.status == 404 {
+            // A missing game won't appear by retrying, so stop polling for it.
+            gameNotFound = true
+            stopPolling()
+            return
+        } catch {
+            return
+        }
         gameQuestion = game.question
         gameTitle = game.gameOwner
         if let order = game.turnOrder {

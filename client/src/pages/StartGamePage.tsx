@@ -50,6 +50,7 @@ export default function StartGamePage() {
     turnOrder,
     currentPlayer,
     started,
+    gameNotFound,
     isHost,
     entryText,
     setEntryText,
@@ -123,6 +124,21 @@ export default function StartGamePage() {
   const roundOver = turnOrder.length < 1;
   const inputsLocked = isLoading || addEntryLoading || hasSubmitted;
   const canAdd = !!entryText.trim() && !!authorName.trim() && !inputsLocked;
+
+  if (gameNotFound) {
+    return (
+        <div className="page">
+          <TopBar>
+            <Link to="/" className="topbar-title">‹ Home</Link>
+          </TopBar>
+          <div className="game-header">
+            <h2>Game not found</h2>
+            <p>There's no game with the code {gameId}. Check the code and try again.</p>
+            <Link to="/" className="btn btn-primary">Back to Home</Link>
+          </div>
+        </div>
+    );
+  }
 
   return (
       <div className="page">

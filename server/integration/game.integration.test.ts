@@ -73,7 +73,7 @@ async function joinRoom(gameId: string) {
   };
 }
 
-async function createGame(name = 'Host', question?: string) {
+async function createGame(name = 'Host', question = 'What is your favorite thing?') {
   const {status, data} = await api<{gameId: string; hostToken: string}>('POST', '/api/createGame', {name, question});
   expect(status).toBe(200);
   expect(data.gameId).toMatch(/^[A-Z]{4}$/);
@@ -138,9 +138,27 @@ describe('creating and loading games', () => {
     expect(await game(gameId)).toMatchObject({gameId, gameOwner: 'Ann', question: 'Things you find in a fridge'});
   });
 
-  it('uses the default question when none is given', async () => {
-    const gameId = await createGame('Ann');
-    expect((await game(gameId)).question).toBe('What is your favorite thing?');
+  it('stores the trimmed title and question', async () => {
+    const {status, data} = await api('POST', '/api/createGame', {name: '  Ann ', question: ' Worst power? '});
+    expect(status).toBe(200);
+    expect(await game(data.gameId)).toMatchObject({gameOwner: 'Ann', question: 'Worst power?'});
+  });
+
+  it.each([
+    ['a missing title', {question: 'Q'}, 'Title and question must be text'],
+    ['a missing question', {name: 'Ann'}, 'Title and question must be text'],
+    ['a non-text title', {name: 7, question: 'Q'}, 'Title and question must be text'],
+    ['a blank title', {name: '  ', question: 'Q'}, 'Title is required'],
+    ['a blank question', {name: 'Ann', question: ' '}, 'Question is required'],
+    ['an oversized title', {name: 'a'.repeat(51), question: 'Q'}, 'Title must be 50 characters or fewer'],
+    ['an oversized question', {name: 'Ann', question: 'q'.repeat(201)}, 'Question must be 200 characters or fewer'],
+  ])('rejects %s with a 400', async (_label, body, error) => {
+    expect(await api('POST', '/api/createGame', body)).toEqual({status: 400, data: {error}});
+  });
+
+  it('accepts a title and question at the limits', async () => {
+    const {status} = await api('POST', '/api/createGame', {name: 'a'.repeat(50), question: 'q'.repeat(200)});
+    expect(status).toBe(200);
   });
 
   it('picks a new code instead of overwriting a live game on collision', async () => {
@@ -160,8 +178,8 @@ describe('creating and loading games', () => {
     }
   });
 
-  it('returns an empty object, entries and scores for an unknown game', async () => {
-    expect(await game('ZZZZ-unknown')).toEqual({});
+  it('404s an unknown game but lists no entries or scores for it', async () => {
+    expect(await api('GET', '/api/games/ZZZZ-unknown')).toEqual({status: 404, data: {error: 'Game not found'}});
     expect(await entries('ZZZZ-unknown')).toEqual([]);
     expect(await scores('ZZZZ-unknown')).toEqual([]);
   });
@@ -616,9 +634,9 @@ describe('finishing a round', () => {
 });
 
 describe('unknown games', () => {
-  it('returns nothing rather than failing', async () => {
+  it('lists no entries or scores, and 404s the game itself', async () => {
     expect((await api('GET', '/api/games/ZZZZ/entries')).data).toEqual([]);
     expect((await api('GET', '/api/games/ZZZZ/scores')).data).toEqual([]);
-    expect((await api('GET', '/api/games/ZZZZ')).data).toEqual({});
+    expect(await api('GET', '/api/games/ZZZZ')).toEqual({status: 404, data: {error: 'Game not found'}});
   });
 });

@@ -5,6 +5,7 @@ struct GameView: View {
     @State private var store: GameStore
     @State private var showScores = false
     @State private var showHowToPlay = false
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -14,14 +15,18 @@ struct GameView: View {
 
     var body: some View {
         List {
-            header
-            if !store.turnOrder.isEmpty || store.started { turnSection }
-            if store.started { statusSection }
-            if !store.started { answerFormSections }
-            if store.allGuessed && store.isHost { nextRoundSections }
-            answersSection
-            if !store.scores.isEmpty { scoreboardSection }
-            howToPlaySection
+            if store.gameNotFound {
+                notFoundSection
+            } else {
+                header
+                if !store.turnOrder.isEmpty || store.started { turnSection }
+                if store.started { statusSection }
+                if !store.started { answerFormSections }
+                if store.allGuessed && store.isHost { nextRoundSections }
+                answersSection
+                if !store.scores.isEmpty { scoreboardSection }
+                howToPlaySection
+            }
         }
         .animation(.spring(duration: 0.3, bounce: 0), value: store.entries)
         .animation(.spring(duration: 0.3, bounce: 0), value: store.started)
@@ -56,6 +61,21 @@ struct GameView: View {
     }
 
     // MARK: - Sections
+
+    private var notFoundSection: some View {
+        Section {
+            VStack(spacing: 12) {
+                Text("Game not found")
+                    .font(.title2.bold())
+                Text("There's no game with the code \(store.gameId). Check the code and try again.")
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                FormButton(title: "Back to Home") { dismiss() }
+            }
+            .frame(maxWidth: .infinity)
+            .listRowBackground(Color.clear)
+        }
+    }
 
     private var header: some View {
         Section {

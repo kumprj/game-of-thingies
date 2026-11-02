@@ -207,6 +207,42 @@ describe('useGameLogic socket events', () => {
     expect(result.current.toast?.message).toMatch(/new question/);
   });
 
+  describe('a game that does not exist', () => {
+    afterEach(() => vi.useRealTimers());
+    const missing = () => Promise.reject({response: {status: 404, data: {error: 'Game not found'}}});
+
+    it('flags the game as not found', async () => {
+      (axios.get as any).mockImplementation((url: string) =>
+          url.endsWith('/entries') || url.endsWith('/scores') ? Promise.resolve({data: []}) : missing());
+      const {result} = renderHook(() => useGameLogic());
+      await waitFor(() => expect(result.current.gameNotFound).toBe(true));
+    });
+
+    it('stops polling instead of retrying forever', async () => {
+      (axios.get as any).mockImplementation((url: string) =>
+          url.endsWith('/entries') || url.endsWith('/scores') ? Promise.resolve({data: []}) : missing());
+      const {result} = renderHook(() => useGameLogic());
+      await waitFor(() => expect(result.current.gameNotFound).toBe(true));
+      vi.useFakeTimers();
+      (axios.get as any).mockClear();
+      act(() => handler('disconnect')());
+      await act(async () => { await vi.advanceTimersByTimeAsync(9000); });
+      expect(axios.get).not.toHaveBeenCalled();
+    });
+
+    it('keeps polling through other failures, like a dropped network', async () => {
+      const {result} = await mount();
+      vi.useFakeTimers();
+      (axios.get as any).mockClear();
+      (axios.get as any).mockRejectedValue(new Error('Network Error'));
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      act(() => handler('disconnect')());
+      await act(async () => { await vi.advanceTimersByTimeAsync(6000); });
+      expect(axios.get).toHaveBeenCalledWith('/api/games/test-room-1');
+      expect(result.current.gameNotFound).toBe(false);
+    });
+  });
+
   describe('losing the connection', () => {
     afterEach(() => vi.useRealTimers());
 
@@ -247,6 +283,29 @@ describe('useGameLogic actions', () => {
     expect(result.current.authorName).toBe('Ann');
     act(() => result.current.setAuthorName('Ben'));
     expect(window.localStorage.getItem('got_authorName')).toBe('Ben');
+  });
+
+  it('ignores a second addEntry while the first is still in flight', async () => {
+    const {result} = await mount();
+    act(() => {
+      result.current.setAuthorName('Ann');
+      result.current.setEntryText('Offside');
+    });
+    let finish!: () => void;
+    (axios.post as any).mockReturnValueOnce(new Promise<void>(resolve => { finish = resolve; }));
+
+    // Both calls run in the same render, as a double-tap would
+    let first!: Promise<void>;
+    await act(async () => {
+      first = result.current.addEntry();
+      await result.current.addEntry();
+    });
+    expect(axios.post).toHaveBeenCalledTimes(1);
+    expect(result.current.addEntryLoading).toBe(true);
+
+    finish();
+    await act(async () => { await first; });
+    expect(result.current.addEntryLoading).toBe(false);
   });
 
   it('ignores an answer with no text or no name, or once the game has started', async () => {

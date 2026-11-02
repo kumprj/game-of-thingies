@@ -98,6 +98,24 @@ describe('StartGamePage', () => {
     expect(addEntryMock).toHaveBeenCalled();
   });
 
+  it('disables Add Answer while the answer is being saved', () => {
+    // @ts-ignore
+    vi.spyOn(GameHook, 'useGameLogic').mockReturnValue({
+      ...defaultHookValues, entryText: 'Answer', authorName: 'Name', addEntryLoading: true,
+    });
+    render(<BrowserRouter><StartGamePage/></BrowserRouter>);
+    expect(screen.getByRole('button', {name: /saving/i})).toBeDisabled();
+  });
+
+  it('shows a not-found message with a way home instead of an empty game', () => {
+    // @ts-ignore
+    vi.spyOn(GameHook, 'useGameLogic').mockReturnValue({...defaultHookValues, gameId: 'ZZZZ', gameNotFound: true});
+    render(<BrowserRouter><StartGamePage/></BrowserRouter>);
+    expect(screen.getByRole('heading', {name: 'Game not found'})).toBeInTheDocument();
+    expect(screen.getByRole('link', {name: 'Back to Home'})).toHaveAttribute('href', '/');
+    expect(screen.queryByPlaceholderText('Your answer')).not.toBeInTheDocument();
+  });
+
   it('shows Start to the host', () => {
     // @ts-ignore
     vi.spyOn(GameHook, 'useGameLogic').mockReturnValue({...defaultHookValues, isHost: true});

@@ -3,6 +3,7 @@ import express from 'express';
 import {v4 as uuidv4} from 'uuid';
 import {ddb, expiresAt, tables} from './db';
 import {buildTurnOrder} from './turnOrder';
+import {validateGameSetup} from './gameSetup';
 import {
   GetCommand,
   PutCommand,
@@ -41,7 +42,9 @@ function randomGameId() {
 
 // Create Game
 router.post('/createGame', async (req, res) => {
-  const {name, question} = req.body;
+  const setup = validateGameSetup(req.body);
+  if (!setup.ok) return res.status(400).json({error: setup.error});
+  const {name, question} = setup;
   const createdAt = new Date().toISOString();
   const hostToken = uuidv4();
 
@@ -54,7 +57,7 @@ router.post('/createGame', async (req, res) => {
           TableName: tables.games,
           Item: {
             gameId,
-            question: question || 'What is your favorite thing?',
+            question,
             createdAt,
             gameOwner: name,
             hostToken,
@@ -305,7 +308,9 @@ router.post('/games/:gameId/entries/:entryId/guess', async (req, res) => {
 router.get('/games/:gameId', async (req, res) => {
   const {gameId} = req.params;
   // Never expose the host token to players.
-  const {hostToken: _hostToken, ...publicGame} = (await getGame(gameId)) || {};
+  const game = await getGame(gameId);
+  if (!game) return res.status(404).json({error: 'Game not found'});
+  const {hostToken: _hostToken, ...publicGame} = game;
   res.json(publicGame);
 });
 
