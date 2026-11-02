@@ -387,9 +387,14 @@ describe('expiry', () => {
 
 describe('guess validation', () => {
   it('returns 404 for an unknown answer', async () => {
+    // The guesser must be on turn for the entry lookup to be reached.
     const gameId = await createGame();
+    await addEntry(gameId, 'Ann', 'Something');
+    await addEntry(gameId, 'Ben', 'Something else');
+    await api('POST', `/api/games/${gameId}/start`);
+    const [onTurn] = (await game(gameId)).turnOrder;
     const {status} = await api('POST', `/api/games/${gameId}/entries/not-an-entry/guess`,
-      {guesserName: 'Ann', guess: 'Ben'});
+      {guesserName: onTurn, guess: 'Ben'});
     expect(status).toBe(404);
   });
 
