@@ -58,11 +58,11 @@ jobs:
             client/package-lock.json
       - run: npm ci
       - name: Server unit tests
-        run: npm test
+        run: npm test -- --coverage
       - run: npm ci
         working-directory: client
       - name: Client unit tests
-        run: npx vitest run
+        run: npx vitest run --coverage
         working-directory: client
 
   # Plays whole games through the HTTP API and Socket.IO against DynamoDB Local
@@ -86,7 +86,7 @@ jobs:
       - name: Server integration tests
         run: |
           if npm run | grep -q "test:integration"; then
-            npm run test:integration
+            npm run test:integration -- --coverage
           else
             echo "No integration tests configured on this branch, skipping."
           fi

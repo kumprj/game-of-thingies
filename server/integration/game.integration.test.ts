@@ -292,3 +292,78 @@ describe('guess validation', () => {
     expect((await entries(gameId)).find(e => e.entryId === entryId).guessed).toBeUndefined();
   });
 });
+
+describe('finishing a round', () => {
+  it('plays to the end: the turn order empties and the scores add up', async () => {
+    const gameId = await createGame('Ann');
+    const room = await joinRoom(gameId);
+    const ann = await addEntry(gameId, 'Ann', 'Mine');
+    const ben = await addEntry(gameId, 'Ben', 'Theirs');
+    await api('POST', `/api/games/${gameId}/start`);
+    const first = (await game(gameId)).turnOrder[0] as string;
+    const [firstEntry, otherEntry] = first === 'Ann' ? [ann, ben] : [ben, ann];
+    const other = first === 'Ann' ? 'Ben' : 'Ann';
+
+    // Getting it right means going again, now with only your own answer left
+    let mark = room.events.length;
+    await api('POST', `/api/games/${gameId}/entries/${otherEntry}/guess`, {guesserName: first, guess: other});
+    expect(await room.next('nextTurn', mark)).toEqual({currentPlayer: first, turnOrder: [first]});
+
+    // The last player guesses their own answer, which ends the round
+    mark = room.events.length;
+    const last = await api('POST', `/api/games/${gameId}/entries/${firstEntry}/guess`,
+      {guesserName: first, guess: first});
+    expect(last.data).toEqual({isCorrect: true});
+    expect(await room.next('nextTurn', mark)).toEqual({currentPlayer: null, turnOrder: []});
+    expect((await entries(gameId)).every(e => e.guessed === true)).toBe(true);
+    expect(await scores(gameId)).toEqual([expect.objectContaining({playerName: first, score: 2})]);
+  });
+
+  it('keeps the turn with the only player left after a wrong guess', async () => {
+    const gameId = await createGame('Ann');
+    const entryId = await addEntry(gameId, 'Ann', 'Mine');
+    await api('POST', `/api/games/${gameId}/start`);
+    const wrong = await api('POST', `/api/games/${gameId}/entries/${entryId}/guess`,
+      {guesserName: 'Ann', guess: 'Nobody'});
+    expect(wrong.data).toEqual({isCorrect: false});
+    expect((await game(gameId)).turnOrder).toEqual(['Ann']);
+    expect(await scores(gameId)).toEqual([]);
+  });
+
+  it('gives a person who wrote several answers one place in the turn order', async () => {
+    const gameId = await createGame('Ann');
+    await addEntry(gameId, 'Ann', 'One');
+    await addEntry(gameId, 'Ann', 'Two');
+    await addEntry(gameId, 'Ben', 'Three');
+    await api('POST', `/api/games/${gameId}/start`);
+    expect([...(await game(gameId)).turnOrder].sort()).toEqual(['Ann', 'Ben']);
+  });
+
+  it('starts an empty game without error', async () => {
+    const gameId = await createGame('Ann');
+    expect((await api('POST', `/api/games/${gameId}/start`)).status).toBe(200);
+    expect(await game(gameId)).toMatchObject({started: true, turnOrder: []});
+  });
+
+  it('keeps scores across rounds and adds to them', async () => {
+    const gameId = await createGame('Ann');
+    for (let round = 1; round <= 2; round++) {
+      const a = await addEntry(gameId, 'Ann', `Ann ${round}`);
+      const b = await addEntry(gameId, 'Ben', `Ben ${round}`);
+      await api('POST', `/api/games/${gameId}/start`);
+      const first = (await game(gameId)).turnOrder[0] as string;
+      await api('POST', `/api/games/${gameId}/entries/${first === 'Ann' ? b : a}/guess`,
+        {guesserName: first, guess: first === 'Ann' ? 'Ben' : 'Ann'});
+      if (round === 1) await api('POST', `/api/games/${gameId}/reset`, {question: 'Round two'});
+      else expect((await scores(gameId)).reduce((sum, s) => sum + s.score, 0)).toBe(2);
+    }
+  });
+});
+
+describe('unknown games', () => {
+  it('returns nothing rather than failing', async () => {
+    expect((await api('GET', '/api/games/ZZZZ/entries')).data).toEqual([]);
+    expect((await api('GET', '/api/games/ZZZZ/scores')).data).toEqual([]);
+    expect((await api('GET', '/api/games/ZZZZ')).data).toEqual({});
+  });
+});
