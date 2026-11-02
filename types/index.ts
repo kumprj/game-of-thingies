@@ -2,6 +2,7 @@ export interface Entry {
   entryId: string;
   gameId: string;
   authorName: string;
+  authorToken?: string;
   text: string;
   createdAt: string;
   revealed: boolean;
@@ -10,11 +11,13 @@ export interface Entry {
 
 export interface Game {
   gameId: string;
+  title?: string;
   gameOwner: string;
   question: string;
   createdAt: string;
   started: boolean;
   turnOrder: string[];
+  playerTokens?: Record<string, string>;
 }
 
 export interface Score {

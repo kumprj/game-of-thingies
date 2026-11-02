@@ -4,12 +4,15 @@ import {useDarkMode} from "../hooks/useDarkMode";
 /**
  * Translucent sticky nav bar with an optional leading element and the theme toggle.
  */
-export default function TopBar({children}: { children?: React.ReactNode }) {
+export default function TopBar({title, children}: { title?: React.ReactNode; children?: React.ReactNode }) {
   const {isDark, toggleTheme} = useDarkMode();
 
   return (
       <header className="topbar">
-        <div>{children}</div>
+        <div>
+          {title && <span className="topbar-title">{title}</span>}
+          {children}
+        </div>
         <button
             className="icon-btn"
             onClick={toggleTheme}

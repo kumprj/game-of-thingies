@@ -4,7 +4,7 @@ import Testing
 
 /// Drives GameStore against canned server responses (StubURLProtocol) and injected socket events.
 extension StubbedNetworkTests {
-@Suite
+@Suite(.serialized)
 struct GameStoreTests {
     let defaults: UserDefaults
     let api = APIClient(baseURL: URL(string: "http://test.local")!, session: StubURLProtocol.session())

@@ -200,6 +200,11 @@ describe('StartGamePage in detail', () => {
       expect(screen.getByRole('heading', {name: 'ABCD'})).toBeInTheDocument();
       expect(screen.getByText('Loading question...')).toBeInTheDocument();
     });
+
+    it('shows the watch link with Watch on a screen label', () => {
+      renderPage();
+      expect(screen.getByRole('link', {name: 'Watch on a screen'})).toBeInTheDocument();
+    });
   });
 
   describe('before the game starts', () => {
@@ -377,7 +382,9 @@ describe('StartGamePage in detail', () => {
 
     it('starts a round with the question typed', () => {
       const actions = renderPage(playing({allGuessed: true, newQuestion: 'Best pizza?'}));
-      fireEvent.change(screen.getByPlaceholderText('Game Over! Ask a new question?'), {target: {value: 'Best pizza topping?'}});
+      const input = screen.getByLabelText('New question');
+      expect(input).toBeInTheDocument();
+      fireEvent.change(input, {target: {value: 'Best pizza topping?'}});
       expect(actions.setNewQuestion).toHaveBeenCalledWith('Best pizza topping?');
       fireEvent.click(screen.getByText('Start New Round'));
       expect(actions.startNewRound).toHaveBeenCalled();

@@ -1,0 +1,167 @@
+import React, {useState, useEffect} from "react";
+import {Link} from "react-router-dom";
+import {useGameLogic} from "../hooks/useGameLogic";
+import Scoreboard from "../components/Scoreboard";
+import TopBar from "../components/TopBar";
+
+export default function SpectatorPage() {
+  const {
+    gameId,
+    gameTitle,
+    gameQuestion,
+    entries,
+    scores,
+    turnOrder,
+    currentPlayer,
+    started,
+    gameNotFound,
+    sortedEntriesForDisplay,
+    allGuessed
+  } = useGameLogic();
+
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [wakeLockActive, setWakeLockActive] = useState(false);
+
+  // Screen Wake Lock API to prevent TV / display from sleeping
+  useEffect(() => {
+    let wakeLock: any = null;
+    const requestWakeLock = async () => {
+      if ('wakeLock' in navigator && (navigator as any).wakeLock) {
+        try {
+          wakeLock = await (navigator as any).wakeLock.request('screen');
+          setWakeLockActive(true);
+          wakeLock.addEventListener('release', () => setWakeLockActive(false));
+        } catch {
+          setWakeLockActive(false);
+        }
+      }
+    };
+    requestWakeLock();
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') requestWakeLock();
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (wakeLock) wakeLock.release().catch(() => {});
+    };
+  }, []);
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => {});
+    } else {
+      document.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => {});
+    }
+  };
+
+  useEffect(() => {
+    const handleFsChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', handleFsChange);
+    return () => document.removeEventListener('fullscreenchange', handleFsChange);
+  }, []);
+
+  if (gameNotFound) {
+    return (
+      <div className="page spectator-not-found">
+        <h2>Game not found</h2>
+        <p>No game with code {gameId}.</p>
+        <Link to="/" className="btn btn-primary">Back to Home</Link>
+      </div>
+    );
+  }
+
+  const roundOver = started && (allGuessed || turnOrder.length === 0);
+
+  return (
+    <div className="spectator-view page">
+      <TopBar title={gameTitle || "Game of Things"} />
+
+      <div className="spectator-bar">
+        <span className="code-pill">Code: {gameId}</span>
+        <div className="spectator-bar-actions">
+          {wakeLockActive && <span className="footnote spectator-awake">● Screen Awake</span>}
+          <button type="button" className="btn btn-tinted" onClick={toggleFullscreen}>
+            {isFullscreen ? "Exit Fullscreen" : "Fullscreen / TV"}
+          </button>
+        </div>
+      </div>
+
+      {/* Main Question Display */}
+      <section className="card spectator-question">
+        <span className="footnote spectator-question-label">
+          Question
+        </span>
+        <h1 className="spectator-question-text">
+          {gameQuestion || "Waiting for question..."}
+        </h1>
+      </section>
+
+      {/* Turn Banner or Pre-Game Status */}
+      {!started ? (
+        <section className="card stack spectator-lobby">
+          <h2 className="spectator-lobby-title">Lobby</h2>
+          <p className="spectator-lobby-desc">
+            Waiting for host to start the game.
+          </p>
+          <div className="spectator-lobby-count">
+            {entries.length} {entries.length === 1 ? "answer" : "answers"} submitted so far
+          </div>
+        </section>
+      ) : (
+        <section className={`card turn spectator-turn ${roundOver ? "round-over" : ""}`}>
+          <div>
+            <div className="spectator-turn-label">
+              {roundOver ? "Round Over" : "Current Turn"}
+            </div>
+            <div className="spectator-turn-player">
+              {roundOver ? "All answers have been guessed!" : `🎯 ${currentPlayer}'s turn to guess`}
+            </div>
+          </div>
+          {!roundOver && turnOrder.length > 1 && (
+            <div className="spectator-turn-next">
+              <span className="spectator-up-next-label">Up next: </span>
+              {turnOrder.slice(1).map((name, i) => (
+                <span key={name}>
+                  {i > 0 && " → "}
+                  <strong>{name}</strong>
+                </span>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* In-Game Content: Answers Grid and Scoreboard */}
+      {started && (
+        <div className="spectator-grid">
+          <section className="stack">
+            <h3 className="spectator-section-heading">Answers ({entries.length})</h3>
+            <div className="spectator-entries-list">
+              {sortedEntriesForDisplay.map((entry) => (
+                <div
+                  key={entry.entryId}
+                  className={`card spectator-entry-card ${entry.guessed ? "guessed" : ""}`}
+                >
+                  <span className="spectator-entry-text">{entry.text}</span>
+                  {entry.guessed && (
+                    <span className="spectator-entry-badge">
+                      ✓ Written by {entry.authorName}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <aside className="stack">
+            <h3 className="spectator-section-heading">Scoreboard</h3>
+            <Scoreboard scores={scores}/>
+          </aside>
+        </div>
+      )}
+    </div>
+  );
+}

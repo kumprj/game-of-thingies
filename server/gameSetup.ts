@@ -1,12 +1,14 @@
 export const MAX_GAME_NAME_LENGTH = 50;
 export const MAX_QUESTION_LENGTH = 200;
 
-type Valid = {ok: true; name: string; question: string};
+type Valid = {ok: true; name: string; title: string; question: string};
 type Invalid = {ok: false; error: string};
 
 /** Checks createGame's body: both fields are required text, trimmed, within their length limits. */
 export function validateGameSetup(body: unknown): Valid | Invalid {
-  const {name: rawName, question: rawQuestion} = (body ?? {}) as Record<string, unknown>;
+  const b = (body ?? {}) as Record<string, unknown>;
+  const rawName = b.title ?? b.name;
+  const rawQuestion = b.question;
   if (typeof rawName !== 'string' || typeof rawQuestion !== 'string') {
     return {ok: false, error: 'Title and question must be text'};
   }
@@ -20,5 +22,5 @@ export function validateGameSetup(body: unknown): Valid | Invalid {
   if (question.length > MAX_QUESTION_LENGTH) {
     return {ok: false, error: `Question must be ${MAX_QUESTION_LENGTH} characters or fewer`};
   }
-  return {ok: true, name, question};
+  return {ok: true, name, title: name, question};
 }

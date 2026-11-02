@@ -5,6 +5,7 @@ import { MotionConfig } from "framer-motion";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import HomePage from "./pages/HomePage";
 import StartGamePage from "./pages/StartGamePage";
+import SpectatorPage from "./pages/SpectatorPage";
 
 // Get the root DOM element where the React application will be mounted.
 const root = ReactDOM.createRoot(document.getElementById("root") as HTMLElement);
@@ -18,6 +19,8 @@ root.render(
         <Routes>
           {/* Define the route for the home page. */}
           <Route path="/" element={<HomePage />} />
+          {/* Spectator / TV Watch mode */}
+          <Route path="/:gameId/watch" element={<SpectatorPage />} />
           {/* Define the route for the StartGamePage, with a dynamic gameId parameter. */}
           <Route path="/:gameId" element={<StartGamePage/>} />
         </Routes>

@@ -55,7 +55,9 @@ final class GameStore {
     private(set) var guessLoading = false
     var guessingEntry: Entry?
     var showStartConfirm = false
-    private(set) var toast: Toast?
+    private(set) var toasts: [Toast] = []
+    var toast: Toast? { toasts.last }
+    private(set) var roundStartScores: [String: Int] = [:]
     private(set) var isConnected = true
     /// Bumped whenever anyone in the room guesses right / wrong; drives confetti and haptics.
     private(set) var correctGuessCount = 0
@@ -202,16 +204,29 @@ final class GameStore {
             // A missing game won't appear by retrying, so stop polling for it.
             gameNotFound = true
             stopPolling()
+            removeFromRecentGames()
             return
         } catch {
             return
         }
         gameQuestion = game.question
-        gameTitle = game.gameOwner
+        gameTitle = game.title ?? game.gameOwner
+        if let started = game.started {
+            self.started = started
+        }
         if let order = game.turnOrder {
             turnOrder = order
             currentPlayer = order.first
         }
+        saveToRecentGames(title: gameTitle)
+    }
+
+    private func saveToRecentGames(title: String?) {
+        RecentGamesStore.record(gameId: gameId, title: title, defaults: defaults)
+    }
+
+    private func removeFromRecentGames() {
+        RecentGamesStore.remove(gameId: gameId, defaults: defaults)
     }
 
     private func fetchEntries() async {
@@ -227,6 +242,11 @@ final class GameStore {
         let request = scoresRequest
         guard let fetched = try? await api.scores(gameId), request == scoresRequest else { return }
         scores = fetched.sorted { $0.score > $1.score }
+        if started && roundStartScores.isEmpty {
+            var map: [String: Int] = [:]
+            for s in scores { map[s.playerName] = s.score }
+            roundStartScores = map
+        }
     }
 
     // MARK: - Actions
@@ -294,10 +314,52 @@ final class GameStore {
             newQuestion = ""
             entries = []
             started = false
+            roundStartScores = [:]
         } catch let error as APIError where error.status == 403 {
             show("Only the host can start a new round", .error)
         } catch {
             show("Failed to start new round", .error)
+        }
+    }
+
+    func editEntry(entryId: String, text: String) async {
+        do {
+            try await api.editEntry(gameId: gameId, entryId: entryId, text: text)
+            await fetchEntries()
+            show("Answer updated!")
+        } catch {
+            show((error as? APIError)?.serverMessage ?? "Failed to update answer", .error)
+        }
+    }
+
+    func withdrawEntry(entryId: String) async {
+        do {
+            try await api.deleteEntry(gameId: gameId, entryId: entryId)
+            hasSubmitted = false
+            await fetchEntries()
+            show("Answer removed!")
+        } catch {
+            show((error as? APIError)?.serverMessage ?? "Failed to remove answer", .error)
+        }
+    }
+
+    func skipTurn() async {
+        guard isHost, started else { return }
+        do {
+            try await api.skipTurn(gameId)
+            show("Turn skipped")
+        } catch {
+            show((error as? APIError)?.serverMessage ?? "Failed to skip turn", .error)
+        }
+    }
+
+    func removePlayer(_ name: String) async {
+        guard isHost, started else { return }
+        do {
+            try await api.removePlayer(gameId: gameId, playerName: name)
+            show("Removed \(name)")
+        } catch {
+            show((error as? APIError)?.serverMessage ?? "Failed to remove player", .error)
         }
     }
 
@@ -327,23 +389,44 @@ final class GameStore {
     // MARK: - Toasts
 
     func show(_ message: String, _ style: Toast.Style = .success, for duration: Duration? = .seconds(5)) {
-        let toast = Toast(message: message, style: style, duration: duration)
-        self.toast = toast
-        toastTask?.cancel()
+        let newToast = Toast(message: message, style: style, duration: duration)
+        toasts.append(newToast)
+        if toasts.count > 3 {
+            toasts.removeFirst(toasts.count - 3)
+        }
         guard let duration else { return }
-        toastTask = Task { [weak self] in
+        Task { [weak self] in
             try? await Task.sleep(for: duration)
-            guard !Task.isCancelled, self?.toast?.id == toast.id else { return }
-            self?.toast = nil
+            guard !Task.isCancelled else { return }
+            self?.dismissToast(newToast.id)
         }
     }
 
-    func dismissToast() {
-        toastTask?.cancel()
-        toast = nil
+    func dismissToast(_ id: UUID? = nil) {
+        if let id {
+            toasts.removeAll { $0.id == id }
+        } else if !toasts.isEmpty {
+            toasts.removeFirst()
+        }
     }
 
     // MARK: - Derived state
+
+    var roundRecapText: (mostGuesses: String, leader: String)? {
+        guard allGuessed, !scores.isEmpty else { return nil }
+        let gains = scores.map { score in
+            let start = roundStartScores[score.playerName] ?? 0
+            return (name: score.playerName, gained: max(0, score.score - start))
+        }
+        let maxGained = gains.map(\.gained).max() ?? 0
+        let top = gains.filter { $0.gained == maxGained && $0.gained > 0 }
+        let highestScore = scores.map(\.score).max() ?? 0
+        let leaders = scores.filter { $0.score == highestScore }
+
+        let mostText = top.isEmpty ? "None" : top.map { "\($0.name) (\($0.gained))" }.joined(separator: ", ")
+        let leaderText = leaders.map { "\($0.playerName) (\($0.score))" }.joined(separator: ", ")
+        return (mostText, leaderText)
+    }
 
     /// Revealed answers alphabetically; before the reveal, in submission order.
     var sortedEntriesForDisplay: [Entry] {

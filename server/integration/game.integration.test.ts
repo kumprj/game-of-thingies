@@ -32,8 +32,8 @@ const sockets: Socket[] = [];
 // Host tokens by game id, so tests call start/reset as the host without passing the token around
 const hostTokens = new Map<string, string>();
 
-async function api<T = any>(method: 'GET' | 'POST', path: string, body?: object, headers: Record<string, string> = {}): Promise<{status: number; data: T}> {
-  const gameId = path.match(/^\/api\/games\/([^/]+)\/(start|reset)$/)?.[1];
+async function api<T = any>(method: 'GET' | 'POST' | 'PATCH' | 'DELETE', path: string, body?: object, headers: Record<string, string> = {}): Promise<{status: number; data: T}> {
+  const gameId = path.match(/^\/api\/games\/([^/]+)\/(start|reset|skip-turn|players)/)?.[1];
   const token = gameId && hostTokens.get(gameId);
   const response = await fetch(`${baseUrl}${path}`, {
     method,
@@ -638,5 +638,193 @@ describe('unknown games', () => {
     expect((await api('GET', '/api/games/ZZZZ/entries')).data).toEqual([]);
     expect((await api('GET', '/api/games/ZZZZ/scores')).data).toEqual([]);
     expect(await api('GET', '/api/games/ZZZZ')).toEqual({status: 404, data: {error: 'Game not found'}});
+  });
+});
+
+describe('player identity (#67)', () => {
+  it('claims a name with a token, allows reuse with matching token, rejects mismatch with 403', async () => {
+    const gameId = await createGame('Host');
+    const token1 = 'device-token-1';
+    const token2 = 'device-token-2';
+
+    // Claim name Ann with token1
+    const res1 = await api('POST', `/api/games/${gameId}/entries`, {authorName: 'Ann', text: 'Tacos'}, {'x-player-token': token1});
+    expect(res1.status).toBe(200);
+
+    // Mismatched token trying to submit as Ann gets 403
+    const res2 = await api('POST', `/api/games/${gameId}/entries`, {authorName: 'ann', text: 'Burritos'}, {'x-player-token': token2});
+    expect(res2.status).toBe(403);
+    expect(res2.data).toEqual({error: 'A player with this name already exists in this game'});
+
+    // Ben submits with token2
+    const benRes = await api('POST', `/api/games/${gameId}/entries`, {authorName: 'Ben', text: 'Pizza'}, {'x-player-token': token2});
+    expect(benRes.status).toBe(200);
+
+    // Start game
+    await api('POST', `/api/games/${gameId}/start`);
+    const g = (await game(gameId));
+    const first = g.turnOrder[0] as string;
+    const entryId = first === 'Ann' ? benRes.data.entryId : res1.data.entryId;
+
+    // Guessing as the first player with wrong token gets 403
+    const badGuess = await api('POST', `/api/games/${gameId}/entries/${entryId}/guess`,
+      {guesserName: first, guess: 'Pizza'},
+      {'x-player-token': first === 'Ann' ? token2 : token1});
+    expect(badGuess.status).toBe(403);
+    expect(badGuess.data).toEqual({error: 'Player token mismatch'});
+
+    // Guessing with matching token succeeds
+    const goodGuess = await api('POST', `/api/games/${gameId}/entries/${entryId}/guess`,
+      {guesserName: first, guess: first === 'Ann' ? 'Ben' : 'Ann'},
+      {'x-player-token': first === 'Ann' ? token1 : token2});
+    expect(goodGuess.status).toBe(200);
+  });
+
+  it('rejects entries and guesses when x-player-token is omitted or mismatched for an existing player', async () => {
+    const gameId = await createGame('Host');
+    const token = 'token-alice';
+
+    // Alice creates an entry with her token
+    const res = await api('POST', `/api/games/${gameId}/entries`, {authorName: 'Alice', text: 'Apples'}, {'x-player-token': token});
+    expect(res.status).toBe(200);
+
+    // Omitting x-player-token when submitting as Alice is rejected with 403
+    const omitEntry = await api('POST', `/api/games/${gameId}/entries`, {authorName: 'Alice', text: 'More Apples'});
+    expect(omitEntry.status).toBe(403);
+    expect(omitEntry.data).toEqual({error: 'A player with this name already exists in this game'});
+
+    // Wrong x-player-token when submitting as Alice is rejected with 403
+    const wrongEntry = await api('POST', `/api/games/${gameId}/entries`, {authorName: 'alice', text: 'Green Apples'}, {'x-player-token': 'wrong-token'});
+    expect(wrongEntry.status).toBe(403);
+    expect(wrongEntry.data).toEqual({error: 'A player with this name already exists in this game'});
+
+    // Bob creates an entry
+    const bobRes = await api('POST', `/api/games/${gameId}/entries`, {authorName: 'Bob', text: 'Bananas'}, {'x-player-token': 'token-bob'});
+    expect(bobRes.status).toBe(200);
+
+    // Start game
+    await api('POST', `/api/games/${gameId}/start`);
+    const g = await game(gameId);
+    const first = g.turnOrder[0] as string;
+    const targetEntryId = first === 'Alice' ? bobRes.data.entryId : res.data.entryId;
+
+    // Omitting x-player-token on guess is rejected with 403
+    const omitGuess = await api('POST', `/api/games/${gameId}/entries/${targetEntryId}/guess`, {
+      guesserName: first,
+      guess: 'Bananas'
+    });
+    expect(omitGuess.status).toBe(403);
+    expect(omitGuess.data).toEqual({error: 'Player token mismatch'});
+
+    // Wrong x-player-token on guess is rejected with 403
+    const wrongGuess = await api('POST', `/api/games/${gameId}/entries/${targetEntryId}/guess`, {
+      guesserName: first,
+      guess: 'Bananas'
+    }, {'x-player-token': 'wrong-token'});
+    expect(wrongGuess.status).toBe(403);
+    expect(wrongGuess.data).toEqual({error: 'Player token mismatch'});
+  });
+});
+
+describe('editing and deleting entries (#52)', () => {
+  it('allows author to patch and delete before game starts, emits entriesUpdated', async () => {
+    const gameId = await createGame('Host');
+    const room = await joinRoom(gameId);
+    const token = 'author-token';
+    const otherToken = 'other-token';
+
+    const addRes = await api('POST', `/api/games/${gameId}/entries`, {authorName: 'Ann', text: 'Initial'}, {'x-player-token': token});
+    const entryId = addRes.data.entryId;
+
+    // Missing or wrong author token cannot edit
+    const noTokenEdit = await api('PATCH', `/api/games/${gameId}/entries/${entryId}`, {text: 'Hacked'});
+    expect(noTokenEdit.status).toBe(403);
+    expect(noTokenEdit.data).toEqual({error: 'Only the author can edit this entry'});
+
+    const badEdit = await api('PATCH', `/api/games/${gameId}/entries/${entryId}`, {text: 'Hacked'}, {'x-player-token': otherToken});
+    expect(badEdit.status).toBe(403);
+    expect(badEdit.data).toEqual({error: 'Only the author can edit this entry'});
+
+    // Author edits successfully
+    const mark1 = room.events.length;
+    const editRes = await api('PATCH', `/api/games/${gameId}/entries/${entryId}`, {text: 'Updated Text'}, {'x-player-token': token});
+    expect(editRes.status).toBe(200);
+    await room.next('entriesUpdated', mark1);
+    expect((await entries(gameId)).find(e => e.entryId === entryId).text).toBe('Updated Text');
+
+    // Missing or wrong author token cannot delete
+    const noTokenDel = await api('DELETE', `/api/games/${gameId}/entries/${entryId}`);
+    expect(noTokenDel.status).toBe(403);
+    expect(noTokenDel.data).toEqual({error: 'Only the author can delete this entry'});
+
+    const badDel = await api('DELETE', `/api/games/${gameId}/entries/${entryId}`, undefined, {'x-player-token': otherToken});
+    expect(badDel.status).toBe(403);
+    expect(badDel.data).toEqual({error: 'Only the author can delete this entry'});
+
+    // Author deletes entry
+    const mark2 = room.events.length;
+    const delRes = await api('DELETE', `/api/games/${gameId}/entries/${entryId}`, undefined, {'x-player-token': token});
+    expect(delRes.status).toBe(200);
+    await room.next('entriesUpdated', mark2);
+    expect((await entries(gameId)).find(e => e.entryId === entryId)).toBeUndefined();
+  });
+});
+
+describe('skip turn and remove player (#68)', () => {
+  it('allows host to skip a turn and remove players', async () => {
+    const gameId = await createGame('Host');
+    const room = await joinRoom(gameId);
+    await addEntry(gameId, 'Ann', 'One');
+    await addEntry(gameId, 'Ben', 'Two');
+    await addEntry(gameId, 'Carol', 'Three');
+    await api('POST', `/api/games/${gameId}/start`);
+
+    const g1 = await game(gameId);
+    const first = g1.turnOrder[0];
+
+    // Non-host cannot skip
+    const badSkip = await api('POST', `/api/games/${gameId}/skip-turn`, undefined, {'x-host-token': 'wrong'});
+    expect(badSkip.status).toBe(403);
+
+    // Host skips turn
+    const mark1 = room.events.length;
+    const skipRes = await api('POST', `/api/games/${gameId}/skip-turn`);
+    expect(skipRes.status).toBe(200);
+    const next1 = await room.next('nextTurn', mark1);
+    expect(next1.turnOrder[next1.turnOrder.length - 1]).toBe(first);
+
+    // Host removes a player
+    const mark2 = room.events.length;
+    const remRes = await api('DELETE', `/api/games/${gameId}/players/${first}`);
+    expect(remRes.status).toBe(200);
+    const remEvt1 = await room.next('playerRemoved', mark2);
+    expect(remEvt1).toEqual({playerName: first, turnOrder: remRes.data.turnOrder});
+    const next2 = await room.next('nextTurn', mark2);
+    expect(next2.turnOrder.includes(first)).toBe(false);
+    expect(next2.turnOrder.length).toBe(2);
+
+    // Host removes another player down to the last remaining player (spec #68)
+    const second = next2.turnOrder[0];
+    const mark3 = room.events.length;
+    const remRes2 = await api('DELETE', `/api/games/${gameId}/players/${second}`);
+    expect(remRes2.status).toBe(200);
+    const remEvt2 = await room.next('playerRemoved', mark3);
+    expect(remEvt2).toEqual({playerName: second, turnOrder: remRes2.data.turnOrder});
+    const next3 = await room.next('nextTurn', mark3);
+    expect(next3.turnOrder.length).toBe(1);
+    expect(next3.turnOrder.includes(second)).toBe(false);
+    expect(next3.currentPlayer).toBe(next3.turnOrder[0]);
+  });
+});
+
+describe('spectator socket (#73)', () => {
+  it('joins room and receives live updates without write participation', async () => {
+    const gameId = await createGame('Host');
+    const spectator = await joinRoom(gameId);
+
+    const mark = spectator.events.length;
+    await addEntry(gameId, 'Ann', 'Answer');
+    await spectator.next('entriesUpdated', mark);
+    expect(spectator.events.some(e => e.name === 'entriesUpdated')).toBe(true);
   });
 });

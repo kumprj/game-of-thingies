@@ -41,6 +41,7 @@ struct Entry: Decodable, Identifiable, Hashable {
 
 /// GET /api/games/:id returns `{}` for an unknown code, so every field is optional.
 struct Game: Decodable {
+    var title: String?
     var gameOwner: String?
     var question: String?
     var started: Bool?
