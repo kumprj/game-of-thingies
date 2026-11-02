@@ -33,6 +33,8 @@ export interface Game {
    * (`players` takes over).
    */
   answeredNames?: string[];
+  /** Player name -> epoch ms of their last guess; picks the first player next round. Set when the game starts. */
+  lastTurn?: Record<string, number>;
 }
 
 export interface Score {

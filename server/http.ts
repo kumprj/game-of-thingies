@@ -1,3 +1,4 @@
+import type {Server} from 'socket.io';
 import type {NextFunction, Request, RequestHandler, Response} from 'express';
 
 /**
@@ -12,11 +13,19 @@ export function asyncHandler(
   };
 }
 
+/** The shape of errors this handler reads (body-parser and AWS SDK errors carry some of these). */
+type HttpError = Partial<Error> & {status?: number; statusCode?: number; type?: string};
+
+/** The Socket.IO server app.ts stored with `app.set('io', io)`. */
+export function getIo(req: Request): Server {
+  return req.app.get('io');
+}
+
 /**
  * Error middleware: always answers with JSON. Body-parser failures keep their own 4xx status
  * (malformed JSON is 400, an oversize body is 413); anything else is logged and becomes a 500.
  */
-export function errorHandler(err: any, req: Request, res: Response, next: NextFunction) {
+export function errorHandler(err: HttpError, req: Request, res: Response, next: NextFunction) {
   if (res.headersSent) return next(err);
   const status = Number(err?.status ?? err?.statusCode);
   if (err?.type === 'entity.parse.failed') {
