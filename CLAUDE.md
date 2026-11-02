@@ -12,3 +12,16 @@ This repo is public, and `main` auto-deploys to production. Before every commit 
 If something sensitive was already committed, tell the user. Don't just add a removal commit,
 because it stays in history. Rewrite the unmerged branch instead, and confirm with the user before
 force-pushing.
+
+## Every feature ships on web and iOS, with tests
+- Build each feature on both the web client (`client/`) and the iOS app (`apps/ios/`) in the same PR
+  or stack. If one platform can't land yet, file and link a follow-up issue before merging.
+- Add unit tests on each platform you touch, and an integration test for any server change
+  (`server/integration/`, run against DynamoDB Local).
+- Build iOS only. Never launch the iOS Simulator; the iOS tests run in CI (`ios.yml`).
+
+## Branches and worktrees
+- Work on a separate branch from `main`, never on someone else's open branch.
+- Stacked PRs: base each PR on the previous branch and link them with `gh stack link`.
+- After a PR merges, remove its worktree (`git worktree remove`) and delete its local and remote
+  branch.
