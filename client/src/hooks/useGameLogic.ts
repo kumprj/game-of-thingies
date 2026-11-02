@@ -22,6 +22,7 @@ export function useGameLogic() {
   const [scores, setScores] = useState<Score[]>([]); // Stores the list of player scores.
   const [turnOrder, setTurnOrder] = useState<string[]>([]); // Stores the order of players' turns.
   const [players, setPlayers] = useState<string[]>([]); // Everyone who wrote an answer this round (known once started).
+  const [answeredNames, setAnsweredNames] = useState<string[]>([]); // Who has answered, for the lobby line (known before the start).
   const [started, setStarted] = useState(false); // Indicates whether the game has started.
   const [gameNotFound, setGameNotFound] = useState(false); // The server has no game with this code.
 
@@ -155,6 +156,7 @@ export function useGameLogic() {
         startedRef.current = res.data.started === true;
         setStarted(startedRef.current);
         setPlayers(res.data.players ?? []);
+        setAnsweredNames(res.data.answeredNames ?? []);
         if (res.data.turnOrder) setTurnOrder(res.data.turnOrder);
         saveRecentGame(gameId, title);
       } catch (err) {
@@ -209,7 +211,11 @@ export function useGameLogic() {
       syncAllData();
     };
 
-    const onEntriesUpdated = () => fetchEntries();
+    const onEntriesUpdated = () => {
+      fetchEntries();
+      // The lobby's "Answers in" names come from the game, not the entries.
+      if (!startedRef.current) fetchGameData();
+    };
 
     const onGameStarted = (data: any) => {
       setTurnOrder(data.turnOrder || []);
@@ -567,6 +573,7 @@ export function useGameLogic() {
     turnOrder,
     currentPlayer,
     started,
+    answeredNames,
     gameNotFound,
     isHost,
     hostName,

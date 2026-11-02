@@ -11,8 +11,6 @@ import Toast from "../components/Toast";
 import {EASE_OUT} from "../components/motion";
 import {Entry} from "../../../types";
 
-// Other players' answers are hidden by the server before the game starts; this stands in for them.
-const HIDDEN_PLACEHOLDER = "Hidden answer text";
 
 export default function StartGamePage() {
   const {
@@ -24,6 +22,7 @@ export default function StartGamePage() {
     turnOrder,
     currentPlayer,
     started,
+    answeredNames,
     gameNotFound,
     isHost,
     entryText,
@@ -416,7 +415,12 @@ export default function StartGamePage() {
           <h4 className="section-label">{started ? "Your Group's Answers" : `Answers (${entries.length})`}</h4>
           <ul className="list">
             {sortedEntriesForDisplay.length === 0 && <li className="footnote">No entries yet</li>}
-            {sortedEntriesForDisplay.map(entry => (
+            {!started && answeredNames.length > 0 && (
+              <li className="footnote" data-testid="answered-names">
+                {`Answers in (${answeredNames.length}): ${answeredNames.join(", ")}`}
+              </li>
+            )}
+            {sortedEntriesForDisplay.filter(entry => started || entry.mine).map(entry => (
                 <motion.li key={entry.entryId} className={started ? "answer-row" : undefined}
                            initial={{opacity: 0, y: 8}} animate={{opacity: 1, y: 0}}
                            transition={{type: "spring", bounce: 0, duration: 0.3}}>
@@ -493,10 +497,7 @@ export default function StartGamePage() {
                           </div>
                         )}
                       </div>
-                  ) : (
-                      // PRE-GAME: everyone else's entry is blurred
-                      <span className="hidden-answer" aria-label="Hidden answer">{HIDDEN_PLACEHOLDER}</span>
-                  )}
+                  ) : null}
                 </motion.li>
             ))}
           </ul>

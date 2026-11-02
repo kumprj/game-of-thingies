@@ -1153,3 +1153,32 @@ describe('request validation', () => {
       {'x-host-token': 't'.repeat(200)})).status).toBe(400);
   });
 });
+
+describe('lobby answered names (#42)', () => {
+  it('lists distinct, sorted author names before the start, with no text or entry link', async () => {
+    const gameId = await createGame('Host');
+    const add = (name: string, tok: string, text: string) =>
+      api('POST', `/api/games/${gameId}/entries`, {authorName: name, text}, {'x-player-token': tok});
+    expect((await game(gameId)).answeredNames).toEqual([]);
+    const cy = (await add('Cy', 'tok-cy', 'Secret C')).data.entryId as string;
+    await add('Ann', 'tok-ann', 'Secret A');
+    await add('Ben', 'tok-ben', 'Secret B');
+    const g = await game(gameId);
+    expect(g.answeredNames).toEqual(['Ann', 'Ben', 'Cy']);
+    expect(JSON.stringify(g)).not.toContain('Secret');
+    expect(g).not.toHaveProperty('authorToken');
+
+    await api('DELETE', `/api/games/${gameId}/entries/${cy}`, undefined, {'x-player-token': 'tok-cy'});
+    expect((await game(gameId)).answeredNames).toEqual(['Ann', 'Ben']);
+  });
+
+  it('omits answeredNames once the game has started and leaves entries unchanged', async () => {
+    const gameId = await createGame('Host');
+    await api('POST', `/api/games/${gameId}/entries`, {authorName: 'Ann', text: 'A'}, {'x-player-token': 'tok-ann'});
+    await api('POST', `/api/games/${gameId}/entries`, {authorName: 'Ben', text: 'B'}, {'x-player-token': 'tok-ben'});
+    const before = await entriesAs(gameId);
+    for (const e of before) expect(e).not.toHaveProperty('authorName');
+    await api('POST', `/api/games/${gameId}/start`);
+    expect(await game(gameId)).not.toHaveProperty('answeredNames');
+  });
+});

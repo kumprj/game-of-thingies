@@ -25,6 +25,8 @@ final class GameStore {
     private(set) var scores: [Score] = []
     private(set) var turnOrder: [String] = []
     private(set) var players: [String] = []
+    /// Who has answered so far, for the lobby line before the game starts.
+    private(set) var answeredNames: [String] = []
     var currentPlayer: String? { turnOrder.first }
     private(set) var started = false
     /// The server has no game with this code (404); polling stops and the view shows a way back.
@@ -158,6 +160,8 @@ final class GameStore {
         switch event {
         case "entriesUpdated":
             Task { await fetchEntries() }
+            // The lobby's "Answers in" names come from the game, not the entries.
+            if !started { Task { await fetchGame() } }
         case "gameStarted":
             let order = decode(GameStartedEvent.self)?.turnOrder ?? []
             turnOrder = order
@@ -236,6 +240,7 @@ final class GameStore {
         if let players = game.players {
             self.players = players
         }
+        answeredNames = game.answeredNames ?? []
         saveToRecentGames(title: gameTitle)
     }
 
@@ -337,6 +342,7 @@ final class GameStore {
             started = false
             roundStartScores = [:]
             players = []
+            answeredNames = []
         } catch let error as APIError where error.status == 403 {
             show("Only the host can start a new round", .error)
         } catch {
@@ -487,6 +493,11 @@ final class GameStore {
     var notGuessedNames: [String] {
         let guessed = Set(guessedNames)
         return Set(players).subtracting(guessed).sorted()
+    }
+    /// "Answers in (3): Alice, Bob, Carol" before the game starts; nil once started or when nobody has answered.
+    var lobbyAnswersLine: String? {
+        guard !started, !answeredNames.isEmpty else { return nil }
+        return "Answers in (\(answeredNames.count)): \(answeredNames.joined(separator: ", "))"
     }
     var allGuessed: Bool { !entries.isEmpty && entries.allSatisfy(\.guessed) }
     var isLastEntry: Bool { entries.filter { !$0.guessed }.count == 1 }

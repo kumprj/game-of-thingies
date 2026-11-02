@@ -327,7 +327,13 @@ struct GameView: View {
             if store.entries.isEmpty {
                 Text("No entries yet").foregroundStyle(.secondary)
             }
-            ForEach(store.sortedEntriesForDisplay) { entry in
+            if let line = store.lobbyAnswersLine {
+                Text(line)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            // Before the start only my own answers are listed; everyone else shows up in the lobby line.
+            ForEach(store.sortedEntriesForDisplay.filter { store.started || $0.mine }) { entry in
                 if store.started {
                     Button { store.guessingEntry = entry } label: {
                         HStack {
@@ -398,13 +404,6 @@ struct GameView: View {
                         }
                         .tint(.blue)
                     }
-                } else {
-                    // Pre-game: everyone else's entry is blurred
-                    Text("Hidden answer")
-                        .foregroundStyle(.secondary)
-                        .blur(radius: 6)
-                        .privacySensitive()
-                        .accessibilityLabel("Hidden answer")
                 }
             }
         }
