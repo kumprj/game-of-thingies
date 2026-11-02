@@ -121,7 +121,7 @@ export default function StartGamePage() {
 
   const roundOver = turnOrder.length < 1;
   const inputsLocked = isLoading || addEntryLoading || hasSubmitted;
-  const canAdd = !!entryText && !!authorName && !inputsLocked;
+  const canAdd = !!entryText.trim() && !!authorName.trim() && !inputsLocked;
 
   return (
       <div className="page">
@@ -184,12 +184,14 @@ export default function StartGamePage() {
                   value={entryText}
                   onChange={e => setEntryText(e.target.value)}
                   placeholder="Your answer"
+                  maxLength={200}
                   disabled={inputsLocked}
               />
               <input
                   value={authorName}
                   onChange={e => setAuthorName(e.target.value)}
                   placeholder="Your name"
+                  maxLength={30}
                   disabled={inputsLocked}
               />
               <div className="row">

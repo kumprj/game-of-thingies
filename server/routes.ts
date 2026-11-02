@@ -61,23 +61,56 @@ router.post('/createGame', async (req, res) => {
   }
 });
 
-// Add Entry
+// Add Entry. One answer per player: a second submit from the same name replaces their earlier
+// answer (same entryId), so a player never holds two turn-order slots.
+export const MAX_NAME_LENGTH = 30;
+export const MAX_ANSWER_LENGTH = 200;
+
 router.post('/games/:gameId/entries', async (req, res) => {
   const {gameId} = req.params;
-  const {authorName, text} = req.body;
-  const entryId = uuidv4();
-  const createdAt = new Date().toISOString();
+  const {authorName: rawName, text: rawText} = req.body ?? {};
 
-  await ddb.send(new PutCommand({
-    TableName: tables.entries,
-    Item: {entryId, gameId, authorName, text, createdAt, revealed: false, expiresAt: expiresAt()}
-  }));
+  if (typeof rawName !== 'string' || typeof rawText !== 'string') {
+    return res.status(400).json({error: 'Name and answer must be text'});
+  }
+  const authorName = rawName.trim();
+  const text = rawText.trim();
+  if (!authorName) return res.status(400).json({error: 'Name is required'});
+  if (!text) return res.status(400).json({error: 'Answer is required'});
+  if (authorName.length > MAX_NAME_LENGTH) {
+    return res.status(400).json({error: `Name must be ${MAX_NAME_LENGTH} characters or fewer`});
+  }
+  if (text.length > MAX_ANSWER_LENGTH) {
+    return res.status(400).json({error: `Answer must be ${MAX_ANSWER_LENGTH} characters or fewer`});
+  }
 
-  // Socket emit
-  const io = (req as any).io;
-  io.to(gameId).emit("entriesUpdated");
+  try {
+    const game = await getGame(gameId);
+    if (!game) return res.status(404).json({error: 'Game not found'});
+    if (game.started) return res.status(400).json({error: 'The game has already started'});
 
-  res.json({entryId});
+    const existing = await ddb.send(new QueryCommand({
+      TableName: tables.entries,
+      KeyConditionExpression: 'gameId = :g',
+      ExpressionAttributeValues: {':g': gameId}
+    }));
+    const previous = (existing.Items || []).find((e: any) => e.authorName === authorName);
+
+    const entryId = previous?.entryId ?? uuidv4();
+    const createdAt = new Date().toISOString();
+    await ddb.send(new PutCommand({
+      TableName: tables.entries,
+      Item: {entryId, gameId, authorName, text, createdAt, revealed: false, expiresAt: expiresAt()}
+    }));
+
+    const io = (req as any).io;
+    io.to(gameId).emit("entriesUpdated");
+
+    res.json({entryId});
+  } catch (error) {
+    console.error('Add entry failed:', error);
+    res.status(500).json({error: 'Failed to add entry'});
+  }
 });
 
 // Start Game

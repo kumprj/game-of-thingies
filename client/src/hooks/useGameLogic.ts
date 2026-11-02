@@ -239,18 +239,19 @@ export function useGameLogic() {
    * Adds a new entry to the game.
    */
   const addEntry = async () => {
-    if (started || !entryText || !authorName) return;
+    if (started || !entryText.trim() || !authorName.trim()) return;
     setAddEntryLoading(true);
     const startTime = Date.now();
     try {
-      await axios.post(`/api/games/${gameId}/entries`, {authorName, text: entryText});
+      await axios.post(`/api/games/${gameId}/entries`, {authorName: authorName.trim(), text: entryText.trim()});
       setEntryText("");
       await fetchEntries();
       const elapsed = Date.now() - startTime;
       if (1000 - elapsed > 0) await sleep(1000 - elapsed);
       setToast({message: "Entry added!", type: "success"});
     } catch (error) {
-      setToast({message: "Failed to add entry", type: "error"});
+      const serverMessage = (error as any)?.response?.data?.error;
+      setToast({message: serverMessage || "Failed to add entry", type: "error"});
     } finally {
       setAddEntryLoading(false);
     }

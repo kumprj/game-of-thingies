@@ -69,6 +69,21 @@ describe('useGameLogic Hook', () => {
     );
   });
 
+  it('addEntry shows the server validation message', async () => {
+    const { result } = renderHook(() => useGameLogic());
+    act(() => {
+      result.current.setAuthorName('Alice');
+      result.current.setEntryText('My Answer');
+    });
+    (axios.post as any).mockRejectedValueOnce({ response: { data: { error: 'Answer is required' } } });
+
+    await act(async () => {
+      await result.current.addEntry();
+    });
+
+    expect(result.current.toast).toMatchObject({ message: 'Answer is required', type: 'error' });
+  });
+
   it('startGame triggers the start endpoint', async () => {
     // We need entries to be able to start
     (axios.get as any).mockResolvedValue({ data: [{ entryId: '1', text: 'A' }] });

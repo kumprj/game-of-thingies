@@ -384,3 +384,67 @@ describe('unknown games', () => {
     expect((await api('GET', '/api/games/ZZZZ')).data).toEqual({});
   });
 });
+
+describe('answer validation', () => {
+  const post = (gameId: string, body: object) => api('POST', `/api/games/${gameId}/entries`, body);
+
+  it('rejects empty, blank and non-text names and answers', async () => {
+    const gameId = await createGame();
+    for (const body of [
+      {authorName: '', text: 'x'}, {authorName: '   ', text: 'x'},
+      {authorName: 'Ann', text: ''}, {authorName: 'Ann', text: '  \n '},
+      {authorName: 'Ann'}, {text: 'x'}, {authorName: 42, text: 'x'}, {authorName: 'Ann', text: ['x']},
+    ]) {
+      const {status, data} = await post(gameId, body);
+      expect(status, JSON.stringify(body)).toBe(400);
+      expect(data.error).toEqual(expect.any(String));
+    }
+    expect(await entries(gameId)).toEqual([]);
+  });
+
+  it('rejects oversized names and answers but accepts the limits', async () => {
+    const gameId = await createGame();
+    const tooLongName = await post(gameId, {authorName: 'n'.repeat(31), text: 'x'});
+    expect(tooLongName.status).toBe(400);
+    expect(tooLongName.data.error).toMatch(/30/);
+    const tooLongText = await post(gameId, {authorName: 'Ann', text: 't'.repeat(201)});
+    expect(tooLongText.status).toBe(400);
+    expect(tooLongText.data.error).toMatch(/200/);
+    expect((await post(gameId, {authorName: 'n'.repeat(30), text: 't'.repeat(200)})).status).toBe(200);
+  });
+
+  it('trims names and answers', async () => {
+    const gameId = await createGame();
+    await addEntry(gameId, '  Ann ', '  Pizza  ');
+    expect(await entries(gameId)).toMatchObject([{authorName: 'Ann', text: 'Pizza'}]);
+  });
+
+  it('keeps one answer per player: a second submit replaces the first', async () => {
+    const gameId = await createGame();
+    const first = await addEntry(gameId, 'Ann', 'Pizza');
+    const second = await addEntry(gameId, 'Ann', 'Tacos');
+    expect(second).toBe(first);
+    await addEntry(gameId, 'Ben', 'Soup');
+    const all = await entries(gameId);
+    expect(all).toHaveLength(2);
+    expect(all.find(e => e.authorName === 'Ann').text).toBe('Tacos');
+  });
+
+  it('returns 404 for an unknown game', async () => {
+    const {status} = await post('ZZZZ', {authorName: 'Ann', text: 'x'});
+    expect(status).toBe(404);
+    expect(await entries('ZZZZ')).toEqual([]);
+  });
+
+  it('rejects answers once the game has started', async () => {
+    const gameId = await createGame();
+    await addEntry(gameId, 'Ann', 'Pizza');
+    await api('POST', `/api/games/${gameId}/start`);
+    const late = await post(gameId, {authorName: 'Ben', text: 'Soup'});
+    expect(late.status).toBe(400);
+    expect(late.data.error).toMatch(/started/);
+    const replace = await post(gameId, {authorName: 'Ann', text: 'Changed'});
+    expect(replace.status).toBe(400);
+    expect(await entries(gameId)).toMatchObject([{authorName: 'Ann', text: 'Pizza'}]);
+  });
+});
