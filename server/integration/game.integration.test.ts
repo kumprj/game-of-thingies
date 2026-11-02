@@ -1031,3 +1031,61 @@ describe('host handoff', () => {
     expect(g.hostName).toBe('NewHost');
   });
 });
+
+describe('request validation', () => {
+  const guessUrl = (gameId: string, entryId: string) => `/api/games/${gameId}/entries/${entryId}/guess`;
+
+  it('rejects a non-text or oversize reset question (400) and changes nothing', async () => {
+    const gameId = await createGame('Host', 'Original question');
+    await addEntry(gameId, 'Ann', 'Something');
+    for (const question of [5, true, ['a'], {a: 1}, 'q'.repeat(201)]) {
+      const {status, data} = await api('POST', `/api/games/${gameId}/reset`, {question});
+      expect(status).toBe(400);
+      expect(data.error).toEqual(expect.any(String));
+    }
+    expect((await game(gameId)).question).toBe('Original question');
+    expect(await entries(gameId)).toHaveLength(1);
+  });
+
+  it('still resets to the default question when none is given', async () => {
+    const gameId = await createGame('Host', 'Original question');
+    expect((await api('POST', `/api/games/${gameId}/reset`, {})).status).toBe(200);
+    expect((await game(gameId)).question).toBe('What is your favorite thing?');
+  });
+
+  it('returns 400, not 500, for a guess with non-text or oversize fields', async () => {
+    const gameId = await createGame('Ann');
+    const entryId = await addEntry(gameId, 'Ann', 'One');
+    await addEntry(gameId, 'Ben', 'Two');
+    await api('POST', `/api/games/${gameId}/start`);
+    const bodies: object[] = [
+      {}, {guesserName: 'Ann'}, {guess: 'Ben'}, {guesserName: 5, guess: 'Ben'},
+      {guesserName: {a: 1}, guess: 'Ben'}, {guesserName: 'Ann', guess: ['Ben']},
+      {guesserName: 'a'.repeat(31), guess: 'Ben'}, {guesserName: 'Ann', guess: 'b'.repeat(31)}
+    ];
+    for (const body of bodies) {
+      const {status, data} = await api('POST', guessUrl(gameId, entryId), body);
+      expect(status).toBe(400);
+      expect(data.error).toEqual(expect.any(String));
+    }
+    expect((await entries(gameId)).every(e => e.guessed === undefined)).toBe(true);
+  });
+
+  it('rejects an oversize host transfer target (400)', async () => {
+    const gameId = await createGame('Host');
+    const {status} = await api('POST', `/api/games/${gameId}/transfer-host`, {targetPlayerName: 'x'.repeat(31)});
+    expect(status).toBe(400);
+    expect((await game(gameId)).hostName).toBe('Host');
+  });
+
+  it('rejects oversize ids and token headers (400)', async () => {
+    const gameId = await createGame();
+    expect((await api('GET', `/api/games/${'A'.repeat(100)}`)).status).toBe(400);
+    expect((await api('DELETE', `/api/games/${gameId}/entries/${'e'.repeat(100)}`)).status).toBe(400);
+    expect((await api('DELETE', `/api/games/${gameId}/players/${'p'.repeat(100)}`)).status).toBe(400);
+    expect((await api('POST', `/api/games/${gameId}/entries`, {authorName: 'Ann', text: 'Hi'},
+      {'x-player-token': 't'.repeat(200)})).status).toBe(400);
+    expect((await api('POST', `/api/games/${gameId}/start`, undefined,
+      {'x-host-token': 't'.repeat(200)})).status).toBe(400);
+  });
+});

@@ -5,6 +5,15 @@ import {ddb, expiresAt, tables} from './db';
 import {buildTurnOrder, rotate} from './turnOrder';
 import {validateGameSetup} from './gameSetup';
 import {
+  checkNameLength,
+  MAX_ANSWER_LENGTH,
+  MAX_NAME_LENGTH,
+  validateGuess,
+  validateParam,
+  validateReset,
+  validateTokenHeaders
+} from './validation';
+import {
   GetCommand,
   PutCommand,
   QueryCommand,
@@ -14,6 +23,10 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 
 const router = express.Router();
+router.use(validateTokenHeaders);
+router.param('gameId', validateParam);
+router.param('entryId', validateParam);
+router.param('playerName', validateParam);
 const MAX_CODE_ATTEMPTS = 10;
 
 async function getGame(gameId: string) {
@@ -138,8 +151,7 @@ router.post('/createGame', async (req, res) => {
 });
 
 // Add Entry. Names are unique within a game (case-insensitive); a duplicate is rejected with 409.
-export const MAX_NAME_LENGTH = 30;
-export const MAX_ANSWER_LENGTH = 200;
+export {MAX_NAME_LENGTH, MAX_ANSWER_LENGTH};
 
 router.post('/games/:gameId/entries', async (req, res) => {
   const {gameId} = req.params;
@@ -385,7 +397,9 @@ router.post('/games/:gameId/start', async (req, res) => {
 // Guess Logic
 router.post('/games/:gameId/entries/:entryId/guess', async (req, res) => {
   const {gameId, entryId} = req.params;
-  const {guesserName, guess} = req.body;
+  const parsed = validateGuess(req.body);
+  if (!parsed.ok) return res.status(400).json({error: parsed.error});
+  const {guesserName, guess} = parsed;
   const io = (req as any).io;
 
   try {
@@ -569,6 +583,8 @@ router.post('/games/:gameId/transfer-host', async (req, res) => {
     return res.status(400).json({error: 'Target player name is required'});
   }
   const targetPlayerName = rawTarget.trim();
+  const nameError = checkNameLength(targetPlayerName);
+  if (nameError) return res.status(400).json({error: nameError});
 
   try {
     const game = await getGame(gameId);
@@ -646,7 +662,8 @@ router.get('/games/:gameId/scores', async (req, res) => {
 // Reset Game
 router.post('/games/:gameId/reset', async (req, res) => {
   const {gameId} = req.params;
-  const {question} = req.body;
+  const parsed = validateReset(req.body);
+  if (!parsed.ok) return res.status(400).json({error: parsed.error});
 
   try {
     const game = await getGame(gameId);
@@ -670,7 +687,7 @@ router.post('/games/:gameId/reset', async (req, res) => {
       Key: {gameId},
       UpdateExpression: 'SET question = :q, createdAt = :c, started = :started, expiresAt = :e',
       ExpressionAttributeValues: {
-        ':q': question?.trim() || 'What is your favorite thing?',
+        ':q': parsed.question,
         ':c': new Date().toISOString(),
         ':started': false,
         ':e': expiresAt()
