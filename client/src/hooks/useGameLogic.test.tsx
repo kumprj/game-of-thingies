@@ -628,4 +628,40 @@ describe('useGameLogic derived state', () => {
     act(() => result.current.setAuthorName('Ben'));
     expect(result.current.isMyTurn).toBe(false);
   });
+
+  it('canGuess follows iOS: my turn, unguessed, and not my own answer until it is the last', async () => {
+    window.localStorage.setItem('got_authorName', 'Ann');
+    const mine = entry('1', 'A', 'Ann', {mine: true});
+    const other = entry('2', 'B', 'Ben');
+    const guessed = entry('3', 'C', 'Cy', {guessed: true});
+    const {result} = await mount({game: {...game, turnOrder: ['Ann', 'Ben']}, entries: [mine, other, guessed]});
+    await waitFor(() => expect(result.current.entries).toHaveLength(3));
+    expect(result.current.canGuess(other as any)).toBe(true);
+    expect(result.current.canGuess(mine as any)).toBe(false);
+    expect(result.current.canGuess(guessed as any)).toBe(false);
+    act(() => result.current.setAuthorName('Ben'));
+    expect(result.current.canGuess(other as any)).toBe(false);
+
+    window.localStorage.setItem('got_authorName', 'Ann');
+    const last = await mount({game: {...game, turnOrder: ['Ann', 'Ben']}, entries: [mine, guessed]});
+    await waitFor(() => expect(last.result.current.isLastEntry).toBe(true));
+    expect(last.result.current.canGuess(mine as any)).toBe(true);
+  });
+
+  it('canPick follows iOS: not a fully guessed name, nor yourself until you are the last player', async () => {
+    window.localStorage.setItem('got_authorName', 'Ann');
+    const {result} = await mount({
+      game: {...game, turnOrder: ['Ann', 'Ben']},
+      entries: [entry('1', 'A', 'Cy', {revealed: true, guessed: true}), entry('2', 'B', undefined)],
+    });
+    await waitFor(() => expect(result.current.entries).toHaveLength(2));
+    expect(result.current.canPick('Ben')).toBe(true);
+    expect(result.current.canPick('Cy')).toBe(false);
+    expect(result.current.canPick('Ann')).toBe(false);
+
+    window.localStorage.setItem('got_authorName', 'Ann');
+    const solo = await mount({game: {...game, turnOrder: ['Ann']}, entries: [entry('2', 'B', undefined)]});
+    await waitFor(() => expect(solo.result.current.entries).toHaveLength(1));
+    expect(solo.result.current.canPick('Ann')).toBe(true);
+  });
 });
