@@ -166,10 +166,26 @@ struct APIClientTests {
         }
     }
 
+    @Test func startReturnsTurnOrder() async throws {
+        StubURLProtocol.respond = { _ in (200, #"{"success":true,"turnOrder":["Bo","Ann"]}"#) }
+        #expect(try await api.startGame("ABCD") == ["Bo", "Ann"])
+    }
+
     @Test func startOmitsHeaderWithoutToken() async throws {
         try await api.startGame("ABCD")
         let request = try #require(StubURLProtocol.requests.first)
         #expect(request.value(forHTTPHeaderField: "x-host-token") == nil)
+    }
+
+    @Test func transferHostSendsTargetAndToken() async throws {
+        defaults.set("tok123", forKey: "hostToken.ABCD")
+        try await api.transferHost(gameId: "ABCD", targetPlayerName: "Bo")
+        let request = try #require(StubURLProtocol.requests.first)
+        #expect(request.httpMethod == "POST")
+        #expect(request.url?.path == "/api/games/ABCD/transfer-host")
+        #expect(request.value(forHTTPHeaderField: "x-host-token") == "tok123")
+        let body = try JSONDecoder().decode([String: String].self, from: #require(request.httpBody))
+        #expect(body == ["targetPlayerName": "Bo"])
     }
 
     @Test func forbiddenAndConflictMapToStatus() async {

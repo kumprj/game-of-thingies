@@ -76,8 +76,11 @@ struct APIClient {
                                        headers: playerHeaders())
     }
 
-    func startGame(_ gameId: String) async throws {
-        try await sendIgnoringResponse("POST", "api/games/\(gameId)/start", headers: hostHeaders(gameId))
+    /// Returns the turn order so the host doesn't depend on its own socket event to see whose turn it is.
+    func startGame(_ gameId: String) async throws -> [String] {
+        struct Response: Decodable { let turnOrder: [String]? }
+        let response: Response = try await send("POST", "api/games/\(gameId)/start", headers: hostHeaders(gameId))
+        return response.turnOrder ?? []
     }
 
     func skipTurn(_ gameId: String) async throws {
@@ -87,6 +90,20 @@ struct APIClient {
     func removePlayer(gameId: String, playerName: String) async throws {
         let encoded = playerName.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? playerName
         try await sendIgnoringResponse("DELETE", "api/games/\(gameId)/players/\(encoded)", headers: hostHeaders(gameId))
+    }
+
+    func transferHost(gameId: String, targetPlayerName: String) async throws {
+        try await sendIgnoringResponse("POST", "api/games/\(gameId)/transfer-host",
+                                       body: ["targetPlayerName": targetPlayerName],
+                                       headers: hostHeaders(gameId))
+    }
+
+    func saveHostToken(gameId: String, token: String) {
+        defaults.set(token, forKey: hostTokenKey(gameId))
+    }
+
+    func removeHostToken(_ gameId: String) {
+        defaults.removeObject(forKey: hostTokenKey(gameId))
     }
 
     /// Returns whether the guess was correct.

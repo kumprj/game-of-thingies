@@ -24,7 +24,7 @@ struct GuessSheet: View {
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.large)
-                    .disabled(store.isFullyGuessed(name) || store.guessLoading)
+                    .disabled(!store.canPick(name) || store.guessLoading)
                 }
                 if store.guessLoading {
                     HStack(spacing: 8) {

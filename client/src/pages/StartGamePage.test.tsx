@@ -1,5 +1,5 @@
 // src/StartGamePage.test.tsx
-import {render, screen, fireEvent, act, within} from '@testing-library/react';
+import {render, screen, fireEvent, act, within, cleanup} from '@testing-library/react';
 import {beforeEach, describe, it, expect, vi} from 'vitest';
 import {BrowserRouter} from 'react-router-dom';
 import StartGamePage from './StartGamePage';
@@ -164,7 +164,7 @@ function renderPage(overrides: object = {}) {
     setEntryText: vi.fn(), setAuthorName: vi.fn(), setNewQuestion: vi.fn(), setGuessingEntry: vi.fn(),
     setShowStartConfirm: vi.fn(), setShowHowToPlay: vi.fn(), setShowScores: vi.fn(),
     addEntry: vi.fn().mockResolvedValue(undefined), startGame: vi.fn(), startNewRound: vi.fn(),
-    guessAuthor: vi.fn(), onEntryClick: vi.fn(),
+    guessAuthor: vi.fn(), onEntryClick: vi.fn(), transferHost: vi.fn().mockResolvedValue(true),
   };
   // @ts-ignore
   vi.spyOn(GameHook, 'useGameLogic').mockReturnValue({...baseHook, ...actions, ...overrides});
@@ -361,6 +361,14 @@ describe('StartGamePage in detail', () => {
       expect(within(screen.getByRole('dialog')).getByRole('button', {name: 'Ben'})).toBeEnabled();
     });
 
+    it('rules out yourself until you are the last player left', () => {
+      renderPage(guessing());
+      expect(within(screen.getByRole('dialog')).getByRole('button', {name: 'Ann'})).toBeDisabled();
+      cleanup();
+      renderPage(guessing({turnOrder: ['Ann'], entries: [answer('1', 'Mine', 'Ann'), answer('2', 'Theirs', 'Ben', {guessed: true})]}));
+      expect(within(screen.getByRole('dialog')).getByRole('button', {name: 'Ann'})).toBeEnabled();
+    });
+
     it('locks the choices while a guess is in flight', () => {
       renderPage(guessing({guessLoading: true}));
       expect(screen.getByText('Guessing...')).toBeInTheDocument();
@@ -426,6 +434,42 @@ describe('StartGamePage in detail', () => {
     it('shows the toast', () => {
       renderPage({toast: {message: 'Entry added!', type: 'success'}});
       expect(screen.getByRole('status')).toHaveTextContent('Entry added!');
+    });
+
+    describe('host transfer', () => {
+      it('shows transfer host button for the host when other players exist', () => {
+        renderPage({
+          isHost: true,
+          authorName: 'Ann',
+          entries: [answer('1', 'Ans A', 'Ann'), answer('2', 'Ans B', 'Ben')]
+        });
+        expect(screen.getByRole('button', {name: 'Transfer Host'})).toBeInTheDocument();
+      });
+
+      it('does not show transfer host button for non-hosts', () => {
+        renderPage({
+          isHost: false,
+          authorName: 'Ben',
+          entries: [answer('1', 'Ans A', 'Ann'), answer('2', 'Ans B', 'Ben')]
+        });
+        expect(screen.queryByRole('button', {name: 'Transfer Host'})).not.toBeInTheDocument();
+      });
+
+      it('opens transfer host modal and calls transferHost when selecting a player', async () => {
+        const actions = renderPage({
+          isHost: true,
+          authorName: 'Ann',
+          entries: [answer('1', 'Ans A', 'Ann'), answer('2', 'Ans B', 'Ben')]
+        });
+        fireEvent.click(screen.getByRole('button', {name: 'Transfer Host'}));
+        expect(screen.getByRole('heading', {name: 'Transfer Host'})).toBeInTheDocument();
+        const benButton = screen.getByRole('button', {name: 'Ben'});
+        expect(benButton).toBeInTheDocument();
+        await act(async () => {
+          fireEvent.click(benButton);
+        });
+        expect(actions.transferHost).toHaveBeenCalledWith('Ben');
+      });
     });
   });
 });

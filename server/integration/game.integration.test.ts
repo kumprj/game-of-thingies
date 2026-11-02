@@ -33,7 +33,7 @@ const sockets: Socket[] = [];
 const hostTokens = new Map<string, string>();
 
 async function api<T = any>(method: 'GET' | 'POST' | 'PATCH' | 'DELETE', path: string, body?: object, headers: Record<string, string> = {}): Promise<{status: number; data: T}> {
-  const gameId = path.match(/^\/api\/games\/([^/]+)\/(start|reset|skip-turn|players)/)?.[1];
+  const gameId = path.match(/^\/api\/games\/([^/]+)\/(start|reset|skip-turn|players|transfer-host)/)?.[1];
   const token = gameId && hostTokens.get(gameId);
   const response = await fetch(`${baseUrl}${path}`, {
     method,
@@ -204,8 +204,9 @@ describe('a full round', () => {
 
     // Start: everyone is in the turn order, and every answer is revealed
     mark = room.events.length;
-    expect((await api('POST', `/api/games/${gameId}/start`)).data).toEqual({success: true});
+    const started = (await api('POST', `/api/games/${gameId}/start`)).data;
     const {turnOrder} = await room.next('gameStarted', mark);
+    expect(started).toEqual({success: true, turnOrder});
     expect([...turnOrder].sort()).toEqual(['Ann', 'Ben', 'Cy']);
     expect(await game(gameId)).toMatchObject({started: true, turnOrder});
     expect((await entries(gameId)).every(e => e.revealed === true)).toBe(true);
@@ -472,6 +473,15 @@ describe('guess rules', () => {
     expect(await scores(gameId)).toEqual([]);
     expect((await game(gameId)).turnOrder).toEqual(turnOrder);
     expect((await entries(gameId)).find(e => e.entryId === ids[me]).guessed).toBeUndefined();
+  });
+
+  it('rejects naming yourself as the author of another entry (400) while others remain', async () => {
+    const {gameId, ids, turnOrder} = await started();
+    const me = turnOrder[0];
+    const other = turnOrder.find(n => n !== me)!;
+    const {status} = await api('POST', guessUrl(gameId, ids[other]), {guesserName: me, guess: me});
+    expect(status).toBe(400);
+    expect((await game(gameId)).turnOrder).toEqual(turnOrder);
   });
 
   it('rejects a repeat guess on a solved entry (409) with no second point', async () => {
@@ -826,5 +836,41 @@ describe('spectator socket (#73)', () => {
     await addEntry(gameId, 'Ann', 'Answer');
     await spectator.next('entriesUpdated', mark);
     expect(spectator.events.some(e => e.name === 'entriesUpdated')).toBe(true);
+  });
+});
+
+describe('host handoff', () => {
+  it('allows current host to transfer host privileges to another player', async () => {
+    const gameId = await createGame('InitialHost');
+    const room = await joinRoom(gameId);
+
+    // Non-host cannot transfer
+    const badTransfer = await api('POST', `/api/games/${gameId}/transfer-host`, {targetPlayerName: 'NewHost'}, {'x-host-token': 'invalid'});
+    expect(badTransfer.status).toBe(403);
+
+    // Host transfers to NewHost
+    const mark = room.events.length;
+    const res = await api('POST', `/api/games/${gameId}/transfer-host`, {targetPlayerName: 'NewHost'});
+    expect(res.status).toBe(200);
+    expect(res.data.success).toBe(true);
+    expect(res.data.newHostName).toBe('NewHost');
+
+    const event = await room.next('hostTransferred', mark);
+    expect(event.newHostName).toBe('NewHost');
+    expect(typeof event.hostToken).toBe('string');
+
+    // Old host token is rejected now
+    const oldHostStart = await api('POST', `/api/games/${gameId}/start`);
+    expect(oldHostStart.status).toBe(403);
+
+    // New host token succeeds
+    hostTokens.set(gameId, event.hostToken);
+    await addEntry(gameId, 'Player1', 'One');
+    await addEntry(gameId, 'Player2', 'Two');
+    const newHostStart = await api('POST', `/api/games/${gameId}/start`);
+    expect(newHostStart.status).toBe(200);
+
+    const g = await game(gameId);
+    expect(g.hostName).toBe('NewHost');
   });
 });

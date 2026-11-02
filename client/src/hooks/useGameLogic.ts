@@ -3,7 +3,7 @@ import {useParams} from "react-router-dom";
 import confetti from "canvas-confetti";
 import axios, {socket} from "../gameConfig";
 import {Entry, Score} from "../../../types";
-import {getHostToken} from "../hostToken";
+import {getHostToken, saveHostToken, removeHostToken} from "../hostToken";
 import {getPlayerToken} from "../playerToken";
 import {saveRecentGame, removeRecentGame} from "../recentGames";
 
@@ -16,6 +16,7 @@ export function useGameLogic() {
 
   // --- State ---
   const [gameTitle, setGameTitle] = useState<string | null>(null); // Stores the game owner's name.
+  const [hostName, setHostName] = useState<string | null>(null); // Stores the current host's player name.
   const [gameQuestion, setGameQuestion] = useState<string | null>(null); // Stores the current game question.
   const [entries, setEntries] = useState<Entry[]>([]); // Stores the list of game entries.
   const [scores, setScores] = useState<Score[]>([]); // Stores the list of player scores.
@@ -42,6 +43,11 @@ export function useGameLogic() {
   const [showStartConfirm, setShowStartConfirm] = useState(false); // Indicates whether the start confirmation modal is visible.
   const [showHowToPlay, setShowHowToPlay] = useState(false); // Indicates whether the "how to play" modal is visible.
   const [showScores, setShowScores] = useState<boolean>(false); // Indicates whether the scores modal is visible.
+  const [hostToken, setHostToken] = useState<string | null>(() => getHostToken(gameId));
+
+  useEffect(() => {
+    setHostToken(getHostToken(gameId));
+  }, [gameId]);
 
   const addEntryInFlight = useRef(false); // Synchronous guard: state updates land too late to stop a double-tap.
   const buttonRefs = useRef<Record<string, HTMLButtonElement | null>>({}); // Stores references to entry buttons.
@@ -130,6 +136,7 @@ export function useGameLogic() {
         const title = res.data.title || res.data.gameOwner || null;
         setGameQuestion(res.data.question || null);
         setGameTitle(title);
+        setHostName(res.data.hostName || null);
         setStarted(res.data.started === true);
         if (res.data.turnOrder) {
           setTurnOrder(res.data.turnOrder);
@@ -239,6 +246,20 @@ export function useGameLogic() {
       }
     };
 
+    const onHostTransferred = (data: {newHostName: string; hostToken: string}) => {
+      setHostName(data.newHostName);
+      const isMe = authorName && authorName.trim().toLowerCase() === data.newHostName.trim().toLowerCase();
+      if (isMe) {
+        saveHostToken(gameId!, data.hostToken);
+        setHostToken(data.hostToken);
+        setToast({message: "You are now the host!", type: "success"});
+      } else {
+        removeHostToken(gameId!);
+        setHostToken(null);
+        setToast({message: `Host duties transferred to ${data.newHostName}`, type: "success"});
+      }
+    };
+
     socket.on("entriesUpdated", onEntriesUpdated);
     socket.on("gameStarted", onGameStarted);
     socket.on("wrongAnswer", onWrongAnswer);
@@ -246,6 +267,7 @@ export function useGameLogic() {
     socket.on("scoreUpdated", onScoreUpdated);
     socket.on("nextTurn", onNextTurn);
     socket.on("playerRemoved", onPlayerRemoved);
+    socket.on("hostTransferred", onHostTransferred);
     // Attach Connection Listeners
     socket.on("connect", stopPolling);
     socket.on("disconnect", startPolling);
@@ -259,6 +281,7 @@ export function useGameLogic() {
       socket.off("scoreUpdated", onScoreUpdated);
       socket.off("nextTurn", onNextTurn);
       socket.off("playerRemoved", onPlayerRemoved);
+      socket.off("hostTransferred", onHostTransferred);
       socket.off("connect", stopPolling);
       socket.off("disconnect", startPolling);
       if (pollInterval) clearInterval(pollInterval);
@@ -323,7 +346,6 @@ export function useGameLogic() {
   /**
    * Starts the game.
    */
-  const hostToken = getHostToken(gameId);
   const isHost = hostToken !== null;
   const hostHeaders = {headers: {"x-host-token": hostToken ?? ""}};
 
@@ -334,8 +356,13 @@ export function useGameLogic() {
     }
     setIsLoading(true);
     try {
-      await axios.post(`/api/games/${gameId}/start`, undefined, hostHeaders);
+      const res = await axios.post(`/api/games/${gameId}/start`, undefined, hostHeaders);
       setStarted(true);
+      const order: string[] | undefined = res?.data?.turnOrder;
+      if (order) {
+        setTurnOrder(order);
+        setCurrentPlayer(order[0] || null);
+      }
       const map: Record<string, number> = {};
       scoresRef.current.forEach(s => { map[s.playerName] = s.score; });
       roundStartScoresRef.current = map;
@@ -472,6 +499,20 @@ export function useGameLogic() {
     }
   };
 
+  /**
+   * Transfers host privileges to another player (Host only).
+   */
+  const transferHost = async (targetPlayerName: string) => {
+    try {
+      await axios.post(`/api/games/${gameId}/transfer-host`, {targetPlayerName: targetPlayerName.trim()}, hostHeaders);
+      return true;
+    } catch (err: any) {
+      const serverMessage = err.response?.data?.error;
+      setToast({message: serverMessage || "Failed to transfer host", type: "error"});
+      return false;
+    }
+  };
+
   // --- Computed ---
   /**
    * Computes the sorted entries for display based on the game state.
@@ -532,6 +573,7 @@ export function useGameLogic() {
     started,
     gameNotFound,
     isHost,
+    hostName,
     entryText,
     setEntryText,
     authorName,
@@ -558,6 +600,7 @@ export function useGameLogic() {
     deleteEntry,
     skipTurn,
     removePlayer,
+    transferHost,
     startGame,
     startNewRound,
     guessAuthor,

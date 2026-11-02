@@ -7,15 +7,17 @@ extension StubbedNetworkTests {
 @Suite(.serialized)
 struct GameStoreTests {
     let defaults: UserDefaults
-    let api = APIClient(baseURL: URL(string: "http://test.local")!, session: StubURLProtocol.session())
+    let api: APIClient
 
     init() {
-        defaults = UserDefaults(suiteName: "GameStoreTests")!
-        defaults.removePersistentDomain(forName: "GameStoreTests")
+        let d = UserDefaults(suiteName: "GameStoreTests")!
+        d.removePersistentDomain(forName: "GameStoreTests")
+        defaults = d
+        api = APIClient(baseURL: URL(string: "http://test.local")!, session: StubURLProtocol.session(), defaults: d)
         StubURLProtocol.requests = []
     }
 
-    private func makeStore(me: String = "Ann", entries: String, game: String = "{}", scores: String = "[]") async -> GameStore {
+    private func makeStore(me: String = "Ann", entries: String = "[]", game: String = "{}", scores: String = "[]") async -> GameStore {
         StubURLProtocol.respond = { request in
             switch (request.httpMethod, request.url!.path) {
             case ("GET", "/api/games/ABCD"): (200, game)
@@ -119,6 +121,16 @@ struct GameStoreTests {
         #expect(last.canGuess(last.entries.first { $0.authorName == "Ann" }!))
         #expect(last.isFullyGuessed("Bo"))
         #expect(last.guessedNames == ["Bo"] && last.notGuessedNames == ["Ann"])
+    }
+
+    @Test func cannotPickYourselfUntilLastPlayer() async {
+        let entries = "[\(Self.entry("1", "Ann", "mine")),\(Self.entry("2", "Bo", "his"))]"
+        let store = await makeStore(entries: entries, game: #"{"turnOrder":["Ann","Bo"]}"#)
+        #expect(!store.canPick("Ann"))
+        #expect(store.canPick("Bo"))
+
+        let last = await makeStore(entries: entries, game: #"{"turnOrder":["Ann"]}"#)
+        #expect(last.canPick("Ann"))
     }
 
     @Test func nothingIsGuessableOffTurn() async {
@@ -286,11 +298,67 @@ struct GameStoreTests {
         #expect(store.entries.isEmpty && !store.started && store.newQuestion.isEmpty)
     }
 
+    @Test func startGameAppliesTurnOrderFromResponse() async {
+        let store = await makeStore(entries: "[\(Self.entry("1", "Bo", "a", revealed: false))]")
+        defaults.set("tok", forKey: "hostToken.ABCD")
+        StubURLProtocol.respond = { request in
+            switch (request.httpMethod, request.url!.path) {
+            case ("POST", "/api/games/ABCD/start"): (200, #"{"success":true,"turnOrder":["Bo","Ann"]}"#)
+            case ("GET", _) where request.url!.path.hasSuffix("/entries"): (200, "[\(Self.entry("1", "Bo", "a", revealed: true))]")
+            case ("GET", _) where request.url!.path.hasSuffix("/scores"): (200, "[]")
+            default: (200, "{}")
+            }
+        }
+        await store.startGame()
+        #expect(store.started)
+        #expect(store.turnOrder == ["Bo", "Ann"])
+        #expect(store.currentPlayer == "Bo")
+    }
+
     @Test func startWithoutEntriesWarns() async {
         let store = await makeStore(entries: "[]")
         await store.startGame()
         #expect(store.toast?.message == "Add some entries first!")
         #expect(!StubURLProtocol.requests.contains { $0.httpMethod == "POST" })
+    }
+
+    @Test func otherPlayersDerivesOtherPlayerNames() async {
+        let store = await makeStore(
+            entries: "[\(Self.entry("1", "Ann", "mine")),\(Self.entry("2", "Bo", "his"))]",
+            game: #"{"turnOrder":["Ann","Bo","Charlie"]}"#,
+            scores: #"[{"playerName":"Dan","score":5}]"#
+        )
+        #expect(store.otherPlayers == ["Bo", "Charlie", "Dan"])
+    }
+
+    @Test func transferHostSendsRequest() async {
+        let store = await makeStore(entries: "[\(Self.entry("1", "Bo", "b"))]")
+        defaults.set("tok123", forKey: "hostToken.ABCD")
+        StubURLProtocol.respond = { request in
+            (200, #"{"success":true}"#)
+        }
+        let success = await store.transferHost(to: "Bo")
+        #expect(success)
+        let post = StubURLProtocol.requests.first { $0.httpMethod == "POST" }
+        #expect(post?.url?.path == "/api/games/ABCD/transfer-host")
+        #expect(post?.value(forHTTPHeaderField: "x-host-token") == "tok123")
+    }
+
+    @Test func hostTransferredUpdatesHostStatus() async {
+        let store = await makeStore()
+        // Event for self ("Ann")
+        let payloadSelf = #"{"newHostName":"Ann","hostToken":"newTok"}"#.data(using: .utf8)
+        store.handle(event: "hostTransferred", payload: payloadSelf)
+        #expect(store.isHost)
+        #expect(store.hostName == "Ann")
+        #expect(store.toast?.message == "You are now the host!")
+
+        // Event for someone else ("Bo")
+        let payloadOther = #"{"newHostName":"Bo","hostToken":"otherTok"}"#.data(using: .utf8)
+        store.handle(event: "hostTransferred", payload: payloadOther)
+        #expect(!store.isHost)
+        #expect(store.hostName == "Bo")
+        #expect(store.toast?.message == "Host duties transferred to Bo")
     }
 }
 }

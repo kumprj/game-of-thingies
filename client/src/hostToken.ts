@@ -16,3 +16,12 @@ export function getHostToken(gameId: string | undefined): string | null {
     return null;
   }
 }
+
+export function removeHostToken(gameId: string | undefined) {
+  if (!gameId) return;
+  try {
+    window.localStorage.removeItem(key(gameId));
+  } catch {
+    /* storage unavailable */
+  }
+}
