@@ -1,10 +1,10 @@
-import {useEffect, useMemo, useRef, useState} from "react";
+import {useCallback, useEffect, useMemo, useRef, useState} from "react";
 import {useParams} from "react-router-dom";
 import confetti from "canvas-confetti";
 import axios, {socket} from "../gameConfig";
 import {Entry, Score} from "../../../types";
 import {getHostToken, saveHostToken, removeHostToken} from "../hostToken";
-import {getPlayerToken} from "../playerToken";
+import {errorMessage} from "../errorMessage";
 import {saveRecentGame, removeRecentGame} from "../recentGames";
 
 /**
@@ -21,7 +21,7 @@ export function useGameLogic() {
   const [entries, setEntries] = useState<Entry[]>([]); // Stores the list of game entries.
   const [scores, setScores] = useState<Score[]>([]); // Stores the list of player scores.
   const [turnOrder, setTurnOrder] = useState<string[]>([]); // Stores the order of players' turns.
-  const [currentPlayer, setCurrentPlayer] = useState<string | null>(null); // Stores the current player's name.
+  const [players, setPlayers] = useState<string[]>([]); // Everyone who wrote an answer this round (known once started).
   const [started, setStarted] = useState(false); // Indicates whether the game has started.
   const [gameNotFound, setGameNotFound] = useState(false); // The server has no game with this code.
 
@@ -50,11 +50,24 @@ export function useGameLogic() {
   }, [gameId]);
 
   const addEntryInFlight = useRef(false); // Synchronous guard: state updates land too late to stop a double-tap.
-  const buttonRefs = useRef<Record<string, HTMLButtonElement | null>>({}); // Stores references to entry buttons.
   const roundStartScoresRef = useRef<Record<string, number>>({});
   const prevAllGuessedRef = useRef(false);
   const scoresRef = useRef(scores);
   scoresRef.current = scores;
+  const startedRef = useRef(started);
+  startedRef.current = started;
+  const entriesRequestRef = useRef(0); // Newest-request-wins: an older response must not overwrite a newer one.
+  const scoresRequestRef = useRef(0);
+
+  // The player whose turn it is is always the head of the turn order.
+  const currentPlayer = turnOrder[0] ?? null;
+
+  /** Remembers every player's current score as the baseline for this round's recap. */
+  const snapshotScores = (list: Score[]) => {
+    const map: Record<string, number> = {};
+    list.forEach(s => { map[s.playerName] = s.score; });
+    roundStartScoresRef.current = map;
+  };
 
   type ToastData = {
     message: string;
@@ -62,24 +75,33 @@ export function useGameLogic() {
     duration?: number;
   };
   const [toast, setRawToast] = useState<ToastData | null>(null);
+  const toastRef = useRef<ToastData | null>(null); // Mirrors `toast` synchronously so long-lived callbacks see it.
   const toastQueueRef = useRef<ToastData[]>([]);
 
-  const setToast = (t: ToastData | null) => {
+  /** Shows the next queued toast, or clears the current one when the queue is empty. */
+  const nextToast = useCallback(() => {
+    const next = toastQueueRef.current.shift() ?? null;
+    toastRef.current = next;
+    setRawToast(next);
+  }, []);
+
+  /** Shows a toast immediately, superseding the one on screen (connection status must not wait in line). */
+  const replaceToast = useCallback((t: ToastData) => {
+    toastRef.current = t;
+    setRawToast(t);
+  }, []);
+
+  /** Shows a toast now, or queues it behind the one on screen. Passing null advances the queue. */
+  const setToast = useCallback((t: ToastData | null) => {
     if (!t) {
-      if (toastQueueRef.current.length > 0) {
-        const next = toastQueueRef.current.shift()!;
-        setRawToast(next);
-      } else {
-        setRawToast(null);
-      }
-      return;
-    }
-    if (!toast) {
-      setRawToast(t);
-    } else {
+      nextToast();
+    } else if (toastRef.current) {
       toastQueueRef.current.push(t);
+    } else {
+      toastRef.current = t;
+      setRawToast(t);
     }
-  };
+  }, [nextToast]);
 
   // --- Helpers ---
   /**
@@ -101,14 +123,7 @@ export function useGameLogic() {
    */
   useEffect(() => {
     if (!toast) return;
-    const timer = setTimeout(() => {
-      if (toastQueueRef.current.length > 0) {
-        const next = toastQueueRef.current.shift()!;
-        setRawToast(next);
-      } else {
-        setRawToast(null);
-      }
-    }, toast.duration || 5000);
+    const timer = setTimeout(nextToast, toast.duration || 5000);
     return () => clearTimeout(timer);
   }, [toast?.message, toast?.duration]);
 
@@ -137,11 +152,10 @@ export function useGameLogic() {
         setGameQuestion(res.data.question || null);
         setGameTitle(title);
         setHostName(res.data.hostName || null);
-        setStarted(res.data.started === true);
-        if (res.data.turnOrder) {
-          setTurnOrder(res.data.turnOrder);
-          setCurrentPlayer(res.data.turnOrder[0] || null);
-        }
+        startedRef.current = res.data.started === true;
+        setStarted(startedRef.current);
+        setPlayers(res.data.players ?? []);
+        if (res.data.turnOrder) setTurnOrder(res.data.turnOrder);
         saveRecentGame(gameId, title);
       } catch (err) {
         if ((err as any)?.response?.status === 404) {
@@ -170,9 +184,8 @@ export function useGameLogic() {
     socket.emit("joinGame", gameId);
     const startPolling = () => {
       if (notFound) return;
-      console.log("⚠️ Disconnected! Refreshing...");
       setIsConnected(false);
-      setToast({message: "Reconnecting...", type: "error", duration: 99999}); // Persistent toast
+      replaceToast({message: "Reconnecting...", type: "error", duration: 99999}); // Persistent toast
 
       // Poll every 3 seconds while disconnected
       pollInterval = setInterval(() => {
@@ -183,9 +196,10 @@ export function useGameLogic() {
     };
 
     const stopPolling = () => {
-      console.log("✅ Connected! Stopping refreshing.");
+      // Socket.IO rooms are lost on reconnect, so rejoin before syncing.
+      socket.emit("joinGame", gameId);
       setIsConnected(true);
-      setToast({message: "Connected!", type: "success", duration: 2000});
+      replaceToast({message: "Connected!", type: "success", duration: 2000});
 
       if (pollInterval) {
         clearInterval(pollInterval);
@@ -199,16 +213,12 @@ export function useGameLogic() {
 
     const onGameStarted = (data: any) => {
       setTurnOrder(data.turnOrder || []);
-      setCurrentPlayer(data.turnOrder?.[0] || null);
       syncAllData();
-      const map: Record<string, number> = {};
-      scoresRef.current.forEach(s => { map[s.playerName] = s.score; });
-      roundStartScoresRef.current = map;
+      snapshotScores(scoresRef.current);
       setToast({message: "‼️ The game has started ‼️", type: 'success'});
     };
 
     const onWrongAnswer = (data: { playerName: string; guess: string }) => {
-      console.log("❌ Wrong Answer Socket Data:", data);
       setToast({
         message: `❌ ${data.playerName} guessed wrong for '${data.guess}'!`,
         type: 'error',
@@ -220,7 +230,7 @@ export function useGameLogic() {
     const onGameReset = () => {
       syncAllData();
       roundStartScoresRef.current = {};
-      setResetCount(prev => prev + 1); // <--- Add this
+      setResetCount(prev => prev + 1);
       setToast({message: "‼️ A new question has been asked – add your answer", type: 'success'});
     };
 
@@ -236,14 +246,10 @@ export function useGameLogic() {
 
     const onNextTurn = (data: any) => {
       setTurnOrder(data.turnOrder);
-      setCurrentPlayer(data.currentPlayer);
     };
 
     const onPlayerRemoved = (data: any) => {
-      if (data?.turnOrder) {
-        setTurnOrder(data.turnOrder);
-        setCurrentPlayer(data.turnOrder[0] || null);
-      }
+      if (data?.turnOrder) setTurnOrder(data.turnOrder);
     };
 
     const onHostTransferred = (data: {newHostName: string; hostToken: string}) => {
@@ -295,14 +301,14 @@ export function useGameLogic() {
    */
   const fetchScores = async () => {
     if (!gameId) return;
+    const requestId = ++scoresRequestRef.current;
     try {
       const res = await axios.get<Score[]>(`/api/games/${gameId}/scores`);
+      if (requestId !== scoresRequestRef.current) return; // A newer request superseded this one.
       const sorted = [...res.data].sort((a, b) => b.score - a.score);
       setScores(sorted);
-      if (started && Object.keys(roundStartScoresRef.current).length === 0) {
-        const map: Record<string, number> = {};
-        sorted.forEach(s => { map[s.playerName] = s.score; });
-        roundStartScoresRef.current = map;
+      if (startedRef.current && Object.keys(roundStartScoresRef.current).length === 0) {
+        snapshotScores(sorted);
       }
     } catch (err) {
       console.error("Error fetching scores", err);
@@ -314,8 +320,10 @@ export function useGameLogic() {
    */
   const fetchEntries = async () => {
     if (!gameId) return;
+    const requestId = ++entriesRequestRef.current;
     try {
       const res = await axios.get(`/api/games/${gameId}/entries`);
+      if (requestId !== entriesRequestRef.current) return; // A newer request superseded this one.
       setEntries(res.data ?? []);
     } catch (err) {
       console.error("Error fetching entries", err);
@@ -335,8 +343,7 @@ export function useGameLogic() {
       await fetchEntries();
       setToast({message: "Entry added!", type: "success"});
     } catch (error) {
-      const serverMessage = (error as any)?.response?.data?.error;
-      setToast({message: serverMessage || "Failed to add entry", type: "error"});
+      setToast({message: errorMessage(error, "Failed to add entry"), type: "error"});
     } finally {
       addEntryInFlight.current = false;
       setAddEntryLoading(false);
@@ -359,13 +366,8 @@ export function useGameLogic() {
       const res = await axios.post(`/api/games/${gameId}/start`, undefined, hostHeaders);
       setStarted(true);
       const order: string[] | undefined = res?.data?.turnOrder;
-      if (order) {
-        setTurnOrder(order);
-        setCurrentPlayer(order[0] || null);
-      }
-      const map: Record<string, number> = {};
-      scoresRef.current.forEach(s => { map[s.playerName] = s.score; });
-      roundStartScoresRef.current = map;
+      if (order) setTurnOrder(order);
+      snapshotScores(scoresRef.current);
       await fetchEntries();
       await fetchScores();
     } catch (error: any) {
@@ -374,7 +376,7 @@ export function useGameLogic() {
         setTimeout(() => window.location.reload(), 1500);
         return;
       }
-      setToast({message: error.response?.data?.error || 'Failed to start game', type: 'error'});
+      setToast({message: errorMessage(error, 'Failed to start game'), type: 'error'});
     } finally {
       setIsLoading(false);
       setShowStartConfirm(false);
@@ -390,6 +392,7 @@ export function useGameLogic() {
       await axios.post(`/api/games/${gameId}/reset`, {question: newQuestion.trim()}, hostHeaders);
       setNewQuestion("");
       setEntries([]);
+      setPlayers([]);
       setStarted(false);
       roundStartScoresRef.current = {};
     } catch (err) {
@@ -420,8 +423,7 @@ export function useGameLogic() {
       }
     } catch (err) {
       console.error("Error submitting guess", err);
-      const serverMessage = (err as any)?.response?.data?.error;
-      setToast({message: serverMessage || "Error submitting guess", type: "error"});
+      setToast({message: errorMessage(err, "Error submitting guess"), type: "error"});
       if ((err as any)?.response?.status === 409) fetchEntries();
     } finally {
       setGuessLoading(false);
@@ -434,15 +436,12 @@ export function useGameLogic() {
    */
   const editEntry = async (entryId: string, text: string) => {
     try {
-      await axios.patch(`/api/games/${gameId}/entries/${entryId}`, {text: text.trim()}, {
-        headers: {'x-player-token': getPlayerToken()}
-      });
+      await axios.patch(`/api/games/${gameId}/entries/${entryId}`, {text: text.trim()});
       await fetchEntries();
       setToast({message: "Answer updated!", type: "success"});
       return true;
     } catch (err: any) {
-      const serverMessage = err.response?.data?.error;
-      setToast({message: serverMessage || "Failed to update answer", type: "error"});
+      setToast({message: errorMessage(err, "Failed to update answer"), type: "error"});
       return false;
     }
   };
@@ -452,15 +451,12 @@ export function useGameLogic() {
    */
   const deleteEntry = async (entryId: string) => {
     try {
-      await axios.delete(`/api/games/${gameId}/entries/${entryId}`, {
-        headers: {'x-player-token': getPlayerToken()}
-      });
+      await axios.delete(`/api/games/${gameId}/entries/${entryId}`);
       await fetchEntries();
       setToast({message: "Answer removed!", type: "success"});
       return true;
     } catch (err: any) {
-      const serverMessage = err.response?.data?.error;
-      setToast({message: serverMessage || "Failed to remove answer", type: "error"});
+      setToast({message: errorMessage(err, "Failed to remove answer"), type: "error"});
       return false;
     }
   };
@@ -471,14 +467,10 @@ export function useGameLogic() {
   const skipTurn = async () => {
     try {
       const res = await axios.post(`/api/games/${gameId}/skip-turn`, undefined, hostHeaders);
-      if (res.data?.turnOrder) {
-        setTurnOrder(res.data.turnOrder);
-        setCurrentPlayer(res.data.turnOrder[0] || null);
-      }
+      if (res.data?.turnOrder) setTurnOrder(res.data.turnOrder);
       setToast({message: "Turn skipped", type: "success"});
     } catch (err: any) {
-      const serverMessage = err.response?.data?.error;
-      setToast({message: serverMessage || "Failed to skip turn", type: "error"});
+      setToast({message: errorMessage(err, "Failed to skip turn"), type: "error"});
     }
   };
 
@@ -488,14 +480,10 @@ export function useGameLogic() {
   const removePlayer = async (playerName: string) => {
     try {
       const res = await axios.delete(`/api/games/${gameId}/players/${encodeURIComponent(playerName)}`, hostHeaders);
-      if (res.data?.turnOrder) {
-        setTurnOrder(res.data.turnOrder);
-        setCurrentPlayer(res.data.turnOrder[0] || null);
-      }
+      if (res.data?.turnOrder) setTurnOrder(res.data.turnOrder);
       setToast({message: `Removed ${playerName}`, type: "success"});
     } catch (err: any) {
-      const serverMessage = err.response?.data?.error;
-      setToast({message: serverMessage || "Failed to remove player", type: "error"});
+      setToast({message: errorMessage(err, "Failed to remove player"), type: "error"});
     }
   };
 
@@ -507,8 +495,7 @@ export function useGameLogic() {
       await axios.post(`/api/games/${gameId}/transfer-host`, {targetPlayerName: targetPlayerName.trim()}, hostHeaders);
       return true;
     } catch (err: any) {
-      const serverMessage = err.response?.data?.error;
-      setToast({message: serverMessage || "Failed to transfer host", type: "error"});
+      setToast({message: errorMessage(err, "Failed to transfer host"), type: "error"});
       return false;
     }
   };
@@ -520,20 +507,22 @@ export function useGameLogic() {
   const sortedEntriesForDisplay = useMemo(() => {
     let sorted = [...entries];
     if (started) {
-      sorted.sort((a, b) => a.text.localeCompare(b.text, undefined, {sensitivity: "base"}));
+      sorted.sort((a, b) => (a.text ?? "").localeCompare(b.text ?? "", undefined, {sensitivity: "base"}));
     } else {
       sorted.sort((a, b) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime());
     }
     return sorted;
   }, [entries, started]);
 
-  const guessedNames = Array.from(new Set(entries.filter(e => e.guessed).map(e => e.authorName))).sort();
-  const notGuessedNames = Array.from(new Set(entries.filter(e => !e.guessed).map(e => e.authorName))).sort();
+  const guessedNames = Array.from(new Set(
+      entries.filter(e => e.guessed && e.authorName).map(e => e.authorName as string))).sort();
+  // Unguessed authors are hidden by the server, so derive them from the player list.
+  const notGuessedNames = players.filter(name => !guessedNames.includes(name)).sort();
   const allGuessed = entries.length > 0 && entries.every(entry => entry.guessed);
   const remainingEntries = entries.filter(e => !e.guessed);
   const isLastEntry = remainingEntries.length === 1;
   const isMyTurn = currentPlayer === authorName;
-  const uniqueNames = Array.from(new Set(entries.map(e => e.authorName)));
+  const uniqueNames = players;
 
   // Auto-open scoreboard when round completes
   useEffect(() => {
@@ -592,7 +581,6 @@ export function useGameLogic() {
     setShowHowToPlay,
     showScores,
     setShowScores,
-    buttonRefs,
     toast,
     setToast,
     addEntry,

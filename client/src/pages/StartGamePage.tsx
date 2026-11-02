@@ -7,6 +7,8 @@ import Scoreboard from "../components/Scoreboard";
 import TopBar from "../components/TopBar";
 import {Entry} from "../../../types";
 
+// Other players' answers are hidden by the server before the game starts; this stands in for them.
+const HIDDEN_PLACEHOLDER = "Hidden answer text";
 const EASE_OUT = [0.23, 1, 0.32, 1] as const;
 const EASE_IN_OUT = [0.77, 0, 0.175, 1] as const;
 
@@ -123,7 +125,6 @@ export default function StartGamePage() {
     setShowHowToPlay,
     showScores,
     setShowScores,
-    buttonRefs,
     toast,
     setToast,
     addEntry,
@@ -161,7 +162,7 @@ export default function StartGamePage() {
       ...turnOrder,
       ...scores.map(s => s.playerName)
     ])
-  ).filter(name => name && name !== authorName);
+  ).filter((name): name is string => !!name && name !== authorName);
 
   // Check if user already submitted for this specific Game ID
   useEffect(() => {
@@ -240,7 +241,7 @@ export default function StartGamePage() {
     }
     try {
       await navigator.clipboard.writeText(url);
-      if (setToast) setToast({message: "Game link copied to clipboard!", type: "success"});
+      setToast({message: "Game link copied to clipboard!", type: "success"});
     } catch {
       handleCopyCode();
     }
@@ -248,11 +249,11 @@ export default function StartGamePage() {
 
   const handleStartEdit = (entry: Entry) => {
     setEditingEntryId(entry.entryId);
-    setEditText(entry.text);
+    setEditText(entry.text ?? "");
   };
 
   const handleSaveEdit = async (entryId: string) => {
-    if (!editText.trim() || !editEntry) return;
+    if (!editText.trim()) return;
     setEditLoading(true);
     const ok = await editEntry(entryId, editText.trim());
     if (ok) setEditingEntryId(null);
@@ -260,7 +261,6 @@ export default function StartGamePage() {
   };
 
   const handleRemoveSubmission = async (entryId: string) => {
-    if (!deleteEntry) return;
     const ok = await deleteEntry(entryId);
     if (ok) {
       setHasSubmitted(false);
@@ -421,7 +421,7 @@ export default function StartGamePage() {
                 type="button"
                 className="btn-text btn-destructive"
                 style={{color: '#ff3b30', fontSize: 12, padding: '2px 6px'}}
-                onClick={() => removePlayer && removePlayer(name)}
+                onClick={() => removePlayer(name)}
                 aria-label={`Remove player ${name}`}
               >
                 {name} ✕
@@ -500,11 +500,8 @@ export default function StartGamePage() {
                            transition={{type: "spring", bounce: 0, duration: 0.3}}>
                   {started ? (
                       <button
-                          ref={el => {
-                            buttonRefs.current[entry.entryId] = el;
-                          }}
                           className={`answer${entry.guessed ? " guessed" : ""}`}
-                          disabled={!isMyTurn || entry.guessed || (entry.authorName === authorName && !isLastEntry)}
+                          disabled={!isMyTurn || entry.guessed || (entry.mine && !isLastEntry)}
                           onClick={() => onEntryClick(entry)}
                       >
                         <span>{entry.text}</span>
@@ -517,7 +514,7 @@ export default function StartGamePage() {
                                              exit={{opacity: 0}} transition={{duration: 0.15, ease: EASE_OUT}}>›</motion.span>}
                         </AnimatePresence>
                       </button>
-                  ) : entry.authorName === authorName ? (
+                  ) : entry.mine ? (
                       // PRE-GAME: my own entry is visible to me only
                       <div className="my-submission" style={{width: '100%'}}>
                         {editingEntryId === entry.entryId ? (
@@ -576,7 +573,7 @@ export default function StartGamePage() {
                       </div>
                   ) : (
                       // PRE-GAME: everyone else's entry is blurred
-                      <span className="hidden-answer" aria-label="Hidden answer">{entry.text}</span>
+                      <span className="hidden-answer" aria-label="Hidden answer">{HIDDEN_PLACEHOLDER}</span>
                   )}
                 </motion.li>
             ))}
@@ -669,7 +666,7 @@ export default function StartGamePage() {
         {showStartConfirm && (
             <Modal key="start" onClose={() => setShowStartConfirm(false)} role="alertdialog" labelledBy="start-title">
                 <h3 id="start-title">Is everyone ready?</h3>
-                <p>Once you press Start, answers are revealed. Refresh your screens!</p>
+                <p>Once you press Start, answers are revealed.</p>
                 <div className="stack">
                   <button className="btn btn-success btn-block" onClick={() => {
                     setShowStartConfirm(false);

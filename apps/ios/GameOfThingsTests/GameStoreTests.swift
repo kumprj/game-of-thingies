@@ -33,8 +33,8 @@ struct GameStoreTests {
     }
 
     private static func entry(_ id: String, _ author: String, _ text: String, revealed: Bool = true,
-                              guessed: Bool = false, createdAt: String = "2026-01-01T00:00:00Z") -> String {
-        #"{"entryId":"\#(id)","authorName":"\#(author)","text":"\#(text)","createdAt":"\#(createdAt)","revealed":\#(revealed),"guessed":\#(guessed)}"#
+                              guessed: Bool = false, mine: Bool = false, createdAt: String = "2026-01-01T00:00:00Z") -> String {
+        #"{"entryId":"\#(id)","authorName":"\#(author)","text":"\#(text)","createdAt":"\#(createdAt)","revealed":\#(revealed),"guessed":\#(guessed),"mine":\#(mine)}"#
     }
 
     @Test func syncLoadsGameAndDerivesTurn() async {
@@ -109,22 +109,22 @@ struct GameStoreTests {
     }
 
     @Test func ownAnswerIsGuessableOnlyWhenLast() async {
-        let store = await makeStore(entries: "[\(Self.entry("1", "Ann", "mine")),\(Self.entry("2", "Bo", "his"))]",
-                                    game: #"{"turnOrder":["Ann","Bo"]}"#)
-        let mine = store.entries.first { $0.authorName == "Ann" }!
-        let his = store.entries.first { $0.authorName == "Bo" }!
+        let store = await makeStore(entries: "[\(Self.entry("1", "Ann", "mine", mine: true)),\(Self.entry("2", "Bo", "his"))]",
+                                    game: #"{"turnOrder":["Ann","Bo"],"players":["Ann","Bo"]}"#)
+        let mine = store.entries.first { $0.mine }!
+        let his = store.entries.first { !$0.mine }!
         #expect(!store.canGuess(mine))
         #expect(store.canGuess(his))
 
-        let last = await makeStore(entries: "[\(Self.entry("1", "Ann", "mine")),\(Self.entry("2", "Bo", "his", guessed: true))]",
-                                   game: #"{"turnOrder":["Ann"]}"#)
-        #expect(last.canGuess(last.entries.first { $0.authorName == "Ann" }!))
+        let last = await makeStore(entries: "[\(Self.entry("1", "Ann", "mine", mine: true)),\(Self.entry("2", "Bo", "his", guessed: true))]",
+                                   game: #"{"turnOrder":["Ann"],"players":["Ann","Bo"]}"#)
+        #expect(last.canGuess(last.entries.first { $0.mine }!))
         #expect(last.isFullyGuessed("Bo"))
         #expect(last.guessedNames == ["Bo"] && last.notGuessedNames == ["Ann"])
     }
 
     @Test func cannotPickYourselfUntilLastPlayer() async {
-        let entries = "[\(Self.entry("1", "Ann", "mine")),\(Self.entry("2", "Bo", "his"))]"
+        let entries = "[\(Self.entry("1", "Ann", "mine", mine: true)),\(Self.entry("2", "Bo", "his"))]"
         let store = await makeStore(entries: entries, game: #"{"turnOrder":["Ann","Bo"]}"#)
         #expect(!store.canPick("Ann"))
         #expect(store.canPick("Bo"))
@@ -313,6 +313,47 @@ struct GameStoreTests {
         #expect(store.started)
         #expect(store.turnOrder == ["Bo", "Ann"])
         #expect(store.currentPlayer == "Bo")
+    }
+
+    @Test func playersFromGameDriveNamesAndFullyGuessed() async {
+        let store = await makeStore(
+            entries: "[\(Self.entry("1", "Bo", "a", guessed: true)),\(Self.entry("2", "Cy", "b"))]",
+            game: #"{"turnOrder":["Ann","Cy"],"players":["Ann","Bo","Cy"]}"#)
+        #expect(store.uniqueNames == ["Ann", "Bo", "Cy"])
+        #expect(store.guessedNames == ["Bo"])
+        #expect(store.notGuessedNames == ["Ann", "Cy"])
+        #expect(store.isFullyGuessed("Bo"))
+        #expect(!store.isFullyGuessed("Cy"))
+        #expect(!store.canPick("Bo"))
+        #expect(store.canPick("Cy"))
+    }
+
+    @Test func hiddenAuthorsDoNotCountAsGuessed() async {
+        let hidden = #"{"entryId":"1","text":"x","createdAt":"","revealed":true,"guessed":false,"mine":false}"#
+        let store = await makeStore(entries: "[\(hidden)]", game: #"{"turnOrder":["Ann"],"players":["Ann","Bo"]}"#)
+        #expect(store.guessedNames.isEmpty)
+        #expect(store.notGuessedNames == ["Ann", "Bo"])
+    }
+
+    @Test func skipTurnAppliesTurnOrderFromResponse() async {
+        let store = await makeStore(entries: "[\(Self.entry("1", "Bo", "a"))]", game: #"{"turnOrder":["Ann","Bo"]}"#)
+        defaults.set("tok", forKey: "hostToken.ABCD")
+        StubURLProtocol.respond = { request in
+            request.url!.path.hasSuffix("/skip-turn") ? (200, #"{"success":true,"turnOrder":["Bo","Ann"]}"#) : (200, "[]")
+        }
+        await store.skipTurn()
+        #expect(store.turnOrder == ["Bo", "Ann"])
+        #expect(store.currentPlayer == "Bo")
+    }
+
+    @Test func removePlayerAppliesTurnOrderFromResponse() async {
+        let store = await makeStore(entries: "[\(Self.entry("1", "Bo", "a"))]", game: #"{"turnOrder":["Ann","Bo","Cy"]}"#)
+        defaults.set("tok", forKey: "hostToken.ABCD")
+        StubURLProtocol.respond = { request in
+            request.httpMethod == "DELETE" ? (200, #"{"success":true,"turnOrder":["Ann","Cy"]}"#) : (200, "[]")
+        }
+        await store.removePlayer("Bo")
+        #expect(store.turnOrder == ["Ann", "Cy"])
     }
 
     @Test func startWithoutEntriesWarns() async {

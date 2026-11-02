@@ -29,7 +29,7 @@ describe('StartGamePage', () => {
     addEntry: vi.fn(),
     startGame: vi.fn(),
     setShowStartConfirm: vi.fn(),
-    buttonRefs: {current: {}},
+   
     sortedEntriesForDisplay: [],
     uniqueNames: [],
   };
@@ -56,7 +56,7 @@ describe('StartGamePage', () => {
       started: true,
       sortedEntriesForDisplay: [
         {entryId: '1', text: 'Funny Answer', authorName: 'Bob', guessed: false,
-          gameId: 'testGame', createdAt: '2025-12-26T02:56:20.413Z', revealed: true}
+          gameId: 'testGame', createdAt: '2025-12-26T02:56:20.413Z', revealed: true, mine: false}
       ],
       turnOrder: ['Alice'],
       currentPlayer: 'Alice',
@@ -146,7 +146,7 @@ describe('StartGamePage', () => {
 // --- The rest of the page, driven by the state the hook would hand it ---
 
 const answer = (entryId: string, text: string, authorName: string, extra: object = {}) =>
-    ({entryId, text, authorName, gameId: '123', revealed: true, guessed: false, ...extra});
+    ({entryId, text, authorName, gameId: '123', revealed: true, guessed: false, mine: authorName === 'Ann', ...extra});
 
 const baseHook = {
   gameId: 'ABCD', gameTitle: 'Friday night', gameQuestion: 'Worst superpower?',
@@ -156,7 +156,7 @@ const baseHook = {
   guessingEntry: null as any, showStartConfirm: false, showHowToPlay: false, showScores: false,
   toast: null as any, guessedNames: [] as string[], notGuessedNames: [] as string[],
   allGuessed: false, isLastEntry: false, isMyTurn: false, uniqueNames: [] as string[],
-  sortedEntriesForDisplay: [] as any[], buttonRefs: {current: {}},
+  sortedEntriesForDisplay: [] as any[],
 };
 
 function renderPage(overrides: object = {}) {
@@ -249,7 +249,8 @@ describe('StartGamePage in detail', () => {
         sortedEntriesForDisplay: [answer('1', 'Mine', 'Ann'), answer('2', 'Theirs', 'Ben')],
       });
       expect(screen.getByText('Mine')).toHaveClass('mine');
-      expect(screen.getByLabelText('Hidden answer')).toHaveTextContent('Theirs');
+      expect(screen.queryByText('Theirs')).not.toBeInTheDocument();
+      expect(screen.getByLabelText('Hidden answer')).toBeInTheDocument();
       expect(screen.getByText('Answers (2)')).toBeInTheDocument();
     });
 

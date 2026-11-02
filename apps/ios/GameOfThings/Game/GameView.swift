@@ -56,7 +56,7 @@ struct GameView: View {
             Button("Yes, Start Game!") { Task { await store.startGame() } }
             Button("Wait, Not Yet", role: .cancel) {}
         } message: {
-            Text("Once you press Start, answers are revealed. Refresh your screens!")
+            Text("Once you press Start, answers are revealed.")
         }
         .onAppear { store.start() }
         .onDisappear { store.stop() }
@@ -335,7 +335,7 @@ struct GameView: View {
                                 .foregroundStyle(entry.guessed ? .secondary : .primary)
                             Spacer()
                             if entry.guessed {
-                                Text(entry.authorName)
+                                Text(entry.authorName ?? "")
                                     .font(.subheadline.weight(.semibold))
                                     .foregroundStyle(.blue)
                             } else {
@@ -349,7 +349,7 @@ struct GameView: View {
                     .buttonStyle(.plain)
                     .disabled(!store.canGuess(entry))
                     .accessibilityHint(store.canGuess(entry) ? "Guess who wrote this" : "")
-                } else if entry.authorName == store.authorName {
+                } else if entry.mine {
                     // Pre-game: my own entry is visible to me only
                     VStack(alignment: .leading, spacing: 6) {
                         if editingEntryId == entry.entryId {
@@ -400,7 +400,7 @@ struct GameView: View {
                     }
                 } else {
                     // Pre-game: everyone else's entry is blurred
-                    Text(entry.text)
+                    Text("Hidden answer")
                         .foregroundStyle(.secondary)
                         .blur(radius: 6)
                         .privacySensitive()

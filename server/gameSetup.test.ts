@@ -4,12 +4,12 @@ import {MAX_GAME_NAME_LENGTH, MAX_QUESTION_LENGTH, validateGameSetup} from './ga
 describe('validateGameSetup', () => {
   it('trims both fields', () => {
     expect(validateGameSetup({name: '  Friday ', question: ' Worst power? '}))
-        .toEqual({ok: true, name: 'Friday', title: 'Friday', question: 'Worst power?'});
+        .toEqual({ok: true, name: 'Friday', question: 'Worst power?'});
   });
 
   it('accepts title instead of name', () => {
     expect(validateGameSetup({title: '  Friday ', question: ' Worst power? '}))
-        .toEqual({ok: true, name: 'Friday', title: 'Friday', question: 'Worst power?'});
+        .toEqual({ok: true, name: 'Friday', question: 'Worst power?'});
   });
 
   it.each([undefined, null, 'text', 42])('rejects a body of %s', (body) => {

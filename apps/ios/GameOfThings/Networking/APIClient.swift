@@ -52,7 +52,7 @@ struct APIClient {
     }
 
     func entries(_ gameId: String) async throws -> [Entry] {
-        try await send("GET", "api/games/\(gameId)/entries")
+        try await send("GET", "api/games/\(gameId)/entries", headers: playerHeaders())
     }
 
     func scores(_ gameId: String) async throws -> [Score] {
@@ -83,13 +83,17 @@ struct APIClient {
         return response.turnOrder ?? []
     }
 
-    func skipTurn(_ gameId: String) async throws {
-        try await sendIgnoringResponse("POST", "api/games/\(gameId)/skip-turn", headers: hostHeaders(gameId))
+    func skipTurn(_ gameId: String) async throws -> [String] {
+        struct Response: Decodable { let turnOrder: [String]? }
+        let response: Response = try await send("POST", "api/games/\(gameId)/skip-turn", headers: hostHeaders(gameId))
+        return response.turnOrder ?? []
     }
 
-    func removePlayer(gameId: String, playerName: String) async throws {
+    func removePlayer(gameId: String, playerName: String) async throws -> [String] {
+        struct Response: Decodable { let turnOrder: [String]? }
         let encoded = playerName.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? playerName
-        try await sendIgnoringResponse("DELETE", "api/games/\(gameId)/players/\(encoded)", headers: hostHeaders(gameId))
+        let response: Response = try await send("DELETE", "api/games/\(gameId)/players/\(encoded)", headers: hostHeaders(gameId))
+        return response.turnOrder ?? []
     }
 
     func transferHost(gameId: String, targetPlayerName: String) async throws {

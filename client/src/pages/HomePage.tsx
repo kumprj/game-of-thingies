@@ -1,5 +1,6 @@
 import React, {useState, useEffect} from "react";
 import axios from "axios";
+import {errorMessage} from "../errorMessage";
 import {useNavigate} from "react-router-dom";
 import {AnimatePresence, motion} from "framer-motion";
 import TopBar from "../components/TopBar";
@@ -52,8 +53,7 @@ export default function HomePage() {
       navigate(`/${data.gameId}`);
     } catch (error) {
       console.error("Create game failed", error);
-      const serverMessage = (error as any)?.response?.data?.error;
-      const msg = serverMessage || "Failed to create game. Please try again.";
+      const msg = errorMessage(error, "Failed to create game. Please try again.");
       setToastMessage(msg);
     } finally {
       setCreatingGame(false);
