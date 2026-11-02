@@ -133,7 +133,7 @@ export function useGameLogic() {
     const fetchGameData = async () => {
       try {
         const res = await axios.get(`/api/games/${gameId}`);
-        const title = res.data.title || res.data.gameOwner || null;
+        const title = res.data.title || null;
         setGameQuestion(res.data.question || null);
         setGameTitle(title);
         setHostName(res.data.hostName || null);

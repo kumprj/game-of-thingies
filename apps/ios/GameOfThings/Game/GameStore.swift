@@ -224,7 +224,7 @@ final class GameStore {
             return
         }
         gameQuestion = game.question
-        gameTitle = game.title ?? game.gameOwner
+        gameTitle = game.title
         if let started = game.started {
             self.started = started
         }

@@ -1,6 +1,6 @@
 // src/StartGamePage.test.tsx
-import {render, screen, fireEvent, act, within, cleanup} from '@testing-library/react';
-import {beforeEach, describe, it, expect, vi} from 'vitest';
+import {render, screen, fireEvent, act, within, cleanup, waitFor} from '@testing-library/react';
+import {afterEach, beforeEach, describe, it, expect, vi} from 'vitest';
 import {BrowserRouter} from 'react-router-dom';
 import StartGamePage from './StartGamePage';
 import * as GameHook from '../hooks/useGameLogic';
@@ -199,6 +199,41 @@ describe('StartGamePage in detail', () => {
       renderPage({gameTitle: null, gameQuestion: null});
       expect(screen.getByRole('heading', {name: 'ABCD'})).toBeInTheDocument();
       expect(screen.getByText('Loading question...')).toBeInTheDocument();
+    });
+
+    describe('inviting players (#41)', () => {
+      const define = (name: string, value: unknown) =>
+          Object.defineProperty(navigator, name, {value, configurable: true, writable: true});
+      afterEach(() => { define('share', undefined); define('clipboard', undefined); });
+
+      it('copies the game code when the code pill is tapped, then confirms', async () => {
+        const writeText = vi.fn().mockResolvedValue(undefined);
+        define('clipboard', {writeText});
+        renderPage();
+        fireEvent.click(screen.getByLabelText('Game code ABCD'));
+        expect(writeText).toHaveBeenCalledWith('ABCD');
+        expect(await screen.findByText('✓ Copied!')).toBeInTheDocument();
+      });
+
+      it('shares the game link with the native share sheet when there is one', async () => {
+        const share = vi.fn().mockResolvedValue(undefined);
+        define('share', share);
+        renderPage();
+        fireEvent.click(screen.getByLabelText('Share game link'));
+        await waitFor(() => expect(share).toHaveBeenCalledWith(
+            expect.objectContaining({url: window.location.href})));
+      });
+
+      it('falls back to copying the link and says so', async () => {
+        const writeText = vi.fn().mockResolvedValue(undefined);
+        const setToast = vi.fn();
+        define('share', undefined);
+        define('clipboard', {writeText});
+        renderPage({setToast});
+        fireEvent.click(screen.getByLabelText('Share game link'));
+        await waitFor(() => expect(writeText).toHaveBeenCalledWith(window.location.href));
+        expect(setToast).toHaveBeenCalledWith({message: 'Game link copied to clipboard!', type: 'success'});
+      });
     });
 
     it('shows the watch link with Watch on a screen label', () => {
