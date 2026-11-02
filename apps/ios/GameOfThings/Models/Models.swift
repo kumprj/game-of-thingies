@@ -45,7 +45,8 @@ struct Entry: Decodable, Identifiable, Hashable {
     }
 }
 
-/// GET /api/games/:id returns `{}` for an unknown code, so every field is optional.
+/// GET /api/games/:id returns 404 for an unknown code (handled in `GameStore.fetchGame`).
+/// Fields stay optional because older games may lack some of them.
 struct Game: Decodable {
     var title: String?
     var question: String?
