@@ -337,7 +337,9 @@ struct GameStoreTests {
     @Test func lobbyLineIsNilWhenNobodyHasAnsweredOrGameStarted() async {
         let empty = await makeStore(game: #"{"started":false,"answeredNames":[]}"#)
         #expect(empty.lobbyAnswersLine == nil)
-        let started = await makeStore(game: #"{"started":true,"answeredNames":["Ann"]}"#)
+        // fetchEntries derives `started` from revealed entries, so a started game needs one.
+        let started = await makeStore(entries: "[\(Self.entry("1", "Bo", "a"))]", game: #"{"started":true,"answeredNames":["Ann"]}"#)
+        #expect(started.started)
         #expect(started.lobbyAnswersLine == nil)
         let missing = await makeStore(game: #"{"started":true,"players":["Ann","Bo"]}"#)
         #expect(missing.answeredNames.isEmpty)
