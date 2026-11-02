@@ -26,10 +26,20 @@ final class GameStore {
     private(set) var turnOrder: [String] = []
     private(set) var currentPlayer: String?
     private(set) var started = false
+    /// The server has no game with this code (404); polling stops and the view shows a way back.
+    private(set) var gameNotFound = false
 
-    var entryText = ""
+    static let maxNameLength = 30
+    static let maxAnswerLength = 200
+
+    var entryText = "" {
+        didSet {
+            if entryText.count > Self.maxAnswerLength { entryText = String(entryText.prefix(Self.maxAnswerLength)) }
+        }
+    }
     var authorName: String {
         didSet {
+            if authorName.count > Self.maxNameLength { authorName = String(authorName.prefix(Self.maxNameLength)) }
             if !authorName.trimmed.isEmpty { defaults.set(authorName, forKey: Self.authorNameKey) }
         }
     }
@@ -117,6 +127,7 @@ final class GameStore {
     }
 
     private func startPolling() {
+        guard !gameNotFound else { return }
         pollTask?.cancel()
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
@@ -176,6 +187,7 @@ final class GameStore {
     // MARK: - Fetching
 
     func sync() async {
+        guard !gameNotFound else { return }
         async let game: Void = fetchGame()
         async let entries: Void = fetchEntries()
         async let scores: Void = fetchScores()
@@ -183,7 +195,17 @@ final class GameStore {
     }
 
     private func fetchGame() async {
-        guard let game = try? await api.game(gameId) else { return }
+        let game: Game
+        do {
+            game = try await api.game(gameId)
+        } catch let error as APIError where error.status == 404 {
+            // A missing game won't appear by retrying, so stop polling for it.
+            gameNotFound = true
+            stopPolling()
+            return
+        } catch {
+            return
+        }
         gameQuestion = game.question
         gameTitle = game.gameOwner
         if let order = game.turnOrder {
@@ -214,7 +236,10 @@ final class GameStore {
             && !started && !isStarting && !addEntryLoading && !hasSubmitted
     }
 
-    var canStart: Bool { !entries.isEmpty && !started && !isStarting }
+    /// Only the device that created the game holds its host token (web: getHostToken(gameId) !== null).
+    var isHost: Bool { defaults.string(forKey: APIClient.hostTokenKey(gameId)) != nil }
+
+    var canStart: Bool { isHost && !entries.isEmpty && !started && !isStarting }
 
     func addEntry() async {
         guard canAddEntry else { return }
@@ -233,7 +258,11 @@ final class GameStore {
             hasSubmitted = true
             show("Entry added!")
         } catch {
-            show("Failed to add entry", .error)
+            if let message = (error as? APIError)?.serverMessage {
+                show(message, .error)
+            } else {
+                show("Failed to add entry", .error)
+            }
         }
     }
 
@@ -252,14 +281,16 @@ final class GameStore {
         } catch let error as APIError where error.status == 409 {
             show("Game already started! Refreshing...")
             await sync()
+        } catch let error as APIError where error.status == 403 {
+            show("Only the host can start the game", .error)
         } catch {
-            show("Failed to start game", .error)
+            show((error as? APIError)?.serverMessage ?? "Failed to start game", .error)
         }
     }
 
     func startNewRound() async {
         let question = newQuestion.trimmed
-        guard !question.isEmpty, !startNewRoundLoading else { return }
+        guard isHost, !question.isEmpty, !startNewRoundLoading else { return }
         startNewRoundLoading = true
         defer { startNewRoundLoading = false }
         do {
@@ -267,6 +298,8 @@ final class GameStore {
             newQuestion = ""
             entries = []
             started = false
+        } catch let error as APIError where error.status == 403 {
+            show("Only the host can start a new round", .error)
         } catch {
             show("Failed to start new round", .error)
         }
@@ -291,7 +324,8 @@ final class GameStore {
                 show("Wrong answer!", .error, for: .seconds(7))
             }
         } catch {
-            show("Error submitting guess", .error)
+            show((error as? APIError)?.serverMessage ?? "Error submitting guess", .error)
+            if (error as? APIError)?.status == 409 { await fetchEntries() }
         }
     }
 

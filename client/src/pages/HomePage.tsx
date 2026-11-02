@@ -4,8 +4,13 @@ import {useNavigate} from "react-router-dom";
 import TopBar from "../components/TopBar";
 import logo from "../assets/logo.svg";
 import {API_URL} from "../apiUrl";
+import {saveHostToken} from "../hostToken";
 
 axios.defaults.baseURL = API_URL;
+
+// Same limits as the server (server/gameSetup.ts)
+const MAX_GAME_NAME_LENGTH = 50;
+const MAX_QUESTION_LENGTH = 200;
 
 export default function HomePage() {
   const [gameName, setGameName] = useState("");
@@ -24,10 +29,12 @@ export default function HomePage() {
         name: gameName.trim(),
         question: questionText.trim()
       });
+      if (data.hostToken) saveHostToken(data.gameId, data.hostToken);
       navigate(`/${data.gameId}`);
     } catch (error) {
       console.error("Create game failed", error);
-      alert("Failed to create game. Please try again.");
+      const serverMessage = (error as any)?.response?.data?.error;
+      alert(serverMessage || "Failed to create game. Please try again.");
     } finally {
       setCreatingGame(false);
     }
@@ -55,12 +62,14 @@ export default function HomePage() {
               value={gameName}
               onChange={(e) => setGameName(e.target.value)}
               placeholder="Enter a title for your game"
+              maxLength={MAX_GAME_NAME_LENGTH}
               disabled={creatingGame}
           />
           <input
               value={questionText}
               onChange={(e) => setQuestionText(e.target.value)}
               placeholder="What question would you like to ask?"
+              maxLength={MAX_QUESTION_LENGTH}
               disabled={creatingGame}
           />
           <button className="btn btn-primary btn-block" onClick={createGame} disabled={createDisabled}>

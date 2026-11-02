@@ -8,9 +8,13 @@ struct HomeView: View {
     @State private var questionText = ""
     @State private var joinCode = ""
     @State private var creatingGame = false
-    @State private var showCreateError = false
+    @State private var createError: String?
 
     private let api = APIClient()
+
+    /// Same limits as the server (server/gameSetup.ts)
+    static let maxGameNameLength = 50
+    static let maxQuestionLength = 200
 
     private var createDisabled: Bool {
         creatingGame || gameName.trimmed.isEmpty || questionText.trimmed.isEmpty
@@ -41,7 +45,13 @@ struct HomeView: View {
 
             Section("New Game") {
                 TextField("Enter a title for your game", text: $gameName)
+                    .onChange(of: gameName) { _, new in
+                        if new.count > Self.maxGameNameLength { gameName = String(new.prefix(Self.maxGameNameLength)) }
+                    }
                 TextField("What question would you like to ask?", text: $questionText, axis: .vertical)
+                    .onChange(of: questionText) { _, new in
+                        if new.count > Self.maxQuestionLength { questionText = String(new.prefix(Self.maxQuestionLength)) }
+                    }
                     .submitLabel(.go)
                     .onSubmit { if !createDisabled { createGame() } }
             }
@@ -85,7 +95,7 @@ struct HomeView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(removing: .title)
         .toolbar { ThemeToggleButton() }
-        .alert("Failed to create game. Please try again.", isPresented: $showCreateError) {}
+        .alert(createError ?? "", isPresented: Binding(get: { createError != nil }, set: { if !$0 { createError = nil } })) {}
     }
 
     private func createGame() {
@@ -97,7 +107,7 @@ struct HomeView: View {
                 let gameId = try await api.createGame(name: gameName.trimmed, question: questionText.trimmed)
                 openGame(gameId)
             } catch {
-                showCreateError = true
+                createError = (error as? APIError)?.serverMessage ?? "Failed to create game. Please try again."
             }
         }
     }

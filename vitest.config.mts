@@ -5,6 +5,14 @@ import {defineConfig} from 'vitest/config';
 // client has its own config in client/.
 export default defineConfig({
   test: {
+    // Pass --coverage to report. Each run reports its own files: unit covers the pure modules,
+    // integration covers the routes and socket handlers.
+    coverage: {
+      provider: 'v8',
+      include: ['server/**/*.ts'],
+      exclude: ['**/*.test.ts', 'server/integration/**'],
+      reporter: ['text-summary', 'text'],
+    },
     projects: [
       {
         test: {

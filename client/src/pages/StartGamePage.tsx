@@ -50,6 +50,8 @@ export default function StartGamePage() {
     turnOrder,
     currentPlayer,
     started,
+    gameNotFound,
+    isHost,
     entryText,
     setEntryText,
     resetCount,
@@ -121,7 +123,22 @@ export default function StartGamePage() {
 
   const roundOver = turnOrder.length < 1;
   const inputsLocked = isLoading || addEntryLoading || hasSubmitted;
-  const canAdd = !!entryText && !!authorName && !inputsLocked;
+  const canAdd = !!entryText.trim() && !!authorName.trim() && !inputsLocked;
+
+  if (gameNotFound) {
+    return (
+        <div className="page">
+          <TopBar>
+            <Link to="/" className="topbar-title">‹ Home</Link>
+          </TopBar>
+          <div className="game-header">
+            <h2>Game not found</h2>
+            <p>There's no game with the code {gameId}. Check the code and try again.</p>
+            <Link to="/" className="btn btn-primary">Back to Home</Link>
+          </div>
+        </div>
+    );
+  }
 
   return (
       <div className="page">
@@ -184,28 +201,33 @@ export default function StartGamePage() {
                   value={entryText}
                   onChange={e => setEntryText(e.target.value)}
                   placeholder="Your answer"
+                  maxLength={200}
                   disabled={inputsLocked}
               />
               <input
                   value={authorName}
                   onChange={e => setAuthorName(e.target.value)}
                   placeholder="Your name"
+                  maxLength={30}
                   disabled={inputsLocked}
               />
               <div className="row">
                 <button className="btn btn-primary" onClick={handleAddEntry} disabled={!canAdd}>
                   {addEntryLoading ? <><span className="spinner"/>Saving...</> : hasSubmitted ? 'Submitted!' : 'Add Answer'}
                 </button>
-                <button className="btn btn-success" onClick={() => setShowStartConfirm(true)}
-                        disabled={!entries.length || started || isLoading}>
-                  {isLoading ? <><span className="spinner"/>Starting...</> : 'Start'}
-                </button>
+                {isHost && (
+                    <button className="btn btn-success" onClick={() => setShowStartConfirm(true)}
+                            disabled={!entries.length || started || isLoading}>
+                      {isLoading ? <><span className="spinner"/>Starting...</> : 'Start'}
+                    </button>
+                )}
               </div>
+              {!isHost && <p className="footnote">Waiting for the host to start the game.</p>}
             </section>
         )}
 
         {/* New Round (End Game) */}
-        {allGuessed && (
+        {allGuessed && isHost && (
             <section className="stack">
               <h4 className="section-label">Next Round</h4>
               <input type="text" placeholder="Game Over! Ask a new question?" value={newQuestion}

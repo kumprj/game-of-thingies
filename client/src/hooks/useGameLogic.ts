@@ -3,6 +3,7 @@ import {useParams} from "react-router-dom";
 import confetti from "canvas-confetti";
 import axios, {socket} from "../gameConfig";
 import {Entry, Score} from "../../../types";
+import {getHostToken} from "../hostToken";
 
 /**
  * Custom hook to manage game logic and state.
@@ -19,6 +20,7 @@ export function useGameLogic() {
   const [turnOrder, setTurnOrder] = useState<string[]>([]); // Stores the order of players' turns.
   const [currentPlayer, setCurrentPlayer] = useState<string | null>(null); // Stores the current player's name.
   const [started, setStarted] = useState(false); // Indicates whether the game has started.
+  const [gameNotFound, setGameNotFound] = useState(false); // The server has no game with this code.
 
   // User Input State
   const [entryText, setEntryText] = useState(""); // Stores the text of the user's entry.
@@ -40,6 +42,7 @@ export function useGameLogic() {
   const [showHowToPlay, setShowHowToPlay] = useState(false); // Indicates whether the "how to play" modal is visible.
   const [showScores, setShowScores] = useState<boolean>(false); // Indicates whether the scores modal is visible.
 
+  const addEntryInFlight = useRef(false); // Synchronous guard: state updates land too late to stop a double-tap.
   const buttonRefs = useRef<Record<string, HTMLButtonElement | null>>({}); // Stores references to entry buttons.
 
   const [toast, setToast] = useState<{
@@ -91,6 +94,10 @@ export function useGameLogic() {
   useEffect(() => {
     if (!gameId) return;
 
+    setGameNotFound(false);
+    let notFound = false;
+    let pollInterval: NodeJS.Timeout | null = null;
+
     const fetchGameData = async () => {
       try {
         const res = await axios.get(`/api/games/${gameId}`);
@@ -101,11 +108,21 @@ export function useGameLogic() {
           setCurrentPlayer(res.data.turnOrder[0] || null);
         }
       } catch (err) {
+        if ((err as any)?.response?.status === 404) {
+          // A missing game won't appear by retrying, so stop polling for it.
+          notFound = true;
+          setGameNotFound(true);
+          setToast(null);
+          if (pollInterval) clearInterval(pollInterval);
+          pollInterval = null;
+          return;
+        }
         console.error("Failed to fetch game data", err);
       }
     };
 
     const syncAllData = () => {
+      if (notFound) return;
       fetchGameData();
       fetchEntries();
       fetchScores();
@@ -114,8 +131,8 @@ export function useGameLogic() {
     syncAllData();
 
     socket.emit("joinGame", gameId);
-    let pollInterval: NodeJS.Timeout | null = null;
     const startPolling = () => {
+      if (notFound) return;
       console.log("⚠️ Disconnected! Refreshing...");
       setIsConnected(false);
       setToast({message: "Reconnecting...", type: "error", duration: 99999}); // Persistent toast
@@ -239,19 +256,22 @@ export function useGameLogic() {
    * Adds a new entry to the game.
    */
   const addEntry = async () => {
-    if (started || !entryText || !authorName) return;
+    if (addEntryInFlight.current || started || !entryText.trim() || !authorName.trim()) return;
+    addEntryInFlight.current = true;
     setAddEntryLoading(true);
     const startTime = Date.now();
     try {
-      await axios.post(`/api/games/${gameId}/entries`, {authorName, text: entryText});
+      await axios.post(`/api/games/${gameId}/entries`, {authorName: authorName.trim(), text: entryText.trim()});
       setEntryText("");
       await fetchEntries();
       const elapsed = Date.now() - startTime;
       if (1000 - elapsed > 0) await sleep(1000 - elapsed);
       setToast({message: "Entry added!", type: "success"});
     } catch (error) {
-      setToast({message: "Failed to add entry", type: "error"});
+      const serverMessage = (error as any)?.response?.data?.error;
+      setToast({message: serverMessage || "Failed to add entry", type: "error"});
     } finally {
+      addEntryInFlight.current = false;
       setAddEntryLoading(false);
     }
   };
@@ -259,6 +279,10 @@ export function useGameLogic() {
   /**
    * Starts the game.
    */
+  const hostToken = getHostToken(gameId);
+  const isHost = hostToken !== null;
+  const hostHeaders = {headers: {"x-host-token": hostToken ?? ""}};
+
   const startGame = async () => {
     if (!entries.length) {
       setToast({message: 'Add some entries first!', type: 'error'});
@@ -266,7 +290,7 @@ export function useGameLogic() {
     }
     setIsLoading(true);
     try {
-      await axios.post(`/api/games/${gameId}/start`);
+      await axios.post(`/api/games/${gameId}/start`, undefined, hostHeaders);
       setStarted(true);
       await fetchEntries();
       await fetchScores();
@@ -276,7 +300,7 @@ export function useGameLogic() {
         setTimeout(() => window.location.reload(), 1500);
         return;
       }
-      setToast({message: 'Failed to start game', type: 'error'});
+      setToast({message: error.response?.data?.error || 'Failed to start game', type: 'error'});
     } finally {
       setIsLoading(false);
       setShowStartConfirm(false);
@@ -289,7 +313,7 @@ export function useGameLogic() {
   const startNewRound = async () => {
     setStartNewRoundLoading(true);
     try {
-      await axios.post(`/api/games/${gameId}/reset`, {question: newQuestion.trim()});
+      await axios.post(`/api/games/${gameId}/reset`, {question: newQuestion.trim()}, hostHeaders);
       setNewQuestion("");
       setEntries([]);
       setGuessedEntryIds(new Set());
@@ -335,7 +359,9 @@ export function useGameLogic() {
       }
     } catch (err) {
       console.error("Error submitting guess", err);
-      setToast({message: "Error submitting guess", type: "error"});
+      const serverMessage = (err as any)?.response?.data?.error;
+      setToast({message: serverMessage || "Error submitting guess", type: "error"});
+      if ((err as any)?.response?.status === 409) fetchEntries();
     } finally {
       setGuessLoading(false);
       setGuessingEntry(null);
@@ -373,6 +399,8 @@ export function useGameLogic() {
     turnOrder,
     currentPlayer,
     started,
+    gameNotFound,
+    isHost,
     entryText,
     setEntryText,
     authorName,

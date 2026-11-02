@@ -1,4 +1,4 @@
-import {afterAll, beforeAll, describe, expect, it} from 'vitest';
+import {afterAll, beforeAll, describe, expect, it, vi} from 'vitest';
 import type {AddressInfo} from 'net';
 import {CreateTableCommand, DeleteTableCommand, DynamoDBClient} from '@aws-sdk/client-dynamodb';
 import {io as connect, type Socket} from 'socket.io-client';
@@ -29,10 +29,15 @@ let baseUrl = '';
 let close: () => Promise<void>;
 const sockets: Socket[] = [];
 
-async function api<T = any>(method: 'GET' | 'POST', path: string, body?: object): Promise<{status: number; data: T}> {
+// Host tokens by game id, so tests call start/reset as the host without passing the token around
+const hostTokens = new Map<string, string>();
+
+async function api<T = any>(method: 'GET' | 'POST', path: string, body?: object, headers: Record<string, string> = {}): Promise<{status: number; data: T}> {
+  const gameId = path.match(/^\/api\/games\/([^/]+)\/(start|reset)$/)?.[1];
+  const token = gameId && hostTokens.get(gameId);
   const response = await fetch(`${baseUrl}${path}`, {
     method,
-    headers: body ? {'Content-Type': 'application/json'} : undefined,
+    headers: {...(body ? {'Content-Type': 'application/json'} : {}), ...(token ? {'x-host-token': token} : {}), ...headers},
     body: body ? JSON.stringify(body) : undefined,
   });
   return {status: response.status, data: await response.json().catch(() => undefined) as T};
@@ -68,10 +73,11 @@ async function joinRoom(gameId: string) {
   };
 }
 
-async function createGame(name = 'Host', question?: string) {
-  const {status, data} = await api<{gameId: string}>('POST', '/api/createGame', {name, question});
+async function createGame(name = 'Host', question = 'What is your favorite thing?') {
+  const {status, data} = await api<{gameId: string; hostToken: string}>('POST', '/api/createGame', {name, question});
   expect(status).toBe(200);
   expect(data.gameId).toMatch(/^[A-Z]{4}$/);
+  hostTokens.set(data.gameId, data.hostToken);
   return data.gameId;
 }
 
@@ -132,13 +138,48 @@ describe('creating and loading games', () => {
     expect(await game(gameId)).toMatchObject({gameId, gameOwner: 'Ann', question: 'Things you find in a fridge'});
   });
 
-  it('uses the default question when none is given', async () => {
-    const gameId = await createGame('Ann');
-    expect((await game(gameId)).question).toBe('What is your favorite thing?');
+  it('stores the trimmed title and question', async () => {
+    const {status, data} = await api('POST', '/api/createGame', {name: '  Ann ', question: ' Worst power? '});
+    expect(status).toBe(200);
+    expect(await game(data.gameId)).toMatchObject({gameOwner: 'Ann', question: 'Worst power?'});
   });
 
-  it('returns an empty object, entries and scores for an unknown game', async () => {
-    expect(await game('ZZZZ-unknown')).toEqual({});
+  it.each([
+    ['a missing title', {question: 'Q'}, 'Title and question must be text'],
+    ['a missing question', {name: 'Ann'}, 'Title and question must be text'],
+    ['a non-text title', {name: 7, question: 'Q'}, 'Title and question must be text'],
+    ['a blank title', {name: '  ', question: 'Q'}, 'Title is required'],
+    ['a blank question', {name: 'Ann', question: ' '}, 'Question is required'],
+    ['an oversized title', {name: 'a'.repeat(51), question: 'Q'}, 'Title must be 50 characters or fewer'],
+    ['an oversized question', {name: 'Ann', question: 'q'.repeat(201)}, 'Question must be 200 characters or fewer'],
+  ])('rejects %s with a 400', async (_label, body, error) => {
+    expect(await api('POST', '/api/createGame', body)).toEqual({status: 400, data: {error}});
+  });
+
+  it('accepts a title and question at the limits', async () => {
+    const {status} = await api('POST', '/api/createGame', {name: 'a'.repeat(50), question: 'q'.repeat(200)});
+    expect(status).toBe(200);
+  });
+
+  it('picks a new code instead of overwriting a live game on collision', async () => {
+    // Math.random() === 0 yields "AAAA"; the second game's first attempt collides, then it gets "BBBB"
+    const codes = [0, 0, 0, 0, 0, 0, 0, 0, 0.04, 0.04, 0.04, 0.04];
+    let call = 0;
+    const spy = vi.spyOn(Math, 'random').mockImplementation(() => codes[Math.min(call++, codes.length - 1)]);
+    try {
+      const first = await createGame('Ann', 'First question');
+      const second = await createGame('Bob', 'Second question');
+      expect(first).toBe('AAAA');
+      expect(second).toBe('BBBB');
+      expect(await game(first)).toMatchObject({gameOwner: 'Ann', question: 'First question'});
+      expect(await game(second)).toMatchObject({gameOwner: 'Bob', question: 'Second question'});
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('404s an unknown game but lists no entries or scores for it', async () => {
+    expect(await api('GET', '/api/games/ZZZZ-unknown')).toEqual({status: 404, data: {error: 'Game not found'}});
     expect(await entries('ZZZZ-unknown')).toEqual([]);
     expect(await scores('ZZZZ-unknown')).toEqual([]);
   });
@@ -242,6 +283,60 @@ describe('a full round', () => {
   });
 });
 
+describe('host controls', () => {
+  const startAs = (gameId: string, token: string) =>
+    api('POST', `/api/games/${gameId}/start`, undefined, {'x-host-token': token});
+
+  async function gameWithPlayers() {
+    const gameId = await createGame('Ann');
+    for (const name of ['Ann', 'Ben', 'Cy', 'Di']) await addEntry(gameId, name, `${name}'s answer`);
+    return gameId;
+  }
+
+  it('returns the host token once and never exposes it via GET', async () => {
+    const gameId = await createGame('Ann');
+    expect(hostTokens.get(gameId)).toEqual(expect.any(String));
+    expect(await game(gameId)).not.toHaveProperty('hostToken');
+  });
+
+  it('rejects start and reset without the host token (403) and changes nothing', async () => {
+    const gameId = await gameWithPlayers();
+    hostTokens.delete(gameId); // calls below go out with no token unless a header is given
+    expect((await api('POST', `/api/games/${gameId}/start`)).status).toBe(403);
+    expect((await startAs(gameId, 'wrong-token')).status).toBe(403);
+    expect((await game(gameId)).started).toBeUndefined();
+    expect((await entries(gameId)).every(e => e.revealed === false)).toBe(true);
+
+    expect((await api('POST', `/api/games/${gameId}/reset`, {question: 'Hijack'})).status).toBe(403);
+    expect((await api('POST', `/api/games/${gameId}/reset`, {question: 'Hijack'}, {'x-host-token': 'nope'})).status).toBe(403);
+    expect(await entries(gameId)).toHaveLength(4);
+    expect((await game(gameId)).question).toBe('What is your favorite thing?');
+  });
+
+  it('returns 409 for a second start and leaves the turn order alone', async () => {
+    const gameId = await gameWithPlayers();
+    expect((await api('POST', `/api/games/${gameId}/start`)).status).toBe(200);
+    const {turnOrder} = await game(gameId);
+
+    for (let i = 0; i < 5; i++) {
+      expect((await api('POST', `/api/games/${gameId}/start`)).status).toBe(409);
+    }
+    expect((await game(gameId)).turnOrder).toEqual(turnOrder);
+  });
+
+  it('lets only one of several simultaneous starts win', async () => {
+    const gameId = await gameWithPlayers();
+    const results = await Promise.all([1, 2, 3, 4].map(() => api('POST', `/api/games/${gameId}/start`)));
+    expect(results.filter(r => r.status === 200)).toHaveLength(1);
+    expect(results.filter(r => r.status === 409)).toHaveLength(3);
+  });
+
+  it('returns 404 when starting or resetting an unknown game', async () => {
+    expect((await api('POST', '/api/games/NOPE/start', undefined, {'x-host-token': 'x'})).status).toBe(404);
+    expect((await api('POST', '/api/games/NOPE/reset', {}, {'x-host-token': 'x'})).status).toBe(404);
+  });
+});
+
 describe('expiry', () => {
   // DynamoDB's TTL deletes items once expiresAt passes; every write pushes it a day out
   const aDayFromNow = () => {
@@ -290,5 +385,258 @@ describe('guess validation', () => {
       {guesserName: 'Mallory', guess: 'Ann'});
     expect(status).toBe(400);
     expect((await entries(gameId)).find(e => e.entryId === entryId).guessed).toBeUndefined();
+  });
+});
+
+describe('start validation', () => {
+  it('rejects a game with no entries (400) and leaves it unstarted', async () => {
+    const gameId = await createGame('Ann');
+    const {status, data} = await api('POST', `/api/games/${gameId}/start`);
+    expect(status).toBe(400);
+    expect(data.error).toEqual(expect.any(String));
+    expect((await game(gameId)).started).toBeUndefined();
+  });
+
+  it('rejects a single player (400) and leaves it unstarted', async () => {
+    const gameId = await createGame('Ann');
+    await addEntry(gameId, 'Ann', 'Alone');
+    const {status, data} = await api('POST', `/api/games/${gameId}/start`);
+    expect(status).toBe(400);
+    expect(data.error).toBe('Need at least 2 players to start');
+    expect((await game(gameId)).started).toBeUndefined();
+    expect((await entries(gameId)).every(e => e.revealed === false)).toBe(true);
+  });
+
+  it('still answers 403 before the entry checks', async () => {
+    const gameId = await createGame('Ann');
+    hostTokens.delete(gameId);
+    expect((await api('POST', `/api/games/${gameId}/start`)).status).toBe(403);
+  });
+
+  it('still answers 409 for an already started game', async () => {
+    const gameId = await createGame('Ann');
+    await addEntry(gameId, 'Ann', 'One');
+    await addEntry(gameId, 'Ben', 'Two');
+    expect((await api('POST', `/api/games/${gameId}/start`)).status).toBe(200);
+    expect((await api('POST', `/api/games/${gameId}/start`)).status).toBe(409);
+  });
+
+  it('starts once a second player has answered', async () => {
+    const gameId = await createGame('Ann');
+    await addEntry(gameId, 'Ann', 'One');
+    expect((await api('POST', `/api/games/${gameId}/start`)).status).toBe(400);
+    await addEntry(gameId, 'Ben', 'Two');
+    expect((await api('POST', `/api/games/${gameId}/start`)).status).toBe(200);
+  });
+});
+
+describe('guess rules', () => {
+  const guessUrl = (gameId: string, entryId: string) => `/api/games/${gameId}/entries/${entryId}/guess`;
+
+  async function started(names = ['Ann', 'Ben', 'Cy']) {
+    const gameId = await createGame('Ann');
+    const ids: Record<string, string> = {};
+    for (const name of names) ids[name] = await addEntry(gameId, name, `${name}'s answer`);
+    await api('POST', `/api/games/${gameId}/start`);
+    const turnOrder: string[] = (await game(gameId)).turnOrder;
+    return {gameId, ids, turnOrder};
+  }
+
+  it('rejects a guess out of turn (409) and changes nothing', async () => {
+    const {gameId, ids, turnOrder} = await started();
+    const offTurn = turnOrder[1];
+    const target = turnOrder.find(n => n !== offTurn)!;
+    const before = await game(gameId);
+    const {status, data} = await api('POST', guessUrl(gameId, ids[target]), {guesserName: offTurn, guess: target});
+    expect(status).toBe(409);
+    expect(data.error).toEqual(expect.any(String));
+    const after = await game(gameId);
+    expect(after.turnOrder).toEqual(turnOrder);
+    expect(after.lastTurn).toEqual(before.lastTurn);
+    expect((await entries(gameId)).every(e => e.guessed === undefined)).toBe(true);
+    expect(await scores(gameId)).toEqual([]);
+  });
+
+  it('keeps 400 for a guesser who is not in the turn order', async () => {
+    const {gameId, ids} = await started();
+    const {status} = await api('POST', guessUrl(gameId, ids.Ann), {guesserName: 'Mallory', guess: 'Ann'});
+    expect(status).toBe(400);
+  });
+
+  it('rejects guessing your own entry (400) while others remain, with no point', async () => {
+    const {gameId, ids, turnOrder} = await started();
+    const me = turnOrder[0];
+    const {status, data} = await api('POST', guessUrl(gameId, ids[me]), {guesserName: me, guess: me});
+    expect(status).toBe(400);
+    expect(data.error).toEqual(expect.any(String));
+    expect(await scores(gameId)).toEqual([]);
+    expect((await game(gameId)).turnOrder).toEqual(turnOrder);
+    expect((await entries(gameId)).find(e => e.entryId === ids[me]).guessed).toBeUndefined();
+  });
+
+  it('rejects a repeat guess on a solved entry (409) with no second point', async () => {
+    const {gameId, ids, turnOrder} = await started(['Ann', 'Ben', 'Cy', 'Di']);
+    const first = turnOrder[0];
+    const target = turnOrder.find(n => n !== first)!;
+    expect((await api('POST', guessUrl(gameId, ids[target]), {guesserName: first, guess: target})).status).toBe(200);
+    const orderAfter = (await game(gameId)).turnOrder;
+
+    const again = await api('POST', guessUrl(gameId, ids[target]), {guesserName: first, guess: target});
+    expect(again.status).toBe(409);
+    expect(await scores(gameId)).toEqual([expect.objectContaining({playerName: first, score: 1})]);
+    expect((await game(gameId)).turnOrder).toEqual(orderAfter);
+  });
+
+  it('awards one point when two guesses on one entry race', async () => {
+    const {gameId, ids, turnOrder} = await started(['Ann', 'Ben', 'Cy', 'Di']);
+    const first = turnOrder[0];
+    const target = turnOrder.find(n => n !== first)!;
+    const results = await Promise.all([1, 2, 3, 4].map(() =>
+      api('POST', guessUrl(gameId, ids[target]), {guesserName: first, guess: target})));
+    expect(results.filter(r => r.status === 200)).toHaveLength(1);
+    expect(results.filter(r => r.status === 409)).toHaveLength(3);
+    expect(await scores(gameId)).toEqual([expect.objectContaining({playerName: first, score: 1})]);
+    const order = (await game(gameId)).turnOrder as string[];
+    expect(order).toEqual(turnOrder.filter(n => n !== target));
+  });
+});
+
+describe('answer validation', () => {
+  const post = (gameId: string, body: object) => api('POST', `/api/games/${gameId}/entries`, body);
+
+  it('rejects empty, blank and non-text names and answers', async () => {
+    const gameId = await createGame();
+    for (const body of [
+      {authorName: '', text: 'x'}, {authorName: '   ', text: 'x'},
+      {authorName: 'Ann', text: ''}, {authorName: 'Ann', text: '  \n '},
+      {authorName: 'Ann'}, {text: 'x'}, {authorName: 42, text: 'x'}, {authorName: 'Ann', text: ['x']},
+    ]) {
+      const {status, data} = await post(gameId, body);
+      expect(status, JSON.stringify(body)).toBe(400);
+      expect(data.error).toEqual(expect.any(String));
+    }
+    expect(await entries(gameId)).toEqual([]);
+  });
+
+  it('rejects oversized names and answers but accepts the limits', async () => {
+    const gameId = await createGame();
+    const tooLongName = await post(gameId, {authorName: 'n'.repeat(31), text: 'x'});
+    expect(tooLongName.status).toBe(400);
+    expect(tooLongName.data.error).toMatch(/30/);
+    const tooLongText = await post(gameId, {authorName: 'Ann', text: 't'.repeat(201)});
+    expect(tooLongText.status).toBe(400);
+    expect(tooLongText.data.error).toMatch(/200/);
+    expect((await post(gameId, {authorName: 'n'.repeat(30), text: 't'.repeat(200)})).status).toBe(200);
+  });
+
+  it('trims names and answers', async () => {
+    const gameId = await createGame();
+    await addEntry(gameId, '  Ann ', '  Pizza  ');
+    expect(await entries(gameId)).toMatchObject([{authorName: 'Ann', text: 'Pizza'}]);
+  });
+
+  it('rejects a duplicate name (case-insensitive) and keeps the first answer', async () => {
+    const gameId = await createGame();
+    await addEntry(gameId, 'Ann', 'Pizza');
+    const dupe = await post(gameId, {authorName: 'Ann', text: 'Tacos'});
+    expect(dupe.status).toBe(409);
+    expect(dupe.data.error).toMatch(/taken/);
+    expect((await post(gameId, {authorName: ' ann ', text: 'Tacos'})).status).toBe(409);
+    await addEntry(gameId, 'Ben', 'Soup');
+    expect(await entries(gameId)).toHaveLength(2);
+    expect((await entries(gameId)).find(e => e.authorName === 'Ann').text).toBe('Pizza');
+  });
+
+  it('returns 404 for an unknown game', async () => {
+    const {status} = await post('ZZZZ', {authorName: 'Ann', text: 'x'});
+    expect(status).toBe(404);
+    expect(await entries('ZZZZ')).toEqual([]);
+  });
+
+  it('rejects answers once the game has started', async () => {
+    const gameId = await createGame();
+    await addEntry(gameId, 'Ann', 'Pizza');
+    await addEntry(gameId, 'Cy', 'Tea');
+    await api('POST', `/api/games/${gameId}/start`);
+    const late = await post(gameId, {authorName: 'Ben', text: 'Soup'});
+    expect(late.status).toBe(400);
+    expect(late.data.error).toMatch(/started/);
+    const again = await post(gameId, {authorName: 'Ann', text: 'Changed'});
+    expect(again.status).toBe(400);
+    expect((await entries(gameId)).map(e => e.text).sort()).toEqual(['Pizza', 'Tea']);
+  });
+});
+
+describe('finishing a round', () => {
+  it('plays to the end: the turn order empties and the scores add up', async () => {
+    const gameId = await createGame('Ann');
+    const room = await joinRoom(gameId);
+    const ann = await addEntry(gameId, 'Ann', 'Mine');
+    const ben = await addEntry(gameId, 'Ben', 'Theirs');
+    await api('POST', `/api/games/${gameId}/start`);
+    const first = (await game(gameId)).turnOrder[0] as string;
+    const [firstEntry, otherEntry] = first === 'Ann' ? [ann, ben] : [ben, ann];
+    const other = first === 'Ann' ? 'Ben' : 'Ann';
+
+    // Getting it right means going again, now with only your own answer left
+    let mark = room.events.length;
+    await api('POST', `/api/games/${gameId}/entries/${otherEntry}/guess`, {guesserName: first, guess: other});
+    expect(await room.next('nextTurn', mark)).toEqual({currentPlayer: first, turnOrder: [first]});
+
+    // The last player guesses their own answer, which ends the round
+    mark = room.events.length;
+    const last = await api('POST', `/api/games/${gameId}/entries/${firstEntry}/guess`,
+      {guesserName: first, guess: first});
+    expect(last.data).toEqual({isCorrect: true});
+    expect(await room.next('nextTurn', mark)).toEqual({currentPlayer: null, turnOrder: []});
+    expect((await entries(gameId)).every(e => e.guessed === true)).toBe(true);
+    expect(await scores(gameId)).toEqual([expect.objectContaining({playerName: first, score: 2})]);
+  });
+
+  it('keeps the turn with the only player left after a wrong guess', async () => {
+    const gameId = await createGame('Ann');
+    const ann = await addEntry(gameId, 'Ann', 'Mine');
+    const ben = await addEntry(gameId, 'Ben', 'Theirs');
+    await api('POST', `/api/games/${gameId}/start`);
+    const first = (await game(gameId)).turnOrder[0] as string;
+    await api('POST', `/api/games/${gameId}/entries/${first === 'Ann' ? ben : ann}/guess`,
+      {guesserName: first, guess: first === 'Ann' ? 'Ben' : 'Ann'});
+    const own = await api('POST', `/api/games/${gameId}/entries/${first === 'Ann' ? ann : ben}/guess`,
+      {guesserName: first, guess: 'Nobody'});
+    expect(own.data).toEqual({isCorrect: false});
+    expect((await game(gameId)).turnOrder).toEqual([first]);
+    expect(await scores(gameId)).toEqual([expect.objectContaining({playerName: first, score: 1})]);
+  });
+
+  it('gives each player one place in the turn order, since a second answer from the same name is rejected', async () => {
+    const gameId = await createGame('Ann');
+    await addEntry(gameId, 'Ann', 'One');
+    const second = await api('POST', `/api/games/${gameId}/entries`, {authorName: 'Ann', text: 'Two'});
+    expect(second.status).toBe(409);
+    await addEntry(gameId, 'Ben', 'Three');
+    await api('POST', `/api/games/${gameId}/start`);
+    expect([...(await game(gameId)).turnOrder].sort()).toEqual(['Ann', 'Ben']);
+  });
+
+  it('keeps scores across rounds and adds to them', async () => {
+    const gameId = await createGame('Ann');
+    for (let round = 1; round <= 2; round++) {
+      const a = await addEntry(gameId, 'Ann', `Ann ${round}`);
+      const b = await addEntry(gameId, 'Ben', `Ben ${round}`);
+      await api('POST', `/api/games/${gameId}/start`);
+      const first = (await game(gameId)).turnOrder[0] as string;
+      await api('POST', `/api/games/${gameId}/entries/${first === 'Ann' ? b : a}/guess`,
+        {guesserName: first, guess: first === 'Ann' ? 'Ben' : 'Ann'});
+      if (round === 1) await api('POST', `/api/games/${gameId}/reset`, {question: 'Round two'});
+      else expect((await scores(gameId)).reduce((sum, s) => sum + s.score, 0)).toBe(2);
+    }
+  });
+});
+
+describe('unknown games', () => {
+  it('lists no entries or scores, and 404s the game itself', async () => {
+    expect((await api('GET', '/api/games/ZZZZ/entries')).data).toEqual([]);
+    expect((await api('GET', '/api/games/ZZZZ/scores')).data).toEqual([]);
+    expect(await api('GET', '/api/games/ZZZZ')).toEqual({status: 404, data: {error: 'Game not found'}});
   });
 });
