@@ -18,7 +18,7 @@ struct GameView: View {
             if !store.turnOrder.isEmpty || store.started { turnSection }
             if store.started { statusSection }
             if !store.started { answerFormSections }
-            if store.allGuessed { nextRoundSections }
+            if store.allGuessed && store.isHost { nextRoundSections }
             answersSection
             if !store.scores.isEmpty { scoreboardSection }
             howToPlaySection
@@ -148,13 +148,20 @@ struct GameView: View {
                     Task { await store.addEntry() }
                 }
                 .disabled(!store.canAddEntry)
-                FormButton(title: "Start", busyTitle: "Starting...", isBusy: store.isStarting, tint: .green) {
-                    store.showStartConfirm = true
+                if store.isHost {
+                    FormButton(title: "Start", busyTitle: "Starting...", isBusy: store.isStarting, tint: .green) {
+                        store.showStartConfirm = true
+                    }
+                    .disabled(!store.canStart)
                 }
-                .disabled(!store.canStart)
             }
             .listRowInsets(EdgeInsets())
             .listRowBackground(Color.clear)
+            if !store.isHost {
+                Text("Waiting for the host to start the game.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
         }
         .listSectionSpacing(.compact)
     }

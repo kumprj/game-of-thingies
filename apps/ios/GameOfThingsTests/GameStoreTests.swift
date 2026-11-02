@@ -48,6 +48,54 @@ struct GameStoreTests {
         #expect(store.scores.map(\.playerName) == ["Ann", "Bo"])
     }
 
+    @Test func isHostFollowsStoredToken() async {
+        let store = await makeStore(entries: "[\(Self.entry("1", "Bo", "a", revealed: false))]")
+        #expect(!store.isHost)
+        #expect(!store.canStart)
+        defaults.set("tok", forKey: "hostToken.ABCD")
+        #expect(store.isHost)
+        #expect(store.canStart)
+    }
+
+    @Test func startGameForbiddenShowsErrorToast() async {
+        let store = await makeStore(entries: "[\(Self.entry("1", "Bo", "a", revealed: false))]")
+        defaults.set("bad", forKey: "hostToken.ABCD")
+        StubURLProtocol.respond = { _ in (403, #"{"error":"Forbidden"}"#) }
+        await store.startGame()
+        #expect(store.toast?.style == .error)
+        #expect(store.toast?.message == "Only the host can start the game")
+        #expect(!store.started)
+    }
+
+    @Test func startGameConflictTreatedAsAlreadyStarted() async {
+        let store = await makeStore(entries: "[\(Self.entry("1", "Bo", "a", revealed: false))]")
+        defaults.set("tok", forKey: "hostToken.ABCD")
+        StubURLProtocol.respond = { request in
+            request.httpMethod == "POST" ? (409, #"{"error":"Already started"}"#) : (200, "[]")
+        }
+        await store.startGame()
+        #expect(store.toast?.style == .success)
+        #expect(store.toast?.message == "Game already started! Refreshing...")
+    }
+
+    @Test func startNewRoundForbiddenShowsErrorToast() async {
+        let store = await makeStore(entries: "[\(Self.entry("1", "Bo", "a"))]")
+        defaults.set("bad", forKey: "hostToken.ABCD")
+        store.newQuestion = "Next?"
+        StubURLProtocol.respond = { _ in (403, #"{"error":"Forbidden"}"#) }
+        await store.startNewRound()
+        #expect(store.toast?.message == "Only the host can start a new round")
+        #expect(store.toast?.style == .error)
+    }
+
+    @Test func startNewRoundIgnoredForNonHost() async {
+        let store = await makeStore(entries: "[\(Self.entry("1", "Bo", "a"))]")
+        store.newQuestion = "Next?"
+        StubURLProtocol.requests = []
+        await store.startNewRound()
+        #expect(StubURLProtocol.requests.isEmpty)
+    }
+
     @Test func pregameListsInSubmissionOrder() async {
         let store = await makeStore(entries: """
             [\(Self.entry("1", "Bo", "a", revealed: false, createdAt: "2026-01-01T00:00:02Z")),
@@ -55,7 +103,7 @@ struct GameStoreTests {
             """)
         #expect(!store.started)
         #expect(store.sortedEntriesForDisplay.map(\.authorName) == ["Cy", "Bo"])
-        #expect(store.canStart)
+        #expect(!store.canStart) // not the host
     }
 
     @Test func ownAnswerIsGuessableOnlyWhenLast() async {

@@ -22,7 +22,8 @@ struct APIClient {
     var defaults: UserDefaults = .standard
 
     /// The host token createGame returns; the server requires it (x-host-token) to start or reset.
-    private func hostTokenKey(_ gameId: String) -> String { "hostToken.\(gameId)" }
+    static func hostTokenKey(_ gameId: String) -> String { "hostToken.\(gameId)" }
+    private func hostTokenKey(_ gameId: String) -> String { Self.hostTokenKey(gameId) }
 
     func createGame(name: String, question: String) async throws -> String {
         struct Response: Decodable { let gameId: String; let hostToken: String? }

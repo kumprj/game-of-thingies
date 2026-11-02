@@ -222,7 +222,10 @@ final class GameStore {
             && !started && !isStarting && !addEntryLoading && !hasSubmitted
     }
 
-    var canStart: Bool { !entries.isEmpty && !started && !isStarting }
+    /// Only the device that created the game holds its host token (web: getHostToken(gameId) !== null).
+    var isHost: Bool { defaults.string(forKey: APIClient.hostTokenKey(gameId)) != nil }
+
+    var canStart: Bool { isHost && !entries.isEmpty && !started && !isStarting }
 
     func addEntry() async {
         guard canAddEntry else { return }
@@ -264,6 +267,8 @@ final class GameStore {
         } catch let error as APIError where error.status == 409 {
             show("Game already started! Refreshing...")
             await sync()
+        } catch let error as APIError where error.status == 403 {
+            show("Only the host can start the game", .error)
         } catch {
             show("Failed to start game", .error)
         }
@@ -271,7 +276,7 @@ final class GameStore {
 
     func startNewRound() async {
         let question = newQuestion.trimmed
-        guard !question.isEmpty, !startNewRoundLoading else { return }
+        guard isHost, !question.isEmpty, !startNewRoundLoading else { return }
         startNewRoundLoading = true
         defer { startNewRoundLoading = false }
         do {
@@ -279,6 +284,8 @@ final class GameStore {
             newQuestion = ""
             entries = []
             started = false
+        } catch let error as APIError where error.status == 403 {
+            show("Only the host can start a new round", .error)
         } catch {
             show("Failed to start new round", .error)
         }

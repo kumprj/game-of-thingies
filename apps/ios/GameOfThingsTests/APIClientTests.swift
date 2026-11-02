@@ -48,9 +48,16 @@ struct StubbedNetworkTests {}
 extension StubbedNetworkTests {
 @Suite
 struct APIClientTests {
-    let api = APIClient(baseURL: URL(string: "http://test.local")!, session: StubURLProtocol.session())
+    let defaults: UserDefaults
+    let api: APIClient
 
-    init() { StubURLProtocol.requests = [] }
+    init() {
+        defaults = UserDefaults(suiteName: "APIClientTests")!
+        defaults.removePersistentDomain(forName: "APIClientTests")
+        api = APIClient(baseURL: URL(string: "http://test.local")!, session: StubURLProtocol.session(),
+                        defaults: defaults)
+        StubURLProtocol.requests = []
+    }
 
     private func jsonBody(_ request: URLRequest) throws -> [String: String] {
         try JSONDecoder().decode([String: String].self, from: try #require(request.httpBody))
@@ -116,6 +123,42 @@ struct APIClientTests {
             #expect(error.serverMessage == nil)
             #expect(error.errorDescription == "Server responded with status 502")
         } catch { Issue.record("wrong error \(error)") }
+    }
+
+    @Test func createGameStoresHostToken() async throws {
+        StubURLProtocol.respond = { _ in (200, #"{"gameId":"WXYZ","hostToken":"tok123"}"#) }
+        _ = try await api.createGame(name: "Friday", question: "Q?")
+        #expect(defaults.string(forKey: "hostToken.WXYZ") == "tok123")
+    }
+
+    @Test func createGameWithoutTokenStoresNothing() async throws {
+        StubURLProtocol.respond = { _ in (200, #"{"gameId":"WXYZ"}"#) }
+        _ = try await api.createGame(name: "Friday", question: "Q?")
+        #expect(defaults.string(forKey: "hostToken.WXYZ") == nil)
+    }
+
+    @Test func startAndResetSendHostToken() async throws {
+        defaults.set("tok123", forKey: "hostToken.ABCD")
+        try await api.startGame("ABCD")
+        try await api.resetGame("ABCD", question: "Next?")
+        #expect(StubURLProtocol.requests.count == 2)
+        for request in StubURLProtocol.requests {
+            #expect(request.value(forHTTPHeaderField: "x-host-token") == "tok123")
+        }
+    }
+
+    @Test func startOmitsHeaderWithoutToken() async throws {
+        try await api.startGame("ABCD")
+        let request = try #require(StubURLProtocol.requests.first)
+        #expect(request.value(forHTTPHeaderField: "x-host-token") == nil)
+    }
+
+    @Test func forbiddenAndConflictMapToStatus() async {
+        StubURLProtocol.respond = { _ in (403, #"{"error":"Forbidden"}"#) }
+        await #expect(throws: APIError.self) { try await api.startGame("ABCD") }
+        do { try await api.startGame("ABCD") } catch let error as APIError { #expect(error.status == 403) } catch {}
+        StubURLProtocol.respond = { _ in (409, #"{"error":"Already started"}"#) }
+        do { try await api.startGame("ABCD") } catch let error as APIError { #expect(error.status == 409) } catch {}
     }
 }
 }
