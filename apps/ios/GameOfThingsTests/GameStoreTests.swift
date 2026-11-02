@@ -223,6 +223,7 @@ struct GameStoreTests {
 
     @Test func startNewRoundSendsTrimmedQuestion() async {
         let store = await makeStore(entries: "[\(Self.entry("1", "Bo", "x", guessed: true))]")
+        defaults.set("tok", forKey: "hostToken.ABCD")
         store.newQuestion = "  Best pizza? "
         await store.startNewRound()
         let post = StubURLProtocol.requests.first { $0.httpMethod == "POST" }!
