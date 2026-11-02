@@ -6,7 +6,7 @@
         "appIDs": ["<TEAMID>.com.kumprj.GameOfThings"],
         "components": [
           {
-            "/": "/[a-zA-Z]{4}",
+            "/": "/[A-Z]{4}",
             "comment": "Matches 4-letter game codes"
           }
         ]

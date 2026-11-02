@@ -108,8 +108,8 @@ router.post('/games/:gameId/entries', async (req, res) => {
     const playerToken = req.header('x-player-token');
     const existingTokens = game.playerTokens || {};
     const normName = authorName.toLowerCase();
-    if (existingTokens[normName] && playerToken && existingTokens[normName] !== playerToken) {
-      return res.status(403).json({error: 'That name belongs to another player'});
+    if (existingTokens[normName] && (!playerToken || existingTokens[normName] !== playerToken)) {
+      return res.status(403).json({error: 'A player with this name already exists in this game'});
     }
 
     const existing = await ddb.send(new QueryCommand({
@@ -195,7 +195,7 @@ router.patch('/games/:gameId/entries/:entryId', async (req, res) => {
     const playerToken = req.header('x-player-token');
     const authorLower = item.authorName.toLowerCase();
     const boundToken = item.authorToken || game.playerTokens?.[authorLower];
-    if (boundToken && playerToken && boundToken !== playerToken) {
+    if (boundToken && (!playerToken || boundToken !== playerToken)) {
       return res.status(403).json({error: 'Only the author can edit this entry'});
     }
 
@@ -234,7 +234,7 @@ router.delete('/games/:gameId/entries/:entryId', async (req, res) => {
     const playerToken = req.header('x-player-token');
     const authorLower = item.authorName.toLowerCase();
     const boundToken = item.authorToken || game.playerTokens?.[authorLower];
-    if (boundToken && playerToken && boundToken !== playerToken) {
+    if (boundToken && (!playerToken || boundToken !== playerToken)) {
       return res.status(403).json({error: 'Only the author can delete this entry'});
     }
 
@@ -252,7 +252,7 @@ router.delete('/games/:gameId/entries/:entryId', async (req, res) => {
           ExpressionAttributeNames: {'#p': authorLower}
         }));
       } catch (e) {
-        // Non-fatal if map key delete fails
+        console.error('Failed to remove player token:', e);
       }
     }
 
@@ -358,10 +358,10 @@ router.post('/games/:gameId/entries/:entryId/guess', async (req, res) => {
     }
 
     const playerToken = req.header('x-player-token');
-    const playerTokens = game?.playerTokens || {};
-    const normGuesser = guesserName.toLowerCase();
-    if (playerTokens[normGuesser] && playerToken && playerTokens[normGuesser] !== playerToken) {
-      return res.status(403).json({error: 'You cannot guess as another player'});
+    const existingTokens = game?.playerTokens || {};
+    const normName = guesserName.toLowerCase();
+    if (existingTokens[normName] && (!playerToken || existingTokens[normName] !== playerToken)) {
+      return res.status(403).json({error: 'Player token mismatch'});
     }
     // The last player left may guess their own answer for a free point (ends the round).
     if (item.authorName === guesserName && turnOrder.length > 1) {

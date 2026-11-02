@@ -24,6 +24,7 @@ struct GameLinkTests {
         "https://gameofthings.fun/ABCDE",
         "https://gameofthings.fun/AB1D",
         "https://gameofthings.fun/",
+        "http://gameofthings.fun/ABCD",
         "ftp://gameofthings.fun/ABCD",
     ])
     func rejectsEverythingElse(link: String) {

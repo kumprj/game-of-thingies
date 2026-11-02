@@ -10,7 +10,7 @@ enum GameLink {
         let rawCode: String?
         if scheme == Self.scheme {
             rawCode = url.host()
-        } else if scheme == "https" || scheme == "http" {
+        } else if scheme == "https" {
             let path = url.path().trimmingCharacters(in: CharacterSet(charactersIn: "/"))
             rawCode = path
         } else {

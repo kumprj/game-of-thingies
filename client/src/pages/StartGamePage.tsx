@@ -257,6 +257,12 @@ export default function StartGamePage() {
     }
   };
 
+  const handleStartNewRound = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newQuestion.trim() || startNewRoundLoading) return;
+    startNewRound();
+  };
+
   const hasRememberedName = Boolean(
     authorName &&
     typeof window !== 'undefined' &&
@@ -314,9 +320,9 @@ export default function StartGamePage() {
                 rel="noopener noreferrer"
                 className="btn btn-gray"
                 style={{padding: '4px 10px', fontSize: 13, borderRadius: 16}}
-                aria-label="Watch on TV"
+                aria-label="Watch on a screen"
               >
-                Watch on TV
+                Watch on a screen
               </Link>
             </div>
           )}
@@ -449,12 +455,14 @@ export default function StartGamePage() {
         {allGuessed && isHost && (
             <section className="stack">
               <h4 className="section-label">Next Round</h4>
-              <input type="text" placeholder="Game Over! Ask a new question?" value={newQuestion}
-                     onChange={e => setNewQuestion(e.target.value)} disabled={startNewRoundLoading}/>
-              <button className="btn btn-success btn-block" disabled={!newQuestion.trim() || startNewRoundLoading}
-                       onClick={startNewRound}>
-                {startNewRoundLoading ? <><span className="spinner"/>Starting...</> : "Start New Round"}
-              </button>
+              <form onSubmit={handleStartNewRound} className="stack">
+                <input type="text" placeholder="Game Over! Ask a new question?" value={newQuestion}
+                       onChange={e => setNewQuestion(e.target.value)} disabled={startNewRoundLoading}
+                       aria-label="New question"/>
+                <button type="submit" className="btn btn-success btn-block" disabled={!newQuestion.trim() || startNewRoundLoading}>
+                  {startNewRoundLoading ? <><span className="spinner"/>Starting...</> : "Start New Round"}
+                </button>
+              </form>
               <p className="footnote" style={{paddingLeft: 16}}>The player who has gone the longest ago goes first.</p>
             </section>
         )}

@@ -222,27 +222,11 @@ final class GameStore {
     }
 
     private func saveToRecentGames(title: String?) {
-        var recents: [RecentGameRecord] = []
-        if let data = defaults.data(forKey: "got_recent_games"),
-           let list = try? JSONDecoder().decode([RecentGameRecord].self, from: data) {
-            recents = list.filter { $0.gameId != gameId }
-        }
-        let record = RecentGameRecord(gameId: gameId, title: title ?? gameId, lastVisited: Date().timeIntervalSince1970)
-        recents.insert(record, at: 0)
-        if recents.count > 5 { recents = Array(recents.prefix(5)) }
-        if let encoded = try? JSONEncoder().encode(recents) {
-            defaults.set(encoded, forKey: "got_recent_games")
-        }
+        RecentGamesStore.record(gameId: gameId, title: title, defaults: defaults)
     }
 
     private func removeFromRecentGames() {
-        if let data = defaults.data(forKey: "got_recent_games"),
-           var list = try? JSONDecoder().decode([RecentGameRecord].self, from: data) {
-            list.removeAll { $0.gameId == gameId }
-            if let encoded = try? JSONEncoder().encode(list) {
-                defaults.set(encoded, forKey: "got_recent_games")
-            }
-        }
+        RecentGamesStore.remove(gameId: gameId, defaults: defaults)
     }
 
     private func fetchEntries() async {

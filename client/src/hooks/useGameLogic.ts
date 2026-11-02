@@ -47,6 +47,8 @@ export function useGameLogic() {
   const buttonRefs = useRef<Record<string, HTMLButtonElement | null>>({}); // Stores references to entry buttons.
   const roundStartScoresRef = useRef<Record<string, number>>({});
   const prevAllGuessedRef = useRef(false);
+  const scoresRef = useRef(scores);
+  scoresRef.current = scores;
 
   type ToastData = {
     message: string;
@@ -193,7 +195,7 @@ export function useGameLogic() {
       setCurrentPlayer(data.turnOrder?.[0] || null);
       syncAllData();
       const map: Record<string, number> = {};
-      scores.forEach(s => { map[s.playerName] = s.score; });
+      scoresRef.current.forEach(s => { map[s.playerName] = s.score; });
       roundStartScoresRef.current = map;
       setToast({message: "‼️ The game has started ‼️", type: 'success'});
     };
@@ -335,7 +337,7 @@ export function useGameLogic() {
       await axios.post(`/api/games/${gameId}/start`, undefined, hostHeaders);
       setStarted(true);
       const map: Record<string, number> = {};
-      scores.forEach(s => { map[s.playerName] = s.score; });
+      scoresRef.current.forEach(s => { map[s.playerName] = s.score; });
       roundStartScoresRef.current = map;
       await fetchEntries();
       await fetchScores();

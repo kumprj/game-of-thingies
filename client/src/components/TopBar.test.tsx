@@ -15,6 +15,11 @@ describe('TopBar', () => {
     expect(screen.getByRole('button', {name: 'Toggle Dark Mode'})).toBeInTheDocument();
   });
 
+  it('shows the title when provided', () => {
+    render(<TopBar title="My Game" />);
+    expect(screen.getByText('My Game')).toBeInTheDocument();
+  });
+
   it('works with nothing to show', () => {
     render(<TopBar/>);
     expect(screen.getByRole('button', {name: 'Toggle Dark Mode'})).toBeInTheDocument();

@@ -133,19 +133,12 @@ struct HomeView: View {
     }
 
     private func loadRecentGames() {
-        if let data = UserDefaults.standard.data(forKey: "got_recent_games"),
-           let list = try? JSONDecoder().decode([RecentGameRecord].self, from: data) {
-            recentGames = list
-        } else {
-            recentGames = []
-        }
+        recentGames = RecentGamesStore.load()
     }
 
     private func deleteRecent(at offsets: IndexSet) {
         recentGames.remove(atOffsets: offsets)
-        if let data = try? JSONEncoder().encode(recentGames) {
-            UserDefaults.standard.set(data, forKey: "got_recent_games")
-        }
+        RecentGamesStore.save(recentGames)
     }
 
     private func createGame() {
@@ -161,13 +154,6 @@ struct HomeView: View {
             }
         }
     }
-}
-
-struct RecentGameRecord: Codable, Identifiable {
-    var id: String { gameId }
-    let gameId: String
-    let title: String
-    let lastVisited: Double
 }
 
 extension String {

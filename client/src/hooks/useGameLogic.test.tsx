@@ -176,6 +176,31 @@ describe('useGameLogic socket events', () => {
     expect(result.current.toast?.message).toMatch(/game has started/);
   });
 
+  it('captures current scores when a new round starts for accurate recap (#44)', async () => {
+    const {result} = await mount();
+    serve({scores: [{playerName: 'Ann', score: 2}, {playerName: 'Ben', score: 1}]});
+    await act(async () => handler('scoreUpdated')({playerName: 'Ann'}));
+    await waitFor(() => expect(result.current.scores).toEqual([
+      {playerName: 'Ann', score: 2}, {playerName: 'Ben', score: 1}
+    ]));
+
+    await act(async () => handler('gameStarted')({turnOrder: ['Ann', 'Ben']}));
+
+    // Round ends with Ann gaining 1 (total 3) and Ben gaining 2 (total 3)
+    serve({
+      entries: [{entryId: '1', guessed: true, text: 'A', authorName: 'Ann'}],
+      scores: [{playerName: 'Ann', score: 3}, {playerName: 'Ben', score: 3}]
+    });
+    await act(async () => {
+      handler('entriesUpdated')();
+      handler('scoreUpdated')({playerName: 'Ben'});
+    });
+    await waitFor(() => expect(result.current.roundRecap).not.toBeNull());
+
+    expect(result.current.roundRecap?.mostGuessesRound).toBe('Ben (2)');
+    expect(result.current.roundRecap?.overallLeader).toBe('Ann (3), Ben (3)');
+  });
+
   it('moves the turn on', async () => {
     const {result} = await mount();
     act(() => handler('nextTurn')({currentPlayer: 'Cy', turnOrder: ['Cy', 'Ann']}));
