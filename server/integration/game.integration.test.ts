@@ -419,15 +419,16 @@ describe('answer validation', () => {
     expect(await entries(gameId)).toMatchObject([{authorName: 'Ann', text: 'Pizza'}]);
   });
 
-  it('keeps one answer per player: a second submit replaces the first', async () => {
+  it('rejects a duplicate name (case-insensitive) and keeps the first answer', async () => {
     const gameId = await createGame();
-    const first = await addEntry(gameId, 'Ann', 'Pizza');
-    const second = await addEntry(gameId, 'Ann', 'Tacos');
-    expect(second).toBe(first);
+    await addEntry(gameId, 'Ann', 'Pizza');
+    const dupe = await post(gameId, {authorName: 'Ann', text: 'Tacos'});
+    expect(dupe.status).toBe(409);
+    expect(dupe.data.error).toMatch(/taken/);
+    expect((await post(gameId, {authorName: ' ann ', text: 'Tacos'})).status).toBe(409);
     await addEntry(gameId, 'Ben', 'Soup');
-    const all = await entries(gameId);
-    expect(all).toHaveLength(2);
-    expect(all.find(e => e.authorName === 'Ann').text).toBe('Tacos');
+    expect(await entries(gameId)).toHaveLength(2);
+    expect((await entries(gameId)).find(e => e.authorName === 'Ann').text).toBe('Pizza');
   });
 
   it('returns 404 for an unknown game', async () => {
@@ -443,8 +444,8 @@ describe('answer validation', () => {
     const late = await post(gameId, {authorName: 'Ben', text: 'Soup'});
     expect(late.status).toBe(400);
     expect(late.data.error).toMatch(/started/);
-    const replace = await post(gameId, {authorName: 'Ann', text: 'Changed'});
-    expect(replace.status).toBe(400);
+    const again = await post(gameId, {authorName: 'Ann', text: 'Changed'});
+    expect(again.status).toBe(400);
     expect(await entries(gameId)).toMatchObject([{authorName: 'Ann', text: 'Pizza'}]);
   });
 });

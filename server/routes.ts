@@ -61,8 +61,7 @@ router.post('/createGame', async (req, res) => {
   }
 });
 
-// Add Entry. One answer per player: a second submit from the same name replaces their earlier
-// answer (same entryId), so a player never holds two turn-order slots.
+// Add Entry. Names are unique within a game (case-insensitive); a duplicate is rejected with 409.
 export const MAX_NAME_LENGTH = 30;
 export const MAX_ANSWER_LENGTH = 200;
 
@@ -94,9 +93,11 @@ router.post('/games/:gameId/entries', async (req, res) => {
       KeyConditionExpression: 'gameId = :g',
       ExpressionAttributeValues: {':g': gameId}
     }));
-    const previous = (existing.Items || []).find((e: any) => e.authorName === authorName);
+    const taken = (existing.Items || []).some(
+        (e: any) => e.authorName.toLowerCase() === authorName.toLowerCase());
+    if (taken) return res.status(409).json({error: 'That name is already taken in this game'});
 
-    const entryId = previous?.entryId ?? uuidv4();
+    const entryId = uuidv4();
     const createdAt = new Date().toISOString();
     await ddb.send(new PutCommand({
       TableName: tables.entries,
