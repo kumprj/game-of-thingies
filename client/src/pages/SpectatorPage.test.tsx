@@ -1,8 +1,8 @@
-import {render, screen, waitFor} from '@testing-library/react';
+import {render, screen, waitFor, act} from '@testing-library/react';
 import {beforeEach, describe, it, expect, vi} from 'vitest';
 import {BrowserRouter, MemoryRouter, Route, Routes} from 'react-router-dom';
 import SpectatorPage from './SpectatorPage';
-import axios from '../gameConfig';
+import axios, {socket} from '../gameConfig';
 
 vi.mock('../gameConfig', () => ({
   default: {
@@ -89,6 +89,49 @@ describe('SpectatorPage (#73)', () => {
     expect(screen.getByText('Dogs')).toBeInTheDocument();
     expect(screen.getByText('✓ Written by Alice')).toBeInTheDocument();
     expect(screen.getByText('Cats')).toBeInTheDocument();
+  });
+
+  it('updates turn, answers and scores live as people guess', async () => {
+    let entries = [
+      {entryId: '1', authorName: 'Alice', text: 'Dogs', guessed: false, revealed: true},
+      {entryId: '2', authorName: 'Bob', text: 'Cats', guessed: false, revealed: true}
+    ];
+    let scores: any[] = [];
+    (axios.get as any).mockImplementation((url: string) => {
+      if (url.endsWith('/entries')) return Promise.resolve({data: entries});
+      if (url.endsWith('/scores')) return Promise.resolve({data: scores});
+      return Promise.resolve({data: {gameId: 'TEST', title: 'Party Game', question: 'Q?', started: true,
+        turnOrder: ['Alice', 'Bob']}});
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/TEST/watch']}>
+        <Routes>
+          <Route path="/:gameId/watch" element={<SpectatorPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+    expect(await screen.findByText(/Alice's turn to guess/)).toBeInTheDocument();
+
+    const fire = async (event: string, data?: any) => {
+      const handler = (socket.on as any).mock.calls.filter((c: any[]) => c[0] === event).pop()[1];
+      await act(async () => { handler(data); });
+    };
+
+    // Wrong guess rotates the turn
+    await fire('wrongAnswer', {playerName: 'Alice', guess: 'Cats'});
+    await fire('nextTurn', {currentPlayer: 'Bob', turnOrder: ['Bob', 'Alice']});
+    expect(await screen.findByText(/Bob's turn to guess/)).toBeInTheDocument();
+
+    // Correct guess: entry flips to guessed, score appears, turn order shrinks
+    entries = [{...entries[0]}, {...entries[1], guessed: true}];
+    scores = [{playerName: 'Alice', score: 1}];
+    await fire('scoreUpdated', {playerName: 'Alice', authorName: 'Bob', guess: 'Cats'});
+    await fire('entriesUpdated');
+    await fire('nextTurn', {currentPlayer: 'Alice', turnOrder: ['Alice']});
+    expect(await screen.findByText('✓ Written by Bob')).toBeInTheDocument();
+    expect(await screen.findByText(/Alice's turn to guess/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getAllByText('Alice').length).toBeGreaterThan(0));
   });
 
   it('shows not-found state for unknown game', async () => {
