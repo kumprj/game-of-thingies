@@ -85,22 +85,32 @@ jobs:
           # Boot in background so simulator warms up while code compiles
           xcrun simctl boot "$id" >/dev/null 2>&1 || true
 
-      - name: Build and test
+      - name: Build for testing
         run: |
-          xcodebuild test \
+          xcodebuild build-for-testing \
             -project GameOfThings.xcodeproj \
             -scheme GameOfThings \
-            -destination "platform=iOS Simulator,id=$SIMULATOR_ID,arch=arm64" \
-            -resultBundlePath "$RUNNER_TEMP/GameOfThings.xcresult" \
-            -test-timeouts-enabled YES \
-            -maximum-test-execution-time-allowance 60 \
-            -retry-tests-on-failure \
-            -test-iterations 2 \
+            -destination "generic/platform=iOS Simulator" \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            ENABLE_PREVIEWS=NO \
+            SWIFT_COMPILATION_MODE=wholemodule \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            DEBUG_INFORMATION_FORMAT=dwarf \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            COMPILER_INDEX_STORE_ENABLE=NO \
-            DEBUG_INFORMATION_FORMAT=dwarf
+            CODE_SIGN_IDENTITY=""
+
+      - name: Run tests
+        run: |
+          xcrun simctl bootstatus "$SIMULATOR_ID" -b
+          xcodebuild test-without-building \
+            -project GameOfThings.xcodeproj \
+            -scheme GameOfThings \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            -resultBundlePath "$RUNNER_TEMP/GameOfThings.xcresult" \
+            -test-timeouts-enabled YES \
+            -maximum-test-execution-time-allowance 60
 
       - name: Shutdown simulator
         if: always()
