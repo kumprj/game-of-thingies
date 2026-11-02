@@ -247,14 +247,10 @@ final class GameStore {
         authorName = authorName.trimmed
         addEntryLoading = true
         defer { addEntryLoading = false }
-        let began = ContinuousClock.now
         do {
             try await api.addEntry(gameId: gameId, authorName: authorName, text: entryText.trimmed)
             entryText = ""
             await fetchEntries()
-            // Keep the spinner up long enough to register
-            let elapsed = ContinuousClock.now - began
-            if elapsed < .seconds(1) { try? await Task.sleep(for: .seconds(1) - elapsed) }
             hasSubmitted = true
             show("Entry added!")
         } catch {
@@ -312,7 +308,6 @@ final class GameStore {
             guessLoading = false
             guessingEntry = nil
         }
-        try? await Task.sleep(for: .seconds(1.5)) // suspense, as on the web
         do {
             let correct = try await api.guess(gameId: gameId, entryId: entry.entryId,
                                               guesserName: authorName, guess: author)

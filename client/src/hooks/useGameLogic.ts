@@ -36,7 +36,6 @@ export function useGameLogic() {
   const [startNewRoundLoading, setStartNewRoundLoading] = useState(false); // Indicates whether the "start new round" action is loading.
   const [guessLoading, setGuessLoading] = useState(false); // Indicates whether the "guess author" action is loading.
   const [guessingEntry, setGuessingEntry] = useState<Entry | null>(null); // Stores the entry currently being guessed.
-  const [guessedEntryIds, setGuessedEntryIds] = useState<Set<string>>(new Set()); // Stores the IDs of guessed entries.
   const [isConnected, setIsConnected] = useState(true);
   const [showStartConfirm, setShowStartConfirm] = useState(false); // Indicates whether the start confirmation modal is visible.
   const [showHowToPlay, setShowHowToPlay] = useState(false); // Indicates whether the "how to play" modal is visible.
@@ -52,11 +51,6 @@ export function useGameLogic() {
   } | null>(null); // Stores the toast notification state.
 
   // --- Helpers ---
-  /**
-   * Sleeps for the specified number of milliseconds.
-   * @param ms - The number of milliseconds to sleep.
-   */
-  const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
   /**
    * Triggers a confetti animation.
    */
@@ -103,6 +97,7 @@ export function useGameLogic() {
         const res = await axios.get(`/api/games/${gameId}`);
         setGameQuestion(res.data.question || null);
         setGameTitle(res.data.gameOwner || null);
+        setStarted(res.data.started === true);
         if (res.data.turnOrder) {
           setTurnOrder(res.data.turnOrder);
           setCurrentPlayer(res.data.turnOrder[0] || null);
@@ -208,14 +203,16 @@ export function useGameLogic() {
     socket.on("connect", stopPolling);
     socket.on("disconnect", startPolling);
 
-
     return () => {
-      socket.off("entriesUpdated");
-      socket.off("gameStarted");
-      socket.off("wrongAnswer");
-      socket.off("gameReset");
-      socket.off("scoreUpdated");
-      socket.off("nextTurn");
+      // Pass each handler: off(event) alone would also remove other components' listeners.
+      socket.off("entriesUpdated", onEntriesUpdated);
+      socket.off("gameStarted", onGameStarted);
+      socket.off("wrongAnswer", onWrongAnswer);
+      socket.off("gameReset", onGameReset);
+      socket.off("scoreUpdated", onScoreUpdated);
+      socket.off("nextTurn", onNextTurn);
+      socket.off("connect", stopPolling);
+      socket.off("disconnect", startPolling);
       if (pollInterval) clearInterval(pollInterval);
     };
   }, [gameId]);
@@ -242,11 +239,7 @@ export function useGameLogic() {
     if (!gameId) return;
     try {
       const res = await axios.get(`/api/games/${gameId}/entries`);
-      const sortedEntries = (res.data ?? []).slice().sort(
-          (a: Entry, b: Entry) => a.text.localeCompare(b.text, undefined, {sensitivity: "base"})
-      );
-      setEntries(sortedEntries);
-      setStarted(sortedEntries.some((e: Entry) => e.revealed));
+      setEntries(res.data ?? []);
     } catch (err) {
       console.error("Error fetching entries", err);
     }
@@ -259,13 +252,10 @@ export function useGameLogic() {
     if (addEntryInFlight.current || started || !entryText.trim() || !authorName.trim()) return;
     addEntryInFlight.current = true;
     setAddEntryLoading(true);
-    const startTime = Date.now();
     try {
       await axios.post(`/api/games/${gameId}/entries`, {authorName: authorName.trim(), text: entryText.trim()});
       setEntryText("");
       await fetchEntries();
-      const elapsed = Date.now() - startTime;
-      if (1000 - elapsed > 0) await sleep(1000 - elapsed);
       setToast({message: "Entry added!", type: "success"});
     } catch (error) {
       const serverMessage = (error as any)?.response?.data?.error;
@@ -316,7 +306,6 @@ export function useGameLogic() {
       await axios.post(`/api/games/${gameId}/reset`, {question: newQuestion.trim()}, hostHeaders);
       setNewQuestion("");
       setEntries([]);
-      setGuessedEntryIds(new Set());
       setStarted(false);
     } catch (err) {
       console.error("Reset failed", err);
@@ -332,26 +321,13 @@ export function useGameLogic() {
    */
   const guessAuthor = async (entryId: string, guess: string) => {
     setGuessLoading(true);
-    await sleep(1500);
-
     try {
       const response = await axios.post(`/api/games/${gameId}/entries/${entryId}/guess`, {
         guesserName: authorName, guess
       });
-      const data = response.data;
-
-      const isSuccess = data.isCorrect === true || data.success === true;
-
-      if (isSuccess) {
+      if (response.data.isCorrect === true) {
         setToast({message: "Correct!", type: "success"});
-
-        if (data.entry) {
-          setEntries(prev => prev.map(e => e.entryId === data.entry.entryId ? data.entry : e));
-        } else {
-          fetchEntries();
-        }
-
-        setGuessedEntryIds(prev => new Set(prev).add(entryId));
+        fetchEntries();
         await fetchScores();
 
       } else {
@@ -375,7 +351,7 @@ export function useGameLogic() {
   const sortedEntriesForDisplay = useMemo(() => {
     let sorted = [...entries];
     if (started) {
-      sorted.sort((a, b) => a.text.localeCompare(b.text));
+      sorted.sort((a, b) => a.text.localeCompare(b.text, undefined, {sensitivity: "base"}));
     } else {
       sorted.sort((a, b) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime());
     }
@@ -413,7 +389,6 @@ export function useGameLogic() {
     guessLoading,
     guessingEntry,
     setGuessingEntry,
-    guessedEntryIds,
     showStartConfirm,
     setShowStartConfirm,
     showHowToPlay,
