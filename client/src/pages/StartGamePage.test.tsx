@@ -133,7 +133,7 @@ const answer = (entryId: string, text: string, authorName: string, extra: object
 const baseHook = {
   gameId: 'ABCD', gameTitle: 'Friday night', gameQuestion: 'Worst superpower?',
   entries: [] as any[], scores: [] as any[], turnOrder: [] as string[], currentPlayer: null as string | null,
-  started: false, entryText: '', authorName: '', newQuestion: '', resetCount: 0,
+  started: false, isHost: true, entryText: '', authorName: '', newQuestion: '', resetCount: 0,
   isLoading: false, addEntryLoading: false, startNewRoundLoading: false, guessLoading: false,
   guessingEntry: null as any, showStartConfirm: false, showHowToPlay: false, showScores: false,
   toast: null as any, guessedNames: [] as string[], notGuessedNames: [] as string[],

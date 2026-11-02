@@ -237,6 +237,7 @@ describe('useGameLogic actions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     window.localStorage.clear();
+    window.localStorage.setItem('got_hostToken_test-room-1', 'secret-token');
   });
   afterEach(() => vi.useRealTimers());
 
@@ -332,7 +333,8 @@ describe('useGameLogic actions', () => {
     act(() => result.current.setNewQuestion('  Best pizza?  '));
     (axios.post as any).mockResolvedValueOnce({});
     await act(async () => { await result.current.startNewRound(); });
-    expect(axios.post).toHaveBeenCalledWith('/api/games/test-room-1/reset', {question: 'Best pizza?'});
+    expect(axios.post).toHaveBeenCalledWith(
+        '/api/games/test-room-1/reset', {question: 'Best pizza?'}, {headers: {'x-host-token': 'secret-token'}});
     expect(result.current.entries).toEqual([]);
     expect(result.current.started).toBe(false);
     expect(result.current.newQuestion).toBe('');
