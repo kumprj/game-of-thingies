@@ -46,6 +46,7 @@ struct Game: Decodable {
     var question: String?
     var started: Bool?
     var turnOrder: [String]?
+    var hostName: String?
 }
 
 struct Score: Decodable, Hashable {
@@ -57,6 +58,11 @@ struct Score: Decodable, Hashable {
 
 struct GameStartedEvent: Decodable {
     var turnOrder: [String]?
+}
+
+struct HostTransferredEvent: Decodable {
+    var newHostName: String
+    var hostToken: String
 }
 
 /// Payload of both `wrongAnswer` and `scoreUpdated`; `guess` is the entry's text.

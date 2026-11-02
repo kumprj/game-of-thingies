@@ -101,6 +101,22 @@ describe('useGameLogic Hook', () => {
       '/api/games/test-room-1/start', undefined, {headers: {'x-host-token': 'secret-token'}});
   });
 
+  it('startGame takes the turn order from the response without waiting for the socket', async () => {
+    (axios.get as any).mockResolvedValue({ data: [{ entryId: '1', text: 'A' }] });
+    (axios.post as any).mockResolvedValueOnce({ data: { success: true, turnOrder: ['Bo', 'Ann'] } });
+
+    const { result } = renderHook(() => useGameLogic());
+    await waitFor(() => expect(result.current.entries.length).toBe(1));
+
+    await act(async () => {
+      await result.current.startGame();
+    });
+
+    expect(result.current.started).toBe(true);
+    expect(result.current.turnOrder).toEqual(['Bo', 'Ann']);
+    expect(result.current.currentPlayer).toBe('Bo');
+  });
+
   it('is the host only when this device holds the game\'s token', () => {
     const { result, unmount } = renderHook(() => useGameLogic());
     expect(result.current.isHost).toBe(true);

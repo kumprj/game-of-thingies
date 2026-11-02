@@ -13,6 +13,7 @@ export interface Game {
   gameId: string;
   title?: string;
   gameOwner: string;
+  hostName?: string;
   question: string;
   createdAt: string;
   started: boolean;

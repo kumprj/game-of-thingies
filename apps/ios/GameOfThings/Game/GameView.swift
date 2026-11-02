@@ -128,6 +128,23 @@ struct GameView: View {
                         }
                         .accessibilityLabel("Share game link")
                     }
+
+                    if store.isHost && !store.otherPlayers.isEmpty {
+                        Menu {
+                            ForEach(store.otherPlayers, id: \.self) { player in
+                                Button(player) {
+                                    Task { await store.transferHost(to: player) }
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "person.badge.key")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                                .padding(6)
+                                .background(.fill.tertiary, in: .circle)
+                        }
+                        .accessibilityLabel("Transfer host")
+                    }
                 }
                 Group {
                     if let question = store.gameQuestion {

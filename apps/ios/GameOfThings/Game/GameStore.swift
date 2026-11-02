@@ -49,7 +49,9 @@ final class GameStore {
         didSet { defaults.set(hasSubmitted, forKey: submittedKey) }
     }
 
+    private(set) var hostName: String?
     private(set) var isStarting = false
+    private(set) var transferHostLoading = false
     private(set) var addEntryLoading = false
     private(set) var startNewRoundLoading = false
     private(set) var guessLoading = false
@@ -181,6 +183,18 @@ final class GameStore {
                 turnOrder = data.turnOrder
                 currentPlayer = data.currentPlayer
             }
+        case "hostTransferred":
+            if let data = decode(HostTransferredEvent.self) {
+                hostName = data.newHostName
+                let isMe = authorName.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare(data.newHostName.trimmingCharacters(in: .whitespacesAndNewlines)) == .orderedSame
+                if isMe {
+                    defaults.set(data.hostToken, forKey: APIClient.hostTokenKey(gameId))
+                    show("You are now the host!")
+                } else {
+                    defaults.removeObject(forKey: APIClient.hostTokenKey(gameId))
+                    show("Host duties transferred to \(data.newHostName)")
+                }
+            }
         default:
             break
         }
@@ -213,6 +227,9 @@ final class GameStore {
         gameTitle = game.title ?? game.gameOwner
         if let started = game.started {
             self.started = started
+        }
+        if let host = game.hostName {
+            hostName = host
         }
         if let order = game.turnOrder {
             turnOrder = order
@@ -290,8 +307,12 @@ final class GameStore {
         isStarting = true
         defer { isStarting = false }
         do {
-            try await api.startGame(gameId)
+            let order = try await api.startGame(gameId)
             started = true
+            if !order.isEmpty {
+                turnOrder = order
+                currentPlayer = order.first
+            }
             await fetchEntries()
             await fetchScores()
         } catch let error as APIError where error.status == 409 {
@@ -360,6 +381,29 @@ final class GameStore {
             show("Removed \(name)")
         } catch {
             show((error as? APIError)?.serverMessage ?? "Failed to remove player", .error)
+        }
+    }
+
+    /// Other players in the room who can receive host duties.
+    var otherPlayers: [String] {
+        var names = Set<String>()
+        for e in entries { if !e.authorName.isEmpty { names.insert(e.authorName) } }
+        for t in turnOrder { if !t.isEmpty { names.insert(t) } }
+        for s in scores { if !s.playerName.isEmpty { names.insert(s.playerName) } }
+        names.remove(authorName)
+        return names.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+    }
+
+    func transferHost(to targetPlayerName: String) async -> Bool {
+        guard isHost, !targetPlayerName.trimmed.isEmpty, !transferHostLoading else { return false }
+        transferHostLoading = true
+        defer { transferHostLoading = false }
+        do {
+            try await api.transferHost(gameId: gameId, targetPlayerName: targetPlayerName.trimmed)
+            return true
+        } catch {
+            show((error as? APIError)?.serverMessage ?? error.localizedDescription, .error)
+            return false
         }
     }
 
@@ -450,6 +494,11 @@ final class GameStore {
     /// You can't guess your own answer unless it's the last one left (a free point to end the round).
     func canGuess(_ entry: Entry) -> Bool {
         isMyTurn && !entry.guessed && !(entry.authorName == authorName && !isLastEntry)
+    }
+
+    /// Whether this name can be picked as the author: not fully guessed, and not yourself until you're the last player left.
+    func canPick(_ name: String) -> Bool {
+        !isFullyGuessed(name) && !(name == authorName && turnOrder.count > 1)
     }
 
     /// Every answer by this author has already been guessed.

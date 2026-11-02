@@ -61,6 +61,7 @@ router.post('/createGame', async (req, res) => {
             createdAt,
             title: name,
             gameOwner: name,
+            hostName: name,
             hostToken,
             expiresAt: expiresAt()
           },
@@ -326,7 +327,8 @@ router.post('/games/:gameId/start', async (req, res) => {
 
     const io = (req as any).io;
     io.to(gameId).emit("gameStarted", {turnOrder: shuffled});
-    res.json({success: true});
+    // Returned too so the host doesn't depend on its own socket event to see whose turn it is.
+    res.json({success: true, turnOrder: shuffled});
   } catch (err) {
     console.error(err);
     res.status(500).json({error: 'Start failed'});
@@ -366,6 +368,10 @@ router.post('/games/:gameId/entries/:entryId/guess', async (req, res) => {
     // The last player left may guess their own answer for a free point (ends the round).
     if (item.authorName === guesserName && turnOrder.length > 1) {
       return res.status(400).json({error: "You can't guess your own entry"});
+    }
+    // Naming yourself as the author is only allowed once you're the last player left.
+    if (guess === guesserName && turnOrder.length > 1) {
+      return res.status(400).json({error: "You can't guess yourself until you're the last player left"});
     }
     if (item.guessed) {
       return res.status(409).json({error: 'That entry has already been guessed'});
@@ -506,6 +512,46 @@ router.delete('/games/:gameId/players/:playerName', async (req, res) => {
   } catch (err) {
     console.error('Remove player failed:', err);
     res.status(500).json({error: 'Failed to remove player'});
+  }
+});
+
+// Transfer Host (Host only)
+router.post('/games/:gameId/transfer-host', async (req, res) => {
+  const {gameId} = req.params;
+  const {targetPlayerName: rawTarget} = req.body ?? {};
+
+  if (typeof rawTarget !== 'string' || !rawTarget.trim()) {
+    return res.status(400).json({error: 'Target player name is required'});
+  }
+  const targetPlayerName = rawTarget.trim();
+
+  try {
+    const game = await getGame(gameId);
+    if (!game) return res.status(404).json({error: 'Game not found'});
+    if (!isHost(game, req)) return res.status(403).json({error: 'Only the host can transfer host privileges'});
+
+    const newHostToken = uuidv4();
+    await ddb.send(new UpdateCommand({
+      TableName: tables.games,
+      Key: {gameId},
+      UpdateExpression: 'SET hostToken = :token, hostName = :name, expiresAt = :e',
+      ExpressionAttributeValues: {
+        ':token': newHostToken,
+        ':name': targetPlayerName,
+        ':e': expiresAt()
+      }
+    }));
+
+    const io = (req as any).io;
+    io.to(gameId).emit('hostTransferred', {
+      newHostName: targetPlayerName,
+      hostToken: newHostToken
+    });
+
+    res.json({success: true, newHostName: targetPlayerName});
+  } catch (err) {
+    console.error('Transfer host failed:', err);
+    res.status(500).json({error: 'Failed to transfer host'});
   }
 });
 

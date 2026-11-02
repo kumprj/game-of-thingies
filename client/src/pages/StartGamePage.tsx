@@ -131,6 +131,7 @@ export default function StartGamePage() {
     deleteEntry,
     skipTurn,
     removePlayer,
+    transferHost,
     startGame,
     startNewRound,
     guessAuthor,
@@ -151,6 +152,16 @@ export default function StartGamePage() {
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
   const [editLoading, setEditLoading] = useState(false);
+  const [showTransferHostModal, setShowTransferHostModal] = useState(false);
+  const [transferringHost, setTransferringHost] = useState(false);
+
+  const otherPlayers = Array.from(
+    new Set([
+      ...entries.map(e => e.authorName),
+      ...turnOrder,
+      ...scores.map(s => s.playerName)
+    ])
+  ).filter(name => name && name !== authorName);
 
   // Check if user already submitted for this specific Game ID
   useEffect(() => {
@@ -324,6 +335,17 @@ export default function StartGamePage() {
               >
                 Watch on a screen
               </Link>
+              {isHost && otherPlayers.length > 0 && (
+                <button
+                  type="button"
+                  className="btn btn-tinted"
+                  style={{padding: '4px 10px', fontSize: 13, borderRadius: 16}}
+                  onClick={() => setShowTransferHostModal(true)}
+                  aria-label="Transfer Host"
+                >
+                  Transfer Host
+                </button>
+              )}
             </div>
           )}
           <p className="question" style={{marginTop: 8, minHeight: 29}}>
@@ -621,7 +643,8 @@ export default function StartGamePage() {
                 <p>“{guessingEntry.text}”</p>
                 <div className="stack">
                   {uniqueNames.map(name => {
-                    const disabled = entries.filter(e => e.authorName === name).every(e => e.guessed);
+                    const disabled = entries.filter(e => e.authorName === name).every(e => e.guessed)
+                        || (name === authorName && turnOrder.length > 1);
                     return (
                         <button key={name} className="btn btn-tinted btn-block"
                                 disabled={disabled || guessLoading}
@@ -655,6 +678,48 @@ export default function StartGamePage() {
                   </button>
                   <button className="btn btn-gray btn-block" onClick={() => setShowStartConfirm(false)}>
                     Wait, Not Yet
+                  </button>
+                </div>
+            </Modal>
+        )}
+        </AnimatePresence>
+
+        {/* Transfer Host Modal */}
+        <AnimatePresence>
+        {showTransferHostModal && (
+            <Modal key="transfer-host" role="dialog" onClose={() => setShowTransferHostModal(false)} labelledBy="transfer-host-title">
+                <h3 id="transfer-host-title">Transfer Host</h3>
+                <p className="footnote" style={{marginBottom: 16}}>
+                  Select a player to become the new host.
+                </p>
+                <div className="stack" style={{maxHeight: 240, overflowY: 'auto'}}>
+                  {otherPlayers.map(player => (
+                    <button
+                      key={player}
+                      type="button"
+                      className="btn btn-tinted btn-block"
+                      disabled={transferringHost}
+                      onClick={async () => {
+                        setTransferringHost(true);
+                        const success = await transferHost(player);
+                        setTransferringHost(false);
+                        if (success) {
+                          setShowTransferHostModal(false);
+                        }
+                      }}
+                    >
+                      {transferringHost ? 'Transferring...' : player}
+                    </button>
+                  ))}
+                </div>
+                <div className="row" style={{marginTop: 16}}>
+                  <button
+                    type="button"
+                    className="btn btn-gray btn-block"
+                    disabled={transferringHost}
+                    onClick={() => setShowTransferHostModal(false)}
+                  >
+                    Cancel
                   </button>
                 </div>
             </Modal>
