@@ -203,6 +203,7 @@ button:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent-blue) 
 .btn-tinted  { background: color-mix(in srgb, var(--accent-blue) 15%, transparent); color: var(--accent-blue); }
 .btn-gray    { background: var(--fill); color: var(--text-main); }
 .btn-block   { width: 100%; }
+.btn-pill    { min-height: 28px; padding: 4px 10px; font-size: 13px; border-radius: 16px; }
 
 .btn-text {
     color: var(--accent-blue);
@@ -572,6 +573,14 @@ input:disabled { opacity: 0.6; }
     background: color-mix(in srgb, var(--accent-green) 20%, transparent);
     color: var(--accent-green);
     text-decoration: none;
+}
+
+.qr-container {
+    background: #ffffff;
+    padding: 8px;
+    border-radius: 12px;
+    display: inline-block;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 @media (prefers-reduced-motion: reduce) {

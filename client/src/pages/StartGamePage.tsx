@@ -8,7 +8,9 @@ import TopBar from "../components/TopBar";
 import Modal from "../components/Modal";
 import Collapse from "../components/Collapse";
 import Toast from "../components/Toast";
+import QRCodeModal from "../components/QRCodeModal";
 import {EASE_OUT} from "../components/motion";
+import {playTurnSound} from "../audio";
 import {Entry} from "../../../types";
 
 
@@ -66,11 +68,14 @@ export default function StartGamePage() {
     canPick,
     uniqueNames,
     roundRecap,
+    shareableRecapText,
     otherPlayers
   } = useGameLogic();
 
   const [hasSubmitted, setHasSubmitted] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
+  const [copiedRecap, setCopiedRecap] = useState(false);
+  const [showQRModal, setShowQRModal] = useState(false);
   const [isChangingName, setIsChangingName] = useState(false);
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
@@ -103,7 +108,7 @@ export default function StartGamePage() {
   const inputsLocked = isLoading || addEntryLoading || hasSubmitted;
   const canAdd = !!entryText.trim() && !!authorName.trim() && !inputsLocked;
 
-  // Tab title and vibration for "Your Turn" (#43)
+  // Tab title and vibration/sound for "Your Turn" (#43)
   useEffect(() => {
     const originalTitle = document.title;
     if (isMyTurn && !roundOver && started) {
@@ -111,6 +116,7 @@ export default function StartGamePage() {
       if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
         try { navigator.vibrate(200); } catch {}
       }
+      playTurnSound();
     } else {
       document.title = "Game of Things";
     }
@@ -158,6 +164,29 @@ export default function StartGamePage() {
       setToast({message: "Game link copied to clipboard!", type: "success"});
     } catch {
       handleCopyCode();
+    }
+  };
+
+  const handleShareRecap = async () => {
+    if (!shareableRecapText) return;
+
+    if (typeof navigator !== "undefined" && navigator.share) {
+      try {
+        await navigator.share({
+          title: "Game of Things Recap",
+          text: shareableRecapText
+        });
+        return;
+      } catch (err: any) {
+        if (err.name === 'AbortError') return;
+      }
+    }
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      try {
+        await navigator.clipboard.writeText(shareableRecapText);
+        setCopiedRecap(true);
+        setTimeout(() => setCopiedRecap(false), 2000);
+      } catch {}
     }
   };
 
@@ -232,19 +261,25 @@ export default function StartGamePage() {
               </button>
               <button
                 type="button"
-                className="btn btn-tinted"
-                style={{padding: '4px 10px', fontSize: 13, borderRadius: 16}}
+                className="btn btn-tinted btn-pill"
                 onClick={handleShare}
                 aria-label="Share game link"
               >
                 Share
               </button>
+              <button
+                type="button"
+                className="btn btn-tinted btn-pill"
+                onClick={() => setShowQRModal(true)}
+                aria-label="Show QR code"
+              >
+                QR Code
+              </button>
               <Link
                 to={`/${gameId}/watch`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="btn btn-gray"
-                style={{padding: '4px 10px', fontSize: 13, borderRadius: 16}}
+                className="btn btn-gray btn-pill"
                 aria-label="Watch on a screen"
               >
                 Watch on a screen
@@ -252,8 +287,7 @@ export default function StartGamePage() {
               {isHost && otherPlayers.length > 0 && (
                 <button
                   type="button"
-                  className="btn btn-tinted"
-                  style={{padding: '4px 10px', fontSize: 13, borderRadius: 16}}
+                  className="btn btn-tinted btn-pill"
                   onClick={() => setShowTransferHostModal(true)}
                   aria-label="Transfer Host"
                 >
@@ -499,7 +533,17 @@ export default function StartGamePage() {
         {/* End of Round Recap */}
         {allGuessed && roundRecap && (
           <section className="card stack" style={{background: 'rgba(52, 199, 89, 0.1)', border: '1px solid rgba(52, 199, 89, 0.3)'}}>
-            <h4 style={{margin: 0, color: '#34c759'}}>Round Recap</h4>
+            <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
+              <h4 style={{margin: 0, color: '#34c759'}}>Round Recap</h4>
+              <button
+                type="button"
+                className="btn btn-tinted btn-pill"
+                onClick={handleShareRecap}
+                aria-label="Share recap"
+              >
+                {copiedRecap ? "✓ Copied!" : "Share Recap"}
+              </button>
+            </div>
             <div style={{fontSize: 15}}>
               <div><strong>Most guesses this round:</strong> {roundRecap.mostGuessesRound}</div>
               <div style={{marginTop: 4}}><strong>Overall leader:</strong> {roundRecap.overallLeader}</div>
@@ -641,6 +685,12 @@ export default function StartGamePage() {
         <AnimatePresence>
         {toast && <Toast key="toast" message={toast.message} type={toast.type}/>}
         </AnimatePresence>
+
+        <QRCodeModal
+          gameId={gameId || ""}
+          isOpen={showQRModal}
+          onClose={() => setShowQRModal(false)}
+        />
       </div>
   );
 }

@@ -481,6 +481,16 @@ final class GameStore {
         return (mostText, leaderText)
     }
 
+    /// Formatted recap text for sharing.
+    var shareableRecapText: String? {
+        guard let recap = roundRecapText else { return nil }
+        var lines = ["Game of Things - Round Recap"]
+        if let q = gameQuestion, !q.isEmpty { lines.append("Question: \"\(q)\"") }
+        lines.append("🎯 Most guesses: \(recap.mostGuesses)")
+        lines.append("🏆 Overall leader: \(recap.leader)")
+        return lines.joined(separator: "\n")
+    }
+
     /// Revealed answers alphabetically; before the reveal, in submission order.
     var sortedEntriesForDisplay: [Entry] {
         started

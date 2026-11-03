@@ -300,6 +300,13 @@ struct GameView: View {
                     Text(recap.leader)
                         .font(.subheadline.bold())
                 }
+                if let shareText = store.shareableRecapText {
+                    ShareLink(item: shareText) {
+                        Label("Share Recap", systemImage: "square.and.arrow.up")
+                            .font(.footnote)
+                    }
+                    .padding(.top, 4)
+                }
             }
             .padding(.vertical, 4)
         }

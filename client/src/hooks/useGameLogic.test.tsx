@@ -276,6 +276,9 @@ describe('useGameLogic socket events', () => {
 
     expect(result.current.roundRecap?.mostGuessesRound).toBe('Ben (2)');
     expect(result.current.roundRecap?.overallLeader).toBe('Ann (3), Ben (3)');
+    expect(result.current.shareableRecapText).toBe(
+      'Game of Things - Round Recap\nQuestion: "What is cool?"\n🎯 Most guesses: Ben (2)\n🏆 Overall leader: Ann (3), Ben (3)'
+    );
   });
 
   it('moves the turn on', async () => {
