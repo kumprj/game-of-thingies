@@ -429,5 +429,20 @@ struct GameStoreTests {
         #expect(store.hostName == "Bo")
         #expect(store.toast?.message == "Host duties transferred to Bo")
     }
+
+    @Test func shareableRecapTextFormatsNicely() async {
+        let store = await makeStore(
+            entries: "[\(Self.entry("1", "Ann", "mine", guessed: true)),\(Self.entry("2", "Bo", "his", guessed: true))]",
+            game: #"{"question":"Favorite food?"}"#,
+            scores: #"[{"playerName":"Ann","score":3},{"playerName":"Bo","score":1}]"#
+        )
+        #expect(store.allGuessed)
+        let recap = store.roundRecapText
+        #expect(recap?.leader == "Ann (3)")
+        let text = store.shareableRecapText
+        #expect(text?.contains("Game of Things - Round Recap") == true)
+        #expect(text?.contains("Question: \"Favorite food?\"") == true)
+        #expect(text?.contains("🏆 Overall leader: Ann (3)") == true)
+    }
 }
 }

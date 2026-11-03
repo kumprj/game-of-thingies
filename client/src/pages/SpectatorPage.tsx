@@ -1,8 +1,10 @@
-import React, {useState, useEffect} from "react";
+import React, {useState, useEffect, useRef} from "react";
 import {Link} from "react-router-dom";
+import QRCode from "qrcode";
 import {useGameLogic} from "../hooks/useGameLogic";
 import Scoreboard from "../components/Scoreboard";
 import TopBar from "../components/TopBar";
+import QRCodeModal from "../components/QRCodeModal";
 
 export default function SpectatorPage() {
   const {
@@ -23,6 +25,9 @@ export default function SpectatorPage() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [wakeLockActive, setWakeLockActive] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
+  const [showQRModal, setShowQRModal] = useState(false);
+  const lobbyQrRef = useRef<HTMLCanvasElement | null>(null);
+  const gameUrl = typeof window !== "undefined" && gameId ? `${window.location.origin}/${gameId}` : "";
 
   const handleCopyCode = async () => {
     if (!gameId) return;
@@ -32,6 +37,38 @@ export default function SpectatorPage() {
       setTimeout(() => setCopiedCode(false), 2000);
     } catch {}
   };
+
+  useEffect(() => {
+    if (!started && lobbyQrRef.current && gameUrl) {
+      QRCode.toCanvas(lobbyQrRef.current, gameUrl, {
+        width: 180,
+        margin: 2,
+        color: {dark: "#000000", light: "#ffffff"}
+      }).catch(() => {});
+    }
+  }, [started, gameUrl]);
+
+  const roundOver = started && (allGuessed || turnOrder.length === 0);
+
+  // Dynamic document title for Spectator screen
+  useEffect(() => {
+    const originalTitle = document.title;
+    if (gameNotFound) {
+      document.title = "Game not found - Game of Things";
+    } else if (!started) {
+      const count = entries.length;
+      document.title = `(Lobby: ${count} ${count === 1 ? "answer" : "answers"}) ${gameTitle || gameId || "Game of Things"}`;
+    } else if (roundOver) {
+      document.title = `(Round Over) ${gameTitle || gameId || "Game of Things"}`;
+    } else if (currentPlayer) {
+      document.title = `(${currentPlayer}'s turn) ${gameTitle || gameId || "Game of Things"}`;
+    } else {
+      document.title = gameTitle || gameId || "Game of Things";
+    }
+    return () => {
+      document.title = originalTitle || "Game of Things";
+    };
+  }, [gameNotFound, started, roundOver, currentPlayer, entries.length, gameTitle, gameId]);
 
   // Screen Wake Lock API to prevent TV / display from sleeping
   useEffect(() => {
@@ -84,8 +121,6 @@ export default function SpectatorPage() {
     );
   }
 
-  const roundOver = started && (allGuessed || turnOrder.length === 0);
-
   return (
     <div className="spectator-view page">
       <TopBar title={gameTitle || "Game of Things"} />
@@ -102,6 +137,9 @@ export default function SpectatorPage() {
         </button>
         <div className="spectator-bar-actions">
           {wakeLockActive && <span className="footnote spectator-awake">● Screen Awake</span>}
+          <button type="button" className="btn btn-tinted" onClick={() => setShowQRModal(true)} aria-label="Show QR Code">
+            QR Code
+          </button>
           <button type="button" className="btn btn-tinted" onClick={toggleFullscreen}>
             {isFullscreen ? "Exit Fullscreen" : "Fullscreen / TV"}
           </button>
@@ -131,6 +169,14 @@ export default function SpectatorPage() {
           {answeredNames && answeredNames.length > 0 && (
             <div className="footnote" style={{marginTop: 8}} data-testid="spectator-answered-names">
               {`Answers in (${answeredNames.length}): ${answeredNames.join(", ")}`}
+            </div>
+          )}
+          {gameUrl && (
+            <div style={{display: "flex", flexDirection: "column", alignItems: "center", marginTop: 16}}>
+              <div style={{background: "#ffffff", padding: 8, borderRadius: 12, display: "inline-block", boxShadow: "0 2px 8px rgba(0,0,0,0.1)"}}>
+                <canvas ref={lobbyQrRef} data-testid="spectator-lobby-qr" style={{display: "block"}} />
+              </div>
+              <span className="footnote" style={{marginTop: 6}}>Scan with phone camera to join</span>
             </div>
           )}
         </section>
@@ -186,6 +232,12 @@ export default function SpectatorPage() {
           </aside>
         </div>
       )}
+
+      <QRCodeModal
+        gameId={gameId || ""}
+        isOpen={showQRModal}
+        onClose={() => setShowQRModal(false)}
+      />
     </div>
   );
 }

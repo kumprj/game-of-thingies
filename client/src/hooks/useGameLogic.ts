@@ -6,6 +6,7 @@ import {Entry, Score} from "../../../types";
 import {getHostToken, saveHostToken, removeHostToken} from "../hostToken";
 import {errorMessage} from "../errorMessage";
 import {saveRecentGame, removeRecentGame} from "../recentGames";
+import {playCorrectSound, playWrongSound} from "../audio";
 
 /**
  * Custom hook to manage game logic and state.
@@ -225,6 +226,7 @@ export function useGameLogic() {
     };
 
     const onWrongAnswer = (data: { playerName: string; guess: string }) => {
+      playWrongSound();
       setToast({
         message: `❌ ${data.playerName} guessed wrong for '${data.guess}'!`,
         type: 'error',
@@ -243,6 +245,7 @@ export function useGameLogic() {
     const onScoreUpdated = (data: any) => {
       fetchScores();
       triggerConfetti();
+      playCorrectSound();
       setToast({
         message: `🎉 ${data?.playerName || 'Someone'} got it right! The answer was '${data?.guess}', written by ${data?.authorName}`,
         type: 'success',
