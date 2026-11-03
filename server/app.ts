@@ -44,6 +44,11 @@ export function createServer() {
   // Health check for the load balancer (sst.config.ts)
   app.get("/health", (req, res) => res.send("OK"));
 
+  // 404 handler for unrecognized API routes
+  app.use('/api', (req, res) => {
+    res.status(404).json({error: 'Not found'});
+  });
+
   // Must come after the routes and body parser: turns their errors into JSON responses
   app.use(errorHandler);
 
