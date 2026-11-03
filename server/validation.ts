@@ -13,6 +13,39 @@ type Invalid = {ok: false; error: string};
 
 const asRecord = (body: unknown) => (body && typeof body === 'object' ? body : {}) as Record<string, unknown>;
 
+/** Validates an entry creation payload (author name and answer text). */
+export function validateEntryInput(body: unknown): {ok: true; authorName: string; text: string} | {ok: false; error: string} {
+  const {authorName: rawName, text: rawText} = (body && typeof body === 'object' ? body : {}) as Record<string, unknown>;
+  if (typeof rawName !== 'string' || typeof rawText !== 'string') {
+    return {ok: false, error: 'Name and answer must be text'};
+  }
+  const authorName = rawName.trim();
+  const text = rawText.trim();
+  if (!authorName) return {ok: false, error: 'Name is required'};
+  if (!text) return {ok: false, error: 'Answer is required'};
+  if (authorName.length > MAX_NAME_LENGTH) {
+    return {ok: false, error: `Name must be ${MAX_NAME_LENGTH} characters or fewer`};
+  }
+  if (text.length > MAX_ANSWER_LENGTH) {
+    return {ok: false, error: `Answer must be ${MAX_ANSWER_LENGTH} characters or fewer`};
+  }
+  return {ok: true, authorName, text};
+}
+
+/** Validates an entry text update payload. */
+export function validateEntryText(body: unknown): {ok: true; text: string} | {ok: false; error: string} {
+  const {text: rawText} = (body && typeof body === 'object' ? body : {}) as Record<string, unknown>;
+  if (typeof rawText !== 'string') {
+    return {ok: false, error: 'Answer must be text'};
+  }
+  const text = rawText.trim();
+  if (!text) return {ok: false, error: 'Answer is required'};
+  if (text.length > MAX_ANSWER_LENGTH) {
+    return {ok: false, error: `Answer must be ${MAX_ANSWER_LENGTH} characters or fewer`};
+  }
+  return {ok: true, text};
+}
+
 /** Reset's body: `question` is optional text (trimmed, within the limit); blank or missing falls back to the default. */
 export function validateReset(body: unknown): {ok: true; question: string} | Invalid {
   const raw = asRecord(body).question;

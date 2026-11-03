@@ -65,7 +65,8 @@ export default function StartGamePage() {
     canGuess,
     canPick,
     uniqueNames,
-    roundRecap
+    roundRecap,
+    otherPlayers
   } = useGameLogic();
 
   const [hasSubmitted, setHasSubmitted] = useState(false);
@@ -76,14 +77,6 @@ export default function StartGamePage() {
   const [editLoading, setEditLoading] = useState(false);
   const [showTransferHostModal, setShowTransferHostModal] = useState(false);
   const [transferringHost, setTransferringHost] = useState(false);
-
-  const otherPlayers = Array.from(
-    new Set([
-      ...entries.map(e => e.authorName),
-      ...turnOrder,
-      ...scores.map(s => s.playerName)
-    ])
-  ).filter((name): name is string => !!name && name !== authorName);
 
   // Check if user already submitted for this specific Game ID
   useEffect(() => {

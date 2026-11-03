@@ -1,16 +1,13 @@
 import React, {useState, useEffect} from "react";
-import axios from "axios";
+import axios from "../gameConfig";
 import {errorMessage} from "../errorMessage";
 import {useNavigate} from "react-router-dom";
 import {AnimatePresence} from "framer-motion";
 import TopBar from "../components/TopBar";
 import Toast from "../components/Toast";
 import logo from "../assets/logo.svg";
-import {API_URL} from "../apiUrl";
 import {saveHostToken} from "../hostToken";
 import {getRecentGames, removeRecentGame, saveRecentGame, RecentGame} from "../recentGames";
-
-axios.defaults.baseURL = API_URL;
 
 
 // Same limits as the server (server/gameSetup.ts)

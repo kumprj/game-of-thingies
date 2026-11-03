@@ -57,6 +57,8 @@ export function useGameLogic() {
   scoresRef.current = scores;
   const startedRef = useRef(started);
   startedRef.current = started;
+  const authorNameRef = useRef(authorName);
+  authorNameRef.current = authorName;
   const entriesRequestRef = useRef(0); // Newest-request-wins: an older response must not overwrite a newer one.
   const scoresRequestRef = useRef(0);
 
@@ -260,7 +262,8 @@ export function useGameLogic() {
 
     const onHostTransferred = (data: {newHostName: string; hostToken: string}) => {
       setHostName(data.newHostName);
-      const isMe = authorName && authorName.trim().toLowerCase() === data.newHostName.trim().toLowerCase();
+      const currentAuthor = authorNameRef.current;
+      const isMe = currentAuthor && currentAuthor.trim().toLowerCase() === data.newHostName.trim().toLowerCase();
       if (isMe) {
         saveHostToken(gameId!, data.hostToken);
         setHostToken(data.hostToken);
@@ -564,6 +567,15 @@ export function useGameLogic() {
     };
   }, [allGuessed, scores]);
 
+  const otherPlayers = useMemo(() => {
+    const names = new Set<string>();
+    for (const e of entries) { if (e.authorName) names.add(e.authorName); }
+    for (const t of turnOrder) { if (t) names.add(t); }
+    for (const s of scores) { if (s.playerName) names.add(s.playerName); }
+    if (authorName) names.delete(authorName);
+    return Array.from(names).sort((a, b) => a.localeCompare(b, undefined, {sensitivity: "base"}));
+  }, [entries, turnOrder, scores, authorName]);
+
   return {
     gameId,
     gameTitle,
@@ -617,6 +629,7 @@ export function useGameLogic() {
     canPick,
     resetCount,
     uniqueNames,
-    roundRecap
+    roundRecap,
+    otherPlayers
   };
 }
