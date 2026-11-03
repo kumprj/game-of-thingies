@@ -1182,3 +1182,11 @@ describe('lobby answered names (#42)', () => {
     expect(await game(gameId)).not.toHaveProperty('answeredNames');
   });
 });
+
+describe('unmatched routes', () => {
+  it('returns 404 JSON for unknown /api routes', async () => {
+    const res = await api('GET', '/api/nonexistent-route');
+    expect(res.status).toBe(404);
+    expect(res.data).toEqual({error: 'Not found'});
+  });
+});

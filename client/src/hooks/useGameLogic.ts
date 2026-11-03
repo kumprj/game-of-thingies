@@ -176,11 +176,9 @@ export function useGameLogic() {
       }
     };
 
-    const syncAllData = () => {
+    const syncAllData = async () => {
       if (notFound) return;
-      fetchGameData();
-      fetchEntries();
-      fetchScores();
+      await Promise.all([fetchGameData(), fetchEntries(), fetchScores()]);
     };
 
     syncAllData();

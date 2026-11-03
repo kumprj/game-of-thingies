@@ -53,6 +53,65 @@ describe('SpectatorPage (#73)', () => {
     expect(screen.queryByText('Answer 1')).not.toBeInTheDocument(); // Does not spoil answers pre-game
   });
 
+  it('renders answered names in pre-game lobby when available', async () => {
+    (axios.get as any).mockImplementation((url: string) => {
+      if (url.endsWith('/entries')) {
+        return Promise.resolve({data: [{entryId: '1', text: 'Answer 1'}, {entryId: '2', text: 'Answer 2'}]});
+      }
+      if (url.endsWith('/scores')) {
+        return Promise.resolve({data: []});
+      }
+      return Promise.resolve({
+        data: {
+          gameId: 'TEST',
+          title: 'Party Game',
+          question: 'What is your favorite animal?',
+          started: false,
+          answeredNames: ['Alice', 'Bob'],
+        }
+      });
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/TEST/watch']}>
+        <Routes>
+          <Route path="/:gameId/watch" element={<SpectatorPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByTestId('spectator-answered-names')).toHaveTextContent('Answers in (2): Alice, Bob');
+  });
+
+  it('copies game code to clipboard on click', async () => {
+    (axios.get as any).mockImplementation((url: string) => {
+      if (url.endsWith('/entries')) return Promise.resolve({data: []});
+      if (url.endsWith('/scores')) return Promise.resolve({data: []});
+      return Promise.resolve({data: {gameId: 'TEST', title: 'Party Game', question: 'Q?', started: false}});
+    });
+
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, {clipboard: {writeText}});
+
+    render(
+      <MemoryRouter initialEntries={['/TEST/watch']}>
+        <Routes>
+          <Route path="/:gameId/watch" element={<SpectatorPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    const codeBtn = await screen.findByRole('button', {name: /game code test/i});
+    expect(codeBtn).toHaveTextContent('Code: TEST');
+
+    await act(async () => {
+      codeBtn.click();
+    });
+
+    expect(writeText).toHaveBeenCalledWith('TEST');
+    expect(screen.getByText('✓ Copied!')).toBeInTheDocument();
+  });
+
   it('renders in-game turn and revealed answers', async () => {
     (axios.get as any).mockImplementation((url: string) => {
       if (url.endsWith('/entries')) {

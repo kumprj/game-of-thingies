@@ -14,6 +14,7 @@ export default function SpectatorPage() {
     turnOrder,
     currentPlayer,
     started,
+    answeredNames,
     gameNotFound,
     sortedEntriesForDisplay,
     allGuessed
@@ -21,6 +22,16 @@ export default function SpectatorPage() {
 
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [wakeLockActive, setWakeLockActive] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(false);
+
+  const handleCopyCode = async () => {
+    if (!gameId) return;
+    try {
+      await navigator.clipboard.writeText(gameId);
+      setCopiedCode(true);
+      setTimeout(() => setCopiedCode(false), 2000);
+    } catch {}
+  };
 
   // Screen Wake Lock API to prevent TV / display from sleeping
   useEffect(() => {
@@ -80,7 +91,15 @@ export default function SpectatorPage() {
       <TopBar title={gameTitle || "Game of Things"} />
 
       <div className="spectator-bar">
-        <span className="code-pill">Code: {gameId}</span>
+        <button
+          type="button"
+          className="code-pill btn-text"
+          onClick={handleCopyCode}
+          aria-label={`Game code ${gameId}`}
+          style={{cursor: 'pointer', border: 'none'}}
+        >
+          {copiedCode ? "✓ Copied!" : `Code: ${gameId}`}
+        </button>
         <div className="spectator-bar-actions">
           {wakeLockActive && <span className="footnote spectator-awake">● Screen Awake</span>}
           <button type="button" className="btn btn-tinted" onClick={toggleFullscreen}>
@@ -109,6 +128,11 @@ export default function SpectatorPage() {
           <div className="spectator-lobby-count">
             {entries.length} {entries.length === 1 ? "answer" : "answers"} submitted so far
           </div>
+          {answeredNames && answeredNames.length > 0 && (
+            <div className="footnote" style={{marginTop: 8}} data-testid="spectator-answered-names">
+              {`Answers in (${answeredNames.length}): ${answeredNames.join(", ")}`}
+            </div>
+          )}
         </section>
       ) : (
         <section className={`card turn spectator-turn ${roundOver ? "round-over" : ""}`}>
