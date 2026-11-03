@@ -170,7 +170,7 @@ describe('useGameLogic socket events', () => {
     unmount();
     // Each listener is removed by its own handler, never by event name alone
     for (const name of ['entriesUpdated', 'gameStarted', 'wrongAnswer', 'gameReset', 'scoreUpdated', 'nextTurn',
-      'connect', 'disconnect']) {
+      'playerRemoved', 'hostTransferred', 'connect', 'disconnect']) {
       expect(socket.off).toHaveBeenCalledWith(name, handler(name));
     }
     expect((socket.off as any).mock.calls.every((call: unknown[]) => call.length === 2)).toBe(true);
@@ -310,6 +310,27 @@ describe('useGameLogic socket events', () => {
     await act(async () => handler('gameReset')());
     expect(result.current.resetCount).toBe(1);
     expect(result.current.toast?.message).toMatch(/new question/);
+  });
+
+  it('handles hostTransferred and respects updated authorName without stale closure', async () => {
+    const {result} = await mount();
+    act(() => result.current.setAuthorName('Charlie'));
+    expect(result.current.authorName).toBe('Charlie');
+
+    // Someone else becomes host
+    await act(async () => handler('hostTransferred')({newHostName: 'Ben', hostToken: 'token-ben'}));
+    expect(result.current.hostName).toBe('Ben');
+    expect(result.current.isHost).toBe(false);
+    expect(result.current.toast?.message).toBe('Host duties transferred to Ben');
+
+    // Clear toast
+    act(() => result.current.setToast(null));
+
+    // Now Charlie becomes host - verified through authorNameRef rather than stale mount closure
+    await act(async () => handler('hostTransferred')({newHostName: 'charlie', hostToken: 'token-charlie'}));
+    expect(result.current.hostName).toBe('charlie');
+    expect(result.current.isHost).toBe(true);
+    expect(result.current.toast?.message).toBe('You are now the host!');
   });
 
   describe('a game that does not exist', () => {
@@ -680,5 +701,20 @@ describe('useGameLogic derived state', () => {
     const solo = await mount({game: {...game, turnOrder: ['Ann']}, entries: [entry('2', 'B', undefined)]});
     await waitFor(() => expect(solo.result.current.entries).toHaveLength(1));
     expect(solo.result.current.canPick('Ann')).toBe(true);
+  });
+
+  it('computes otherPlayers from entries, turnOrder, and scores excluding current authorName in alphabetical order', async () => {
+    window.localStorage.setItem('got_authorName', 'Bob');
+    const {result} = await mount({
+      entries: [entry('1', 'A', 'Charlie'), entry('2', 'B', 'Alice')],
+      game: {...game, turnOrder: ['David', 'Bob']},
+      scores: [{playerName: 'Eve', score: 10}]
+    });
+    await waitFor(() => expect(result.current.entries).toHaveLength(2));
+    expect(result.current.otherPlayers).toEqual(['Alice', 'Charlie', 'David', 'Eve']);
+
+    // Changing author name updates otherPlayers
+    act(() => result.current.setAuthorName('Alice'));
+    expect(result.current.otherPlayers).toEqual(['Bob', 'Charlie', 'David', 'Eve']);
   });
 });

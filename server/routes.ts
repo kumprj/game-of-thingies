@@ -10,8 +10,8 @@ import {validateGameSetup} from './gameSetup';
 import {answeredNames} from './lobby';
 import {
   checkNameLength,
-  MAX_ANSWER_LENGTH,
-  MAX_NAME_LENGTH,
+  validateEntryInput,
+  validateEntryText,
   validateGuess,
   validateParam,
   validateReset,
@@ -23,6 +23,7 @@ import {
   QueryCommand,
   UpdateCommand,
   DeleteCommand,
+  BatchWriteCommand,
   TransactWriteCommand
 } from "@aws-sdk/lib-dynamodb";
 
@@ -43,14 +44,17 @@ async function getEntry(gameId: string, entryId: string): Promise<EntryItem | un
   return result.Item as EntryItem | undefined;
 }
 
-/** True when the request's x-host-token header matches the game's stored host token. */
-function isHost(game: GameItem | undefined, req: express.Request) {
-  const stored = game?.hostToken;
-  const given = req.header('x-host-token');
+/** True when two strings are equal, compared in constant time. */
+function tokensMatch(stored: unknown, given: unknown) {
   if (typeof stored !== 'string' || typeof given !== 'string') return false;
   const a = Buffer.from(stored);
   const b = Buffer.from(given);
   return a.length === b.length && timingSafeEqual(a, b);
+}
+
+/** True when the request's x-host-token header matches the game's stored host token. */
+function isHost(game: GameItem | undefined, req: express.Request) {
+  return tokensMatch(game?.hostToken, req.header('x-host-token'));
 }
 
 /** True when a DynamoDB error is a failed ConditionExpression. */
@@ -66,14 +70,6 @@ async function queryEntries(gameId: string): Promise<EntryItem[]> {
     ExpressionAttributeValues: {':g': gameId}
   }));
   return (result.Items || []) as EntryItem[];
-}
-
-/** True when two strings are equal, compared in constant time. */
-function tokensMatch(stored: unknown, given: unknown) {
-  if (typeof stored !== 'string' || typeof given !== 'string') return false;
-  const a = Buffer.from(stored);
-  const b = Buffer.from(given);
-  return a.length === b.length && timingSafeEqual(a, b);
 }
 
 /**
@@ -160,25 +156,11 @@ router.post('/createGame', async (req, res) => {
 });
 
 // Add Entry. Names are unique within a game (case-insensitive); a duplicate is rejected with 409.
-export {MAX_NAME_LENGTH, MAX_ANSWER_LENGTH};
-
 router.post('/games/:gameId/entries', async (req, res) => {
   const {gameId} = req.params;
-  const {authorName: rawName, text: rawText} = req.body ?? {};
-
-  if (typeof rawName !== 'string' || typeof rawText !== 'string') {
-    return res.status(400).json({error: 'Name and answer must be text'});
-  }
-  const authorName = rawName.trim();
-  const text = rawText.trim();
-  if (!authorName) return res.status(400).json({error: 'Name is required'});
-  if (!text) return res.status(400).json({error: 'Answer is required'});
-  if (authorName.length > MAX_NAME_LENGTH) {
-    return res.status(400).json({error: `Name must be ${MAX_NAME_LENGTH} characters or fewer`});
-  }
-  if (text.length > MAX_ANSWER_LENGTH) {
-    return res.status(400).json({error: `Answer must be ${MAX_ANSWER_LENGTH} characters or fewer`});
-  }
+  const valid = validateEntryInput(req.body);
+  if (!valid.ok) return res.status(400).json({error: valid.error});
+  const {authorName, text} = valid;
 
   try {
     const game = await getGame(gameId);
@@ -253,16 +235,9 @@ router.post('/games/:gameId/entries', async (req, res) => {
 // Edit Entry (Pre-Game only, Author only)
 router.patch('/games/:gameId/entries/:entryId', async (req, res) => {
   const {gameId, entryId} = req.params;
-  const {text: rawText} = req.body ?? {};
-
-  if (typeof rawText !== 'string') {
-    return res.status(400).json({error: 'Answer must be text'});
-  }
-  const text = rawText.trim();
-  if (!text) return res.status(400).json({error: 'Answer is required'});
-  if (text.length > MAX_ANSWER_LENGTH) {
-    return res.status(400).json({error: `Answer must be ${MAX_ANSWER_LENGTH} characters or fewer`});
-  }
+  const valid = validateEntryText(req.body);
+  if (!valid.ok) return res.status(400).json({error: valid.error});
+  const {text} = valid;
 
   try {
     const game = await getGame(gameId);
@@ -682,19 +657,24 @@ router.post('/games/:gameId/reset', async (req, res) => {
     // 1. DELETE ALL existing entries for this game
     const entriesData = await queryEntries(gameId);
 
-    const deletePromises = entriesData.map(entry =>
-        ddb.send(new DeleteCommand({
-          TableName: tables.entries,
-          Key: {gameId: entry.gameId, entryId: entry.entryId}
-        }))
-    );
-    await Promise.all(deletePromises);
+    for (let i = 0; i < entriesData.length; i += 25) {
+      const chunk = entriesData.slice(i, i + 25);
+      await ddb.send(new BatchWriteCommand({
+        RequestItems: {
+          [tables.entries]: chunk.map(entry => ({
+            DeleteRequest: {
+              Key: {gameId: entry.gameId, entryId: entry.entryId}
+            }
+          }))
+        }
+      }));
+    }
 
     // 2. Reset Game state
     await ddb.send(new UpdateCommand({
       TableName: tables.games,
       Key: {gameId},
-      UpdateExpression: 'SET question = :q, createdAt = :c, started = :started, expiresAt = :e',
+      UpdateExpression: 'SET question = :q, createdAt = :c, started = :started, expiresAt = :e REMOVE turnOrder, players',
       ExpressionAttributeValues: {
         ':q': parsed.question,
         ':c': new Date().toISOString(),

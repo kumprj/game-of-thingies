@@ -35,6 +35,7 @@ describe('StartGamePage', () => {
    
     sortedEntriesForDisplay: [],
     uniqueNames: [],
+    otherPlayers: [],
   };
 
   it('renders input fields when game is NOT started', () => {
@@ -160,6 +161,7 @@ const baseHook = {
   toast: null as any, guessedNames: [] as string[], notGuessedNames: [] as string[],
   allGuessed: false, isLastEntry: false, isMyTurn: false, uniqueNames: [] as string[],
   sortedEntriesForDisplay: [] as any[],
+  otherPlayers: [] as string[],
 };
 
 function renderPage(overrides: object = {}) {
@@ -174,6 +176,14 @@ function renderPage(overrides: object = {}) {
   // The page relies on the hook for the guess rules; derive them from the same state, as the real hook does.
   hook.canGuess ??= (e: any) => hook.isMyTurn && !e.guessed && !(e.mine && !hook.isLastEntry);
   hook.canPick ??= (n: string) => !hook.guessedNames.includes(n) && !(n === hook.authorName && hook.turnOrder.length > 1);
+  if (!('otherPlayers' in overrides)) {
+    const names = new Set<string>();
+    for (const e of hook.entries || []) { if (e.authorName) names.add(e.authorName); }
+    for (const t of hook.turnOrder || []) { if (t) names.add(t); }
+    for (const s of hook.scores || []) { if (s.playerName) names.add(s.playerName); }
+    if (hook.authorName) names.delete(hook.authorName);
+    hook.otherPlayers = Array.from(names).sort((a: string, b: string) => a.localeCompare(b, undefined, {sensitivity: "base"}));
+  }
   vi.spyOn(GameHook, 'useGameLogic').mockReturnValue(hook);
   render(<BrowserRouter><StartGamePage/></BrowserRouter>);
   return actions;

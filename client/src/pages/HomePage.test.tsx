@@ -2,10 +2,10 @@ import {render, screen, waitFor} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {MemoryRouter, Route, Routes, useParams} from 'react-router-dom';
-import axios from 'axios';
+import axios from '../gameConfig';
 import HomePage from './HomePage';
 
-vi.mock('axios', () => ({default: {post: vi.fn(), defaults: {}}}));
+vi.mock('../gameConfig', () => ({default: {post: vi.fn(), defaults: {}}}));
 
 function Game() {
   return <p>In game {useParams().gameId}</p>;
