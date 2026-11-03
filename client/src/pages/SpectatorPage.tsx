@@ -53,9 +53,14 @@ export default function SpectatorPage() {
   // Dynamic document title for Spectator screen
   useEffect(() => {
     const originalTitle = document.title;
-    if (gameNotFound) {
-      document.title = "Game not found - Game of Things";
-    } else if (!started) {
+    return () => {
+      document.title = originalTitle;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (gameNotFound) return;
+    if (!started) {
       const count = entries.length;
       document.title = `(Lobby: ${count} ${count === 1 ? "answer" : "answers"}) ${gameTitle || gameId || "Game of Things"}`;
     } else if (roundOver) {
@@ -65,9 +70,6 @@ export default function SpectatorPage() {
     } else {
       document.title = gameTitle || gameId || "Game of Things";
     }
-    return () => {
-      document.title = originalTitle || "Game of Things";
-    };
   }, [gameNotFound, started, roundOver, currentPlayer, entries.length, gameTitle, gameId]);
 
   // Screen Wake Lock API to prevent TV / display from sleeping
@@ -137,10 +139,10 @@ export default function SpectatorPage() {
         </button>
         <div className="spectator-bar-actions">
           {wakeLockActive && <span className="footnote spectator-awake">● Screen Awake</span>}
-          <button type="button" className="btn btn-tinted" onClick={() => setShowQRModal(true)} aria-label="Show QR Code">
+          <button type="button" className="btn btn-tinted btn-pill" onClick={() => setShowQRModal(true)} aria-label="Show QR Code">
             QR Code
           </button>
-          <button type="button" className="btn btn-tinted" onClick={toggleFullscreen}>
+          <button type="button" className="btn btn-tinted btn-pill" onClick={toggleFullscreen}>
             {isFullscreen ? "Exit Fullscreen" : "Fullscreen / TV"}
           </button>
         </div>
@@ -173,7 +175,7 @@ export default function SpectatorPage() {
           )}
           {gameUrl && (
             <div style={{display: "flex", flexDirection: "column", alignItems: "center", marginTop: 16}}>
-              <div style={{background: "#ffffff", padding: 8, borderRadius: 12, display: "inline-block", boxShadow: "0 2px 8px rgba(0,0,0,0.1)"}}>
+              <div className="qr-container">
                 <canvas ref={lobbyQrRef} data-testid="spectator-lobby-qr" style={{display: "block"}} />
               </div>
               <span className="footnote" style={{marginTop: 6}}>Scan with phone camera to join</span>

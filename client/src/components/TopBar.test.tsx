@@ -37,4 +37,26 @@ describe('TopBar', () => {
     expect(toggle).toHaveAttribute('title', 'Switch to Dark Mode');
     expect(document.documentElement).not.toHaveClass('dark-mode');
   });
+
+  it('toggles sound on and off and persists to localStorage', async () => {
+    const user = userEvent.setup();
+    render(<TopBar/>);
+    const soundToggle = screen.getByRole('button', {name: 'Mute Sound'});
+    expect(soundToggle).toBeInTheDocument();
+    expect(soundToggle).toHaveAttribute('title', 'Mute Sound');
+
+    await user.click(soundToggle);
+    expect(screen.getByRole('button', {name: 'Enable Sound'})).toBeInTheDocument();
+    expect(window.localStorage.getItem('got_sound_enabled')).toBe('false');
+
+    await user.click(screen.getByRole('button', {name: 'Enable Sound'}));
+    expect(screen.getByRole('button', {name: 'Mute Sound'})).toBeInTheDocument();
+    expect(window.localStorage.getItem('got_sound_enabled')).toBe('true');
+  });
+
+  it('respects existing disabled sound setting on mount', () => {
+    window.localStorage.setItem('got_sound_enabled', 'false');
+    render(<TopBar/>);
+    expect(screen.getByRole('button', {name: 'Enable Sound'})).toBeInTheDocument();
+  });
 });

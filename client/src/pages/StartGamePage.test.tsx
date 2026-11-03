@@ -36,6 +36,8 @@ describe('StartGamePage', () => {
     sortedEntriesForDisplay: [],
     uniqueNames: [],
     otherPlayers: [],
+    roundRecap: null,
+    shareableRecapText: null,
   };
 
   it('renders input fields when game is NOT started', () => {
@@ -162,6 +164,8 @@ const baseHook = {
   allGuessed: false, isLastEntry: false, isMyTurn: false, uniqueNames: [] as string[],
   sortedEntriesForDisplay: [] as any[],
   otherPlayers: [] as string[],
+  roundRecap: null as any,
+  shareableRecapText: null as string | null,
 };
 
 function renderPage(overrides: object = {}) {
@@ -528,6 +532,82 @@ describe('StartGamePage in detail', () => {
           fireEvent.click(benButton);
         });
         expect(actions.transferHost).toHaveBeenCalledWith('Ben');
+      });
+    });
+
+    describe('Round Recap & Sharing', () => {
+      const recapData = {
+        mostGuessesRound: 'Ben (2)',
+        overallLeader: 'Ann (3), Ben (3)',
+      };
+      const recapText = 'Game of Things - Round Recap\nQuestion: "Worst superpower?"\n🎯 Most guesses: Ben (2)\n🏆 Overall leader: Ann (3), Ben (3)';
+
+      it('renders the round recap card when all entries are guessed', () => {
+        renderPage({
+          started: true,
+          allGuessed: true,
+          roundRecap: recapData,
+          shareableRecapText: recapText,
+        });
+
+        expect(screen.getByRole('heading', {name: 'Round Recap'})).toBeInTheDocument();
+        expect(screen.getByText('Ben (2)')).toBeInTheDocument();
+        expect(screen.getByText('Ann (3), Ben (3)')).toBeInTheDocument();
+      });
+
+      it('shares recap via navigator.share when available', async () => {
+        const shareMock = vi.fn().mockResolvedValue(undefined);
+        Object.defineProperty(navigator, 'share', {
+          value: shareMock,
+          configurable: true,
+          writable: true,
+        });
+
+        renderPage({
+          started: true,
+          allGuessed: true,
+          roundRecap: recapData,
+          shareableRecapText: recapText,
+        });
+
+        const shareBtn = screen.getByRole('button', {name: 'Share recap'});
+        await act(async () => {
+          fireEvent.click(shareBtn);
+        });
+
+        expect(shareMock).toHaveBeenCalledWith({
+          title: 'Game of Things Recap',
+          text: recapText,
+        });
+      });
+
+      it('copies recap to clipboard when navigator.share is unavailable', async () => {
+        Object.defineProperty(navigator, 'share', {
+          value: undefined,
+          configurable: true,
+          writable: true,
+        });
+        const writeTextMock = vi.fn().mockResolvedValue(undefined);
+        Object.defineProperty(navigator, 'clipboard', {
+          value: {writeText: writeTextMock},
+          configurable: true,
+          writable: true,
+        });
+
+        renderPage({
+          started: true,
+          allGuessed: true,
+          roundRecap: recapData,
+          shareableRecapText: recapText,
+        });
+
+        const shareBtn = screen.getByRole('button', {name: 'Share recap'});
+        await act(async () => {
+          fireEvent.click(shareBtn);
+        });
+
+        expect(writeTextMock).toHaveBeenCalledWith(recapText);
+        expect(screen.getByRole('button', {name: 'Share recap'})).toHaveTextContent('✓ Copied!');
       });
     });
   });

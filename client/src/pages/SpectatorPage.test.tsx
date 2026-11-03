@@ -206,4 +206,35 @@ describe('SpectatorPage (#73)', () => {
 
     expect(await screen.findByText('Game not found')).toBeInTheDocument();
   });
+
+  it('updates document title during lobby and restores initial title on unmount', async () => {
+    document.title = 'Initial Title';
+    (axios.get as any).mockImplementation((url: string) => {
+      if (url.endsWith('/entries')) return Promise.resolve({data: []});
+      if (url.endsWith('/scores')) return Promise.resolve({data: []});
+      return Promise.resolve({
+        data: {
+          gameId: 'TEST',
+          title: 'Party Game',
+          question: 'What is your favorite animal?',
+          started: false,
+        }
+      });
+    });
+
+    const {unmount} = render(
+      <MemoryRouter initialEntries={['/TEST/watch']}>
+        <Routes>
+          <Route path="/:gameId/watch" element={<SpectatorPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(document.title).toBe('(Lobby: 0 answers) Party Game');
+    });
+
+    unmount();
+    expect(document.title).toBe('Initial Title');
+  });
 });

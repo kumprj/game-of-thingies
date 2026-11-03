@@ -568,6 +568,15 @@ export function useGameLogic() {
     };
   }, [allGuessed, scores]);
 
+  const shareableRecapText = useMemo(() => {
+    if (!roundRecap) return null;
+    const lines = ['Game of Things - Round Recap'];
+    if (gameQuestion) lines.push(`Question: "${gameQuestion}"`);
+    lines.push(`🎯 Most guesses: ${roundRecap.mostGuessesRound}`);
+    lines.push(`🏆 Overall leader: ${roundRecap.overallLeader}`);
+    return lines.join('\n');
+  }, [roundRecap, gameQuestion]);
+
   const otherPlayers = useMemo(() => {
     const names = new Set<string>();
     for (const e of entries) { if (e.authorName) names.add(e.authorName); }
@@ -631,6 +640,7 @@ export function useGameLogic() {
     resetCount,
     uniqueNames,
     roundRecap,
+    shareableRecapText,
     otherPlayers
   };
 }

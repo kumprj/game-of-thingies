@@ -68,6 +68,7 @@ export default function StartGamePage() {
     canPick,
     uniqueNames,
     roundRecap,
+    shareableRecapText,
     otherPlayers
   } = useGameLogic();
 
@@ -167,19 +168,13 @@ export default function StartGamePage() {
   };
 
   const handleShareRecap = async () => {
-    if (!roundRecap) return;
-    const text = [
-      "Game of Things - Round Recap",
-      gameQuestion ? `Question: "${gameQuestion}"` : "",
-      `🎯 Most guesses: ${roundRecap.mostGuessesRound}`,
-      `🏆 Overall leader: ${roundRecap.overallLeader}`
-    ].filter(Boolean).join("\n");
+    if (!shareableRecapText) return;
 
     if (typeof navigator !== "undefined" && navigator.share) {
       try {
         await navigator.share({
           title: "Game of Things Recap",
-          text
+          text: shareableRecapText
         });
         return;
       } catch (err: any) {
@@ -188,7 +183,7 @@ export default function StartGamePage() {
     }
     if (typeof navigator !== "undefined" && navigator.clipboard) {
       try {
-        await navigator.clipboard.writeText(text);
+        await navigator.clipboard.writeText(shareableRecapText);
         setCopiedRecap(true);
         setTimeout(() => setCopiedRecap(false), 2000);
       } catch {}
@@ -266,8 +261,7 @@ export default function StartGamePage() {
               </button>
               <button
                 type="button"
-                className="btn btn-tinted"
-                style={{padding: '4px 10px', fontSize: 13, borderRadius: 16}}
+                className="btn btn-tinted btn-pill"
                 onClick={handleShare}
                 aria-label="Share game link"
               >
@@ -275,8 +269,7 @@ export default function StartGamePage() {
               </button>
               <button
                 type="button"
-                className="btn btn-tinted"
-                style={{padding: '4px 10px', fontSize: 13, borderRadius: 16}}
+                className="btn btn-tinted btn-pill"
                 onClick={() => setShowQRModal(true)}
                 aria-label="Show QR code"
               >
@@ -286,8 +279,7 @@ export default function StartGamePage() {
                 to={`/${gameId}/watch`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="btn btn-gray"
-                style={{padding: '4px 10px', fontSize: 13, borderRadius: 16}}
+                className="btn btn-gray btn-pill"
                 aria-label="Watch on a screen"
               >
                 Watch on a screen
@@ -295,8 +287,7 @@ export default function StartGamePage() {
               {isHost && otherPlayers.length > 0 && (
                 <button
                   type="button"
-                  className="btn btn-tinted"
-                  style={{padding: '4px 10px', fontSize: 13, borderRadius: 16}}
+                  className="btn btn-tinted btn-pill"
                   onClick={() => setShowTransferHostModal(true)}
                   aria-label="Transfer Host"
                 >
@@ -546,8 +537,7 @@ export default function StartGamePage() {
               <h4 style={{margin: 0, color: '#34c759'}}>Round Recap</h4>
               <button
                 type="button"
-                className="btn btn-tinted"
-                style={{padding: '4px 10px', fontSize: 13, borderRadius: 16}}
+                className="btn btn-tinted btn-pill"
                 onClick={handleShareRecap}
                 aria-label="Share recap"
               >

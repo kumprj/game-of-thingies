@@ -1,5 +1,6 @@
 import React, {useEffect, useRef, useState} from 'react';
 import QRCode from 'qrcode';
+import {AnimatePresence} from 'framer-motion';
 import Modal from './Modal';
 
 interface Props {
@@ -34,27 +35,29 @@ export default function QRCodeModal({gameId, isOpen, onClose}: Props) {
     } catch {}
   };
 
-  if (!isOpen) return null;
-
   return (
-    <Modal onClose={onClose} role="dialog" labelledBy="qr-modal-title">
-      <h3 id="qr-modal-title" style={{marginTop: 0}}>Join Room {gameId}</h3>
-      <p className="footnote" style={{marginBottom: 16}}>
-        Point your phone's camera at this QR code to join immediately.
-      </p>
-      <div style={{display: 'flex', justifyContent: 'center', marginBottom: 16}}>
-        <div style={{background: '#ffffff', padding: 8, borderRadius: 12, display: 'inline-block', boxShadow: '0 2px 8px rgba(0,0,0,0.1)'}}>
-          <canvas ref={canvasRef} data-testid="qr-canvas" style={{display: 'block'}} />
-        </div>
-      </div>
-      <div className="stack" style={{gap: 8}}>
-        <button type="button" className="btn btn-primary btn-block" onClick={handleCopy}>
-          {copied ? '✓ Copied Link!' : 'Copy Link'}
-        </button>
-        <button type="button" className="btn btn-gray btn-block" onClick={onClose}>
-          Close
-        </button>
-      </div>
-    </Modal>
+    <AnimatePresence>
+      {isOpen && (
+        <Modal onClose={onClose} role="dialog" labelledBy="qr-modal-title">
+          <h3 id="qr-modal-title" style={{marginTop: 0}}>Join Room {gameId}</h3>
+          <p className="footnote" style={{marginBottom: 16}}>
+            Point your phone's camera at this QR code to join immediately.
+          </p>
+          <div style={{display: 'flex', justifyContent: 'center', marginBottom: 16}}>
+            <div className="qr-container">
+              <canvas ref={canvasRef} data-testid="qr-canvas" style={{display: 'block'}} />
+            </div>
+          </div>
+          <div className="stack" style={{gap: 8}}>
+            <button type="button" className="btn btn-primary btn-block" onClick={handleCopy}>
+              {copied ? '✓ Copied Link!' : 'Copy Link'}
+            </button>
+            <button type="button" className="btn btn-gray btn-block" onClick={onClose}>
+              Close
+            </button>
+          </div>
+        </Modal>
+      )}
+    </AnimatePresence>
   );
 }
