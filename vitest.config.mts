@@ -17,7 +17,7 @@ export default defineConfig({
       {
         test: {
           name: 'unit',
-          include: ['server/**/*.test.ts'],
+          include: ['server/**/*.test.ts', 'infra/**/*.test.ts'],
           exclude: ['server/integration/**'],
         },
       },

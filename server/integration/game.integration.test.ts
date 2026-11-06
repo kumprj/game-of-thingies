@@ -134,7 +134,7 @@ afterAll(async () => {
 });
 
 describe('health', () => {
-  it('answers the load balancer health check', async () => {
+  it('answers the health check', async () => {
     const response = await fetch(`${baseUrl}/health`);
     expect(response.status).toBe(200);
     expect(await response.text()).toBe('OK');
