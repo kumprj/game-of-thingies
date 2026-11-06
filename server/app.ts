@@ -41,7 +41,7 @@ export function createServer() {
   // Mount the API routes under the '/api' path
   app.use('/api', router);
 
-  // Health check for the load balancer (sst.config.ts)
+  // Health check for the container (ECS runs it; see sst.config.ts) and the deploy workflow
   app.get("/health", (req, res) => res.send("OK"));
 
   // 404 handler for unrecognized API routes

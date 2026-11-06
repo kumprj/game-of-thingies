@@ -45,8 +45,10 @@ updates.
 
 Everything is defined in `sst.config.ts` (SST v4) and runs in AWS us-east-1:
 
-- **Server:** the `Dockerfile` image on ECS Fargate (one arm64 container) behind a load balancer
-  at https://api.gameofthings.fun.
+- **Server:** the `Dockerfile` image on ECS Fargate (one arm64 container) behind CloudFront at
+  https://api.gameofthings.fun. There's no load balancer: CloudFront reaches the container by
+  `origin-api.gameofthings.fun`, which a small Lambda (`infra/origin-dns/`) keeps pointed at the
+  running task's public IP.
 - **Web client:** S3 + CloudFront at https://gameofthings.fun (www redirects to it).
 - **Tables:** production uses the existing Games / Entries / Scores tables (the `GameOfThings`
   CloudFormation stack in `cfn_tables.yml`); other stages get their own. Every write sets
@@ -78,7 +80,7 @@ Base path: /api
   order.
 
 - GET /health
-  Returns OK. The load balancer's health check.
+  Returns OK. The container health check (ECS) and the deploy workflow's check.
 
 ## WEBSOCKET EVENTS
 

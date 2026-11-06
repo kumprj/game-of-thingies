@@ -8,5 +8,5 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["server", "types"]
+  "include": ["server", "types", "infra"]
 }
