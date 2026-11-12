@@ -25,6 +25,7 @@ export function useGameLogic() {
   const [players, setPlayers] = useState<string[]>([]); // Everyone who wrote an answer this round (known once started).
   const [answeredNames, setAnsweredNames] = useState<string[]>([]); // Who has answered, for the lobby line (known before the start).
   const [started, setStarted] = useState(false); // Indicates whether the game has started.
+  const [turnEndsAt, setTurnEndsAt] = useState<number | null>(null); // When the current turn is due, on this device's clock; null with no timer.
   const [gameNotFound, setGameNotFound] = useState(false); // The server has no game with this code.
 
   // User Input State
@@ -62,6 +63,16 @@ export function useGameLogic() {
   authorNameRef.current = authorName;
   const entriesRequestRef = useRef(0); // Newest-request-wins: an older response must not overwrite a newer one.
   const scoresRequestRef = useRef(0);
+
+  /**
+   * Takes the timer fields of a server payload. The server sends its own clock with the deadline,
+   * so the time left is measured against that and a skewed device clock can't change it.
+   */
+  const applyTurnTimer = (data?: {turnDeadline?: number | null; serverTime?: number}) => {
+    setTurnEndsAt(data?.turnDeadline != null && data.serverTime != null
+        ? Date.now() + (data.turnDeadline - data.serverTime)
+        : null);
+  };
 
   // The player whose turn it is is always the head of the turn order.
   const currentPlayer = turnOrder[0] ?? null;
@@ -161,6 +172,7 @@ export function useGameLogic() {
         setPlayers(res.data.players ?? []);
         setAnsweredNames(res.data.answeredNames ?? []);
         if (res.data.turnOrder) setTurnOrder(res.data.turnOrder);
+        applyTurnTimer(res.data);
         saveRecentGame(gameId, title);
       } catch (err) {
         if ((err as any)?.response?.status === 404) {
@@ -220,6 +232,7 @@ export function useGameLogic() {
 
     const onGameStarted = (data: any) => {
       setTurnOrder(data.turnOrder || []);
+      applyTurnTimer(data);
       syncAllData();
       snapshotScores(scoresRef.current);
       setToast({message: "‼️ The game has started ‼️", type: 'success'});
@@ -255,6 +268,7 @@ export function useGameLogic() {
 
     const onNextTurn = (data: any) => {
       setTurnOrder(data.turnOrder);
+      applyTurnTimer(data);
     };
 
     const onPlayerRemoved = (data: any) => {
@@ -366,17 +380,18 @@ export function useGameLogic() {
   const isHost = hostToken !== null;
   const hostHeaders = {headers: {"x-host-token": hostToken ?? ""}};
 
-  const startGame = async () => {
+  const startGame = async (turnSeconds?: number) => {
     if (!entries.length) {
       setToast({message: 'Add some entries first!', type: 'error'});
       return;
     }
     setIsLoading(true);
     try {
-      const res = await axios.post(`/api/games/${gameId}/start`, undefined, hostHeaders);
+      const res = await axios.post(`/api/games/${gameId}/start`, turnSeconds ? {turnSeconds} : undefined, hostHeaders);
       setStarted(true);
       const order: string[] | undefined = res?.data?.turnOrder;
       if (order) setTurnOrder(order);
+      applyTurnTimer(res?.data);
       snapshotScores(scoresRef.current);
       await fetchEntries();
       await fetchScores();
@@ -478,6 +493,7 @@ export function useGameLogic() {
     try {
       const res = await axios.post(`/api/games/${gameId}/skip-turn`, undefined, hostHeaders);
       if (res.data?.turnOrder) setTurnOrder(res.data.turnOrder);
+      applyTurnTimer(res.data);
       setToast({message: "Turn skipped", type: "success"});
     } catch (err: any) {
       setToast({message: errorMessage(err, "Failed to skip turn"), type: "error"});
@@ -594,6 +610,7 @@ export function useGameLogic() {
     scores,
     turnOrder,
     currentPlayer,
+    turnEndsAt,
     started,
     answeredNames,
     gameNotFound,

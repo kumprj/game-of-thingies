@@ -2,7 +2,7 @@ import {describe, expect, it} from 'vitest';
 import {MAX_QUESTION_LENGTH} from './gameSetup';
 import {
   checkNameLength, checkParam, DEFAULT_QUESTION, MAX_ANSWER_LENGTH, MAX_ID_LENGTH, MAX_NAME_LENGTH, MAX_TOKEN_LENGTH,
-  validateEntryInput, validateEntryText, validateGuess, validateParam, validateReset, validateTokenHeaders
+  validateEntryInput, validateEntryText, validateGuess, validateParam, validateReset, validateStart, validateTokenHeaders
 } from './validation';
 
 const fakeRes = () => {
@@ -121,6 +121,23 @@ describe('validateReset', () => {
   it('enforces the question limit after trimming', () => {
     expect(validateReset({question: ` ${'q'.repeat(MAX_QUESTION_LENGTH)} `})).toMatchObject({ok: true});
     expect(validateReset({question: 'q'.repeat(MAX_QUESTION_LENGTH + 1)})).toMatchObject({ok: false});
+  });
+});
+
+describe('validateStart', () => {
+  it('leaves the timer off when turnSeconds is missing or null', () => {
+    expect(validateStart(undefined)).toEqual({ok: true});
+    expect(validateStart({})).toEqual({ok: true});
+    expect(validateStart({turnSeconds: null})).toEqual({ok: true});
+  });
+
+  it('accepts whole seconds within the limits', () => {
+    expect(validateStart({turnSeconds: 10})).toEqual({ok: true, turnSeconds: 10});
+    expect(validateStart({turnSeconds: 600})).toEqual({ok: true, turnSeconds: 600});
+  });
+
+  it.each([9, 601, 0, -5, 30.5, '30', NaN, true])('rejects %s', value => {
+    expect(validateStart({turnSeconds: value})).toEqual({ok: false, error: expect.stringContaining('Turn timer')});
   });
 });
 

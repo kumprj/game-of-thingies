@@ -75,12 +75,19 @@ Base path: /api
   Adds an entry and emits entriesUpdated to the game's Socket.IO room.
 
 - POST /games/:gameId/start
-  Response: { success: true }
+  Body (optional): { turnSeconds?: number } (10 to 600; omit for no timer)
+  Response: { success: true, turnOrder: string[] } plus { turnDeadline, serverTime } with a timer
   Shuffles players, sets game as started, reveals entries, and emits gameStarted with the turn
   order.
 
-- GET /health
-  Returns OK. The container health check (ECS) and the deploy workflow's check.
+### Turn timer
+
+The host can start a game with a per-turn timer. The server stores `turnSeconds` and, on every turn
+change, a `turnDeadline` (epoch ms). `GET /games/:gameId`, the start/skip responses and the
+`gameStarted` and `nextTurn` events carry `turnDeadline` with `serverTime` (the server's clock), so
+clients count down against the server's clock instead of their own. The server never ends a turn
+itself: at 0:00 clients show "Hurry up!" and the turn waits. With no timer none of these fields
+exist.
 
 ## WEBSOCKET EVENTS
 
@@ -88,7 +95,10 @@ Base path: /api
   gameId)).
 - Server emits:
     - entriesUpdated when entries change
-    - gameStarted with payload { turnOrder: string[] } when a game starts
+    - gameStarted with payload { turnOrder: string[] } when a game starts (plus turnDeadline and
+      serverTime when the game has a turn timer)
+    - nextTurn with payload { currentPlayer, turnOrder } whenever the turn changes (plus
+      turnDeadline and serverTime with a timer)
 
 ## TESTING
 

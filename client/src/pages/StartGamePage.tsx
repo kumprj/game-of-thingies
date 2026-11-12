@@ -1,6 +1,6 @@
 import React, {useState, useEffect} from "react";
 import {Link} from "react-router-dom";
-import {AnimatePresence, motion} from "framer-motion";
+import {AnimatePresence, motion, useReducedMotion} from "framer-motion";
 import logo from "../assets/logo.svg";
 import {useGameLogic} from "../hooks/useGameLogic";
 import Scoreboard from "../components/Scoreboard";
@@ -9,6 +9,7 @@ import Modal from "../components/Modal";
 import Collapse from "../components/Collapse";
 import Toast from "../components/Toast";
 import QRCodeModal from "../components/QRCodeModal";
+import TurnTimer from "../components/TurnTimer";
 import {EASE_OUT} from "../components/motion";
 import {playTurnSound} from "../audio";
 import {Entry} from "../../../types";
@@ -23,6 +24,7 @@ export default function StartGamePage() {
     scores,
     turnOrder,
     currentPlayer,
+    turnEndsAt,
     started,
     answeredNames,
     gameNotFound,
@@ -82,6 +84,8 @@ export default function StartGamePage() {
   const [editLoading, setEditLoading] = useState(false);
   const [showTransferHostModal, setShowTransferHostModal] = useState(false);
   const [transferringHost, setTransferringHost] = useState(false);
+  const [timerChoice, setTimerChoice] = useState(0); // Seconds per turn picked in the start dialog; 0 is off.
+  const reduceMotion = useReducedMotion();
 
   // Check if user already submitted for this specific Game ID
   useEffect(() => {
@@ -317,6 +321,10 @@ export default function StartGamePage() {
               <div style={{flex: 1}}>
                 <div className="turn-eyebrow">{roundOver ? "Round over" : isMyTurn ? "Your turn" : "Now guessing"}</div>
                 <div className="turn-name">{roundOver ? "All answers guessed!" : `${currentPlayer}'s turn!`}</div>
+                {!roundOver && (
+                  <TurnTimer endsAt={turnEndsAt}
+                             hurry={isMyTurn ? "Time's up, hurry up!" : `Time's up. Hurry up, ${currentPlayer}!`}/>
+                )}
                 {!roundOver && turnOrder.length > 1 && (
                   <div className="up-next" style={{fontSize: 13, marginTop: 4, opacity: 0.8}}>
                     <span>Up next: </span>
@@ -447,10 +455,16 @@ export default function StartGamePage() {
                 {`Answers in (${answeredNames.length}): ${answeredNames.join(", ")}`}
               </li>
             )}
-            {sortedEntriesForDisplay.filter(entry => started || entry.mine).map(entry => (
-                <motion.li key={entry.entryId} className={started ? "answer-row" : undefined}
-                           initial={{opacity: 0, y: 8}} animate={{opacity: 1, y: 0}}
-                           transition={{type: "spring", bounce: 0, duration: 0.3}}>
+            {sortedEntriesForDisplay.filter(entry => started || entry.mine).map((entry, index) => (
+                // Keyed by `started` so every answer remounts and plays its reveal when the round starts.
+                // Staggered (capped, so a big group doesn't wait long); no stagger under reduced motion.
+                <motion.li key={`${entry.entryId}-${started}`} className={started ? "answer-row" : undefined}
+                           initial={started ? {opacity: 0, y: 12, scale: 0.97} : {opacity: 0, y: 8}}
+                           animate={{opacity: 1, y: 0, scale: 1}}
+                           transition={{
+                             type: "spring", bounce: 0, duration: 0.3,
+                             delay: started && !reduceMotion ? Math.min(index, 8) * 0.06 : 0
+                           }}>
                   {started ? (
                       <button
                           className={`answer${entry.guessed ? " guessed" : ""}`}
@@ -625,10 +639,20 @@ export default function StartGamePage() {
             <Modal key="start" onClose={() => setShowStartConfirm(false)} role="alertdialog" labelledBy="start-title">
                 <h3 id="start-title">Is everyone ready?</h3>
                 <p>Once you press Start, answers are revealed.</p>
+                <label className="timer-choice">
+                  Turn timer
+                  <select value={timerChoice} onChange={e => setTimerChoice(Number(e.target.value))}>
+                    <option value={0}>Off</option>
+                    <option value={30}>30 seconds</option>
+                    <option value={60}>1 minute</option>
+                    <option value={90}>1 minute 30</option>
+                    <option value={120}>2 minutes</option>
+                  </select>
+                </label>
                 <div className="stack">
                   <button className="btn btn-success btn-block" onClick={() => {
                     setShowStartConfirm(false);
-                    startGame();
+                    startGame(timerChoice || undefined);
                   }}>Yes, Start Game!
                   </button>
                   <button className="btn btn-gray btn-block" onClick={() => setShowStartConfirm(false)}>

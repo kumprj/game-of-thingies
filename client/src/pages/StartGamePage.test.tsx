@@ -342,6 +342,21 @@ describe('StartGamePage in detail', () => {
       expect(actions.startGame).toHaveBeenCalled();
     });
 
+    it('starts without a timer unless the host picks one', () => {
+      const actions = renderPage({showStartConfirm: true});
+      fireEvent.click(screen.getByText('Yes, Start Game!'));
+      expect(actions.startGame).toHaveBeenCalledWith(undefined);
+    });
+
+    it('starts with the turn timer the host picked (#72)', () => {
+      const actions = renderPage({showStartConfirm: true});
+      const dialog = screen.getByRole('alertdialog');
+      expect(within(dialog).getByLabelText('Turn timer')).toHaveValue('0');
+      fireEvent.change(within(dialog).getByLabelText('Turn timer'), {target: {value: '60'}});
+      fireEvent.click(within(dialog).getByText('Yes, Start Game!'));
+      expect(actions.startGame).toHaveBeenCalledWith(60);
+    });
+
     it('closes without starting on "not yet" or a tap outside', () => {
       const actions = renderPage({showStartConfirm: true});
       fireEvent.click(screen.getByText('Wait, Not Yet'));
@@ -403,6 +418,32 @@ describe('StartGamePage in detail', () => {
       renderPage(playing({turnOrder: [], currentPlayer: null, allGuessed: true, isMyTurn: false}));
       expect(screen.getByText('Round over')).toBeInTheDocument();
       expect(screen.getByText('All answers guessed!')).toBeInTheDocument();
+    });
+  });
+
+  describe('turn timer (#72)', () => {
+    it('shows no countdown when the game has no timer', () => {
+      renderPage(playing());
+      expect(screen.queryByRole('timer')).not.toBeInTheDocument();
+    });
+
+    it('counts down the current turn, and tells the player to hurry at 0:00 without ending it', () => {
+      vi.useFakeTimers();
+      try {
+        renderPage(playing({turnEndsAt: Date.now() + 2_000}));
+        expect(screen.getByRole('timer')).toHaveTextContent('0:02');
+        act(() => { vi.advanceTimersByTime(2_500); });
+        expect(screen.getByRole('timer')).toHaveTextContent('0:00');
+        expect(screen.getByText("Time's up, hurry up!")).toBeInTheDocument();
+        expect(screen.getByText("Ann's turn!")).toBeInTheDocument();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('names the slow player to everyone else', () => {
+      renderPage(playing({isMyTurn: false, currentPlayer: 'Ben', turnOrder: ['Ben', 'Ann'], turnEndsAt: Date.now() - 1}));
+      expect(screen.getByText("Time's up. Hurry up, Ben!")).toBeInTheDocument();
     });
   });
 

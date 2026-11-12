@@ -5,6 +5,7 @@ import {useGameLogic} from "../hooks/useGameLogic";
 import Scoreboard from "../components/Scoreboard";
 import TopBar from "../components/TopBar";
 import QRCodeModal from "../components/QRCodeModal";
+import TurnTimer from "../components/TurnTimer";
 
 export default function SpectatorPage() {
   const {
@@ -15,6 +16,7 @@ export default function SpectatorPage() {
     scores,
     turnOrder,
     currentPlayer,
+    turnEndsAt,
     started,
     answeredNames,
     gameNotFound,
@@ -191,6 +193,7 @@ export default function SpectatorPage() {
             <div className="spectator-turn-player">
               {roundOver ? "All answers have been guessed!" : `🎯 ${currentPlayer}'s turn to guess`}
             </div>
+            {!roundOver && <TurnTimer endsAt={turnEndsAt} hurry={`Time's up. Hurry up, ${currentPlayer}!`}/>}
           </div>
           {!roundOver && turnOrder.length > 1 && (
             <div className="spectator-turn-next">

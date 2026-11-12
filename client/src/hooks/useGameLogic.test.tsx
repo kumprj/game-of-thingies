@@ -720,4 +720,56 @@ describe('useGameLogic derived state', () => {
     act(() => result.current.setAuthorName('Alice'));
     expect(result.current.otherPlayers).toEqual(['Bob', 'Charlie', 'David', 'Eve']);
   });
+
+  describe('turn timer (#72)', () => {
+    const handlerFor = (event: string) =>
+        (socket.on as any).mock.calls.find((c: any[]) => c[0] === event)[1];
+    /** GET replies: the game row for the game URL, empty lists for entries and scores. */
+    const serveGame = (game: object, entries: object[] = []) =>
+        (axios.get as any).mockImplementation((url: string) => Promise.resolve({
+          data: url.endsWith('/entries') ? entries : url.endsWith('/scores') ? [] : game
+        }));
+
+    it('has no deadline when the game has no timer', async () => {
+      serveGame({question: 'Q', started: true, turnOrder: ['A']});
+      const {result} = renderHook(() => useGameLogic());
+      await waitFor(() => expect(result.current.turnOrder).toEqual(['A']));
+      expect(result.current.turnEndsAt).toBeNull();
+    });
+
+    it('measures the time left against the server clock, not the device clock', async () => {
+      const serverTime = 5_000_000_000; // wildly different from this device's clock
+      serveGame({question: 'Q', started: true, turnOrder: ['A'], turnDeadline: serverTime + 30_000, serverTime});
+      const before = Date.now();
+      const {result} = renderHook(() => useGameLogic());
+      await waitFor(() => expect(result.current.turnEndsAt).not.toBeNull());
+      expect(result.current.turnEndsAt!).toBeGreaterThanOrEqual(before + 30_000);
+      expect(result.current.turnEndsAt!).toBeLessThanOrEqual(Date.now() + 30_000);
+    });
+
+    it('restarts the countdown on nextTurn and clears it when the timer is absent', async () => {
+      serveGame({question: 'Q'});
+      const {result} = renderHook(() => useGameLogic());
+      await waitFor(() => expect(result.current.gameQuestion).toBe('Q'));
+      act(() => handlerFor('nextTurn')({turnOrder: ['B', 'A'], turnDeadline: 2_000_000 + 45_000, serverTime: 2_000_000}));
+      expect(result.current.turnEndsAt! - Date.now()).toBeGreaterThan(44_000);
+      expect(result.current.turnEndsAt! - Date.now()).toBeLessThanOrEqual(45_000);
+      act(() => handlerFor('nextTurn')({turnOrder: ['A']}));
+      expect(result.current.turnEndsAt).toBeNull();
+    });
+
+    it('sends the chosen timer when starting, and nothing when there is none', async () => {
+      serveGame({question: 'Q'}, [{entryId: '1', text: 'x'}]);
+      const {result} = renderHook(() => useGameLogic());
+      await waitFor(() => expect(result.current.entries).toHaveLength(1));
+      (axios.post as any).mockResolvedValue({data: {turnOrder: ['A', 'B'], turnDeadline: 1_030_000, serverTime: 1_000_000}});
+      await act(async () => { await result.current.startGame(60); });
+      expect(axios.post).toHaveBeenLastCalledWith('/api/games/test-room-1/start', {turnSeconds: 60}, expect.anything());
+      expect(result.current.turnEndsAt).not.toBeNull();
+      (axios.post as any).mockResolvedValue({data: {turnOrder: ['A', 'B']}});
+      await act(async () => { await result.current.startGame(); });
+      expect(axios.post).toHaveBeenLastCalledWith('/api/games/test-room-1/start', undefined, expect.anything());
+      expect(result.current.turnEndsAt).toBeNull();
+    });
+  });
 });

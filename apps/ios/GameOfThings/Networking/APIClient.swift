@@ -77,9 +77,12 @@ struct APIClient {
     }
 
     /// Returns the turn order so the host doesn't depend on its own socket event to see whose turn it is.
-    func startGame(_ gameId: String) async throws -> [String] {
+    /// `turnSeconds` turns the per-turn timer on (#72); nil leaves it off.
+    func startGame(_ gameId: String, turnSeconds: Int? = nil) async throws -> [String] {
         struct Response: Decodable { let turnOrder: [String]? }
-        let response: Response = try await send("POST", "api/games/\(gameId)/start", headers: hostHeaders(gameId))
+        let response: Response = try await send("POST", "api/games/\(gameId)/start",
+                                                body: turnSeconds.map { ["turnSeconds": $0] },
+                                                headers: hostHeaders(gameId))
         return response.turnOrder ?? []
     }
 
@@ -91,8 +94,8 @@ struct APIClient {
 
     func removePlayer(gameId: String, playerName: String) async throws -> [String] {
         struct Response: Decodable { let turnOrder: [String]? }
-        let encoded = playerName.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? playerName
-        let response: Response = try await send("DELETE", "api/games/\(gameId)/players/\(encoded)", headers: hostHeaders(gameId))
+        let response: Response = try await send("DELETE", "api/games/\(gameId)/players/\(encoded(playerName))",
+                                                headers: hostHeaders(gameId))
         return response.turnOrder ?? []
     }
 
@@ -100,6 +103,10 @@ struct APIClient {
         try await sendIgnoringResponse("POST", "api/games/\(gameId)/transfer-host",
                                        body: ["targetPlayerName": targetPlayerName],
                                        headers: hostHeaders(gameId))
+    }
+
+    private func encoded(_ name: String) -> String {
+        name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? name
     }
 
     func saveHostToken(gameId: String, token: String) {
@@ -130,14 +137,14 @@ struct APIClient {
 
     // MARK: - Transport
 
-    private func send<T: Decodable>(_ method: String, _ path: String, body: [String: String]? = nil,
+    private func send<T: Decodable>(_ method: String, _ path: String, body: (any Encodable)? = nil,
                                     headers: [String: String] = [:]) async throws -> T {
         let data = try await sendIgnoringResponse(method, path, body: body, headers: headers)
         return try JSONDecoder().decode(T.self, from: data)
     }
 
     @discardableResult
-    private func sendIgnoringResponse(_ method: String, _ path: String, body: [String: String]? = nil,
+    private func sendIgnoringResponse(_ method: String, _ path: String, body: (any Encodable)? = nil,
                                           headers: [String: String] = [:]) async throws -> Data {
         var request = URLRequest(url: baseURL.appending(path: path))
         request.httpMethod = method

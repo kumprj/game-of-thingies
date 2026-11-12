@@ -28,6 +28,11 @@ final class GameStore {
     /// Who has answered so far, for the lobby line before the game starts.
     private(set) var answeredNames: [String] = []
     var currentPlayer: String? { turnOrder.first }
+    /// When the current turn is due, on this device's clock; nil with no timer (#72). Nothing
+    /// happens at the deadline: the view shows 0:00 and nudges the player.
+    private(set) var turnEndsAt: Date?
+    /// Seconds per turn the host picked for the next start; 0 is off.
+    var turnSecondsChoice = 0
     private(set) var started = false
     /// The server has no game with this code (404); polling stops and the view shows a way back.
     private(set) var gameNotFound = false
@@ -163,8 +168,9 @@ final class GameStore {
             // The lobby's "Answers in" names come from the game, not the entries.
             if !started { Task { await fetchGame() } }
         case "gameStarted":
-            let order = decode(GameStartedEvent.self)?.turnOrder ?? []
-            turnOrder = order
+            let started = decode(GameStartedEvent.self)
+            turnOrder = started?.turnOrder ?? []
+            applyTurnTimer(deadline: started?.turnDeadline, serverTime: started?.serverTime)
             Task { await sync() }
             show("‼️ The game has started ‼️")
         case "wrongAnswer":
@@ -185,6 +191,7 @@ final class GameStore {
         case "nextTurn":
             if let data = decode(NextTurnEvent.self) {
                 turnOrder = data.turnOrder
+                applyTurnTimer(deadline: data.turnDeadline, serverTime: data.serverTime)
             }
         case "hostTransferred":
             if let data = decode(HostTransferredEvent.self) {
@@ -237,11 +244,23 @@ final class GameStore {
         if let order = game.turnOrder {
             turnOrder = order
         }
+        applyTurnTimer(deadline: game.turnDeadline, serverTime: game.serverTime)
         if let players = game.players {
             self.players = players
         }
         answeredNames = game.answeredNames ?? []
         saveToRecentGames(title: gameTitle)
+    }
+
+    private func applyTurnTimer(deadline: Double?, serverTime: Double?) {
+        turnEndsAt = Self.localDeadline(turnDeadline: deadline, serverTime: serverTime)
+    }
+
+    /// The server sends its own clock with a deadline, so the time left is measured against that
+    /// and a skewed device clock can't change it. Nil when the game has no timer.
+    static func localDeadline(turnDeadline: Double?, serverTime: Double?, now: Date = .now) -> Date? {
+        guard let turnDeadline, let serverTime else { return nil }
+        return now.addingTimeInterval((turnDeadline - serverTime) / 1000)
     }
 
     private func saveToRecentGames(title: String?) {
@@ -313,11 +332,12 @@ final class GameStore {
         isStarting = true
         defer { isStarting = false }
         do {
-            let order = try await api.startGame(gameId)
+            let order = try await api.startGame(gameId, turnSeconds: turnSecondsChoice > 0 ? turnSecondsChoice : nil)
             started = true
             if !order.isEmpty {
                 turnOrder = order
             }
+            if turnSecondsChoice > 0 { await fetchGame() } // the first deadline
             await fetchEntries()
             await fetchScores()
         } catch let error as APIError where error.status == 409 {

@@ -57,6 +57,10 @@ struct Game: Decodable {
     var players: [String]?
     /// Who has answered, sent before the game starts (names only; #42).
     var answeredNames: [String]?
+    /// With the turn timer on (#72): when the current turn is due, and the server's clock when this
+    /// was sent. Both epoch ms; see `GameStore.localDeadline`.
+    var turnDeadline: Double?
+    var serverTime: Double?
 }
 
 struct Score: Decodable, Hashable {
@@ -68,6 +72,8 @@ struct Score: Decodable, Hashable {
 
 struct GameStartedEvent: Decodable {
     var turnOrder: [String]?
+    var turnDeadline: Double?
+    var serverTime: Double?
 }
 
 struct HostTransferredEvent: Decodable {
@@ -85,4 +91,6 @@ struct GuessEvent: Decodable {
 struct NextTurnEvent: Decodable {
     var currentPlayer: String?
     var turnOrder: [String]
+    var turnDeadline: Double?
+    var serverTime: Double?
 }

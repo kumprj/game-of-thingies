@@ -1190,3 +1190,113 @@ describe('unmatched routes', () => {
     expect(res.data).toEqual({error: 'Not found'});
   });
 });
+
+describe('turn timer (#72)', () => {
+  const guessUrl = (gameId: string, entryId: string) => `/api/games/${gameId}/entries/${entryId}/guess`;
+
+  async function lobby(names = ['Ann', 'Ben', 'Cy']) {
+    const gameId = await createGame('Ann');
+    const ids: Record<string, string> = {};
+    for (const name of names) ids[name] = await addEntry(gameId, name, `${name}'s answer`);
+    return {gameId, ids};
+  }
+
+  it('is off by default: no timer fields anywhere', async () => {
+    const {gameId, ids} = await lobby();
+    const room = await joinRoom(gameId);
+    let mark = room.events.length;
+    const start = await api('POST', `/api/games/${gameId}/start`);
+    const startedEvent = await room.next('gameStarted', mark);
+    for (const payload of [start.data, startedEvent, await game(gameId)]) {
+      expect(payload).not.toHaveProperty('turnDeadline');
+      expect(payload).not.toHaveProperty('serverTime');
+    }
+    expect(await game(gameId)).not.toHaveProperty('turnSeconds');
+
+    const [first] = (await game(gameId)).turnOrder as string[];
+    const target = Object.keys(ids).find(n => n !== first)!;
+    mark = room.events.length;
+    await api('POST', guessUrl(gameId, ids[target]), {guesserName: first, guess: 'Nobody'});
+    expect(await room.next('nextTurn', mark)).not.toHaveProperty('turnDeadline');
+  });
+
+  it('sets a deadline when the host starts with a timer, and moves it with every turn change', async () => {
+    const {gameId, ids} = await lobby(['Ann', 'Ben', 'Cy', 'Di']);
+    const room = await joinRoom(gameId);
+    let mark = room.events.length;
+    const before = Date.now();
+    const start = await api('POST', `/api/games/${gameId}/start`, {turnSeconds: 30});
+    expect(start.status).toBe(200);
+    const startedEvent = await room.next('gameStarted', mark);
+    expect(startedEvent.turnDeadline).toBeGreaterThanOrEqual(before + 30_000);
+    expect(startedEvent.turnDeadline).toBeLessThanOrEqual(Date.now() + 30_000);
+    expect(startedEvent.serverTime).toBeGreaterThanOrEqual(before);
+    expect(start.data).toMatchObject({turnDeadline: startedEvent.turnDeadline});
+
+    const loaded = await game(gameId);
+    expect(loaded).toMatchObject({turnSeconds: 30, turnDeadline: startedEvent.turnDeadline, serverTime: expect.any(Number)});
+
+    // A wrong guess hands the turn on and restarts the clock
+    const [first, second] = loaded.turnOrder as string[];
+    const target = Object.keys(ids).find(n => n !== first)!;
+    await new Promise(r => setTimeout(r, 20));
+    mark = room.events.length;
+    await api('POST', guessUrl(gameId, ids[target]), {guesserName: first, guess: 'Nobody'});
+    const afterWrong = await room.next('nextTurn', mark);
+    expect(afterWrong.currentPlayer).toBe(second);
+    expect(afterWrong.turnDeadline).toBeGreaterThan(startedEvent.turnDeadline);
+    expect((await game(gameId)).turnDeadline).toBe(afterWrong.turnDeadline);
+
+    // So do a host skip and a removal
+    mark = room.events.length;
+    const skip = await api('POST', `/api/games/${gameId}/skip-turn`);
+    const afterSkip = await room.next('nextTurn', mark);
+    expect(afterSkip.turnDeadline).toBeGreaterThanOrEqual(afterWrong.turnDeadline);
+    expect(skip.data.turnDeadline).toBe(afterSkip.turnDeadline);
+    mark = room.events.length;
+    await api('DELETE', `/api/games/${gameId}/players/${afterSkip.turnOrder[3]}`);
+    expect((await room.next('nextTurn', mark)).turnDeadline).toBeGreaterThanOrEqual(afterSkip.turnDeadline);
+  });
+
+  it('leaves an overdue turn alone: nothing rotates when the deadline passes', async () => {
+    const {gameId} = await lobby();
+    await api('POST', `/api/games/${gameId}/start`, {turnSeconds: 10});
+    const room = await joinRoom(gameId);
+    const loaded = await game(gameId);
+    // Pretend the deadline is long gone by comparing against a future server clock
+    expect(loaded.turnDeadline).toBeLessThan(loaded.serverTime + 11_000);
+    await new Promise(r => setTimeout(r, 300));
+    expect(room.events.filter(e => e.name === 'nextTurn')).toEqual([]);
+    expect((await game(gameId)).turnOrder).toEqual(loaded.turnOrder);
+  });
+
+  it('clears the deadline when the last answer is guessed', async () => {
+    const {gameId, ids} = await lobby(['Ann', 'Ben']);
+    await api('POST', `/api/games/${gameId}/start`, {turnSeconds: 30});
+    let order = (await game(gameId)).turnOrder as string[];
+    // Ann and Ben guess each other right, until the last player guesses their own answer
+    const [first, second] = order;
+    await api('POST', guessUrl(gameId, ids[second]), {guesserName: first, guess: second});
+    order = (await game(gameId)).turnOrder;
+    expect(order).toEqual([first]);
+    await api('POST', guessUrl(gameId, ids[first]), {guesserName: first, guess: first});
+    expect(await game(gameId)).toMatchObject({turnOrder: [], turnDeadline: null});
+  });
+
+  it('clears the timer when the host starts a new round', async () => {
+    const {gameId} = await lobby();
+    await api('POST', `/api/games/${gameId}/start`, {turnSeconds: 30});
+    await api('POST', `/api/games/${gameId}/reset`, {question: 'Next?'});
+    const reset = await game(gameId);
+    expect(reset).not.toHaveProperty('turnSeconds');
+    expect(reset).not.toHaveProperty('turnDeadline');
+  });
+
+  it.each([5, 601, 45.5, '30', 0])('rejects a timer of %s with a 400 and does not start', async value => {
+    const {gameId} = await lobby();
+    const {status, data} = await api('POST', `/api/games/${gameId}/start`, {turnSeconds: value as number});
+    expect(status).toBe(400);
+    expect(data.error).toContain('Turn timer');
+    expect((await game(gameId)).started).toBeFalsy();
+  });
+});

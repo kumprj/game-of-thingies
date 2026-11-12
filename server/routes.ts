@@ -6,6 +6,7 @@ import {asyncHandler, getIo} from './http';
 import type {EntryItem, GameItem} from './models';
 import {ddb, expiresAt, tables} from './db';
 import {buildTurnOrder, rotate} from './turnOrder';
+import {timerPayload, timerUpdate} from './turnTimer';
 import {validateGameSetup} from './gameSetup';
 import {answeredNames} from './lobby';
 import {
@@ -15,6 +16,7 @@ import {
   validateGuess,
   validateParam,
   validateReset,
+  validateStart,
   validateTokenHeaders
 } from './validation';
 import {
@@ -82,24 +84,27 @@ function authorTokenMismatch(item: EntryItem, game: GameItem, req: express.Reque
   return Boolean(boundToken && (!playerToken || boundToken !== playerToken));
 }
 
-function emitNextTurn(io: Server, gameId: string, turnOrder: string[]) {
-  io.to(gameId).emit('nextTurn', {currentPlayer: turnOrder[0] || null, turnOrder});
+function emitNextTurn(io: Server, gameId: string, turnOrder: string[], deadline?: number | null) {
+  io.to(gameId).emit('nextTurn', {currentPlayer: turnOrder[0] || null, turnOrder, ...timerPayload(deadline)});
 }
 
 /**
- * Saves a new turn order only if it still equals `previous` (what the caller read), so two
- * simultaneous changes can't overwrite each other. Returns false when someone else changed it first.
+ * Saves a new turn order (and, when the game has a timer, the new turn's deadline) only if the
+ * order still equals `previous` (what the caller read), so two simultaneous changes can't
+ * overwrite each other. Returns `{deadline}` (undefined with the timer off), or false when
+ * someone else changed the order first.
  */
-async function writeTurnOrder(gameId: string, previous: string[], next: string[]) {
+async function writeTurnOrder(game: GameItem, previous: string[], next: string[]) {
+  const timer = timerUpdate(game.turnSeconds, next);
   try {
     await ddb.send(new UpdateCommand({
       TableName: tables.games,
-      Key: {gameId},
-      UpdateExpression: 'SET turnOrder = :to, expiresAt = :e',
+      Key: {gameId: game.gameId},
+      UpdateExpression: `SET turnOrder = :to, expiresAt = :e${timer.clause}`,
       ConditionExpression: 'turnOrder = :prev',
-      ExpressionAttributeValues: {':to': next, ':e': expiresAt(), ':prev': previous}
+      ExpressionAttributeValues: {':to': next, ':e': expiresAt(), ':prev': previous, ...timer.values}
     }));
-    return true;
+    return {deadline: timer.deadline};
   } catch (err) {
     if (isConditionalCheckFailure(err)) return false;
     throw err;
@@ -316,6 +321,8 @@ router.delete('/games/:gameId/entries/:entryId', async (req, res) => {
 // Start Game
 router.post('/games/:gameId/start', async (req, res) => {
   const {gameId} = req.params;
+  const setup = validateStart(req.body);
+  if (!setup.ok) return res.status(400).json({error: setup.error});
   try {
     const game = await getGame(gameId);
     if (!game) return res.status(404).json({error: 'Game not found'});
@@ -335,16 +342,19 @@ router.post('/games/:gameId/start', async (req, res) => {
     const lastTurn: Record<string, number> = game.lastTurn || {};
 
     const shuffled = buildTurnOrder(players, lastTurn);
+    const {turnSeconds} = setup;
+    const timer = timerUpdate(turnSeconds, shuffled);
 
     // Conditional so two simultaneous starts can't both win and reshuffle the turn order.
     try {
       await ddb.send(new UpdateCommand({
         TableName: tables.games,
         Key: {gameId},
-        UpdateExpression: 'SET turnOrder = :to, players = :pl, started = :s, lastTurn = if_not_exists(lastTurn, :empty), expiresAt = :e',
+        UpdateExpression: `SET turnOrder = :to, players = :pl, started = :s, lastTurn = if_not_exists(lastTurn, :empty), expiresAt = :e${turnSeconds ? ', turnSeconds = :ts' : ''}${timer.clause}`,
         ConditionExpression: 'attribute_not_exists(started) OR started = :notStarted',
         ExpressionAttributeValues: {
-          ':to': shuffled, ':pl': players, ':s': true, ':empty': {}, ':e': expiresAt(), ':notStarted': false
+          ':to': shuffled, ':pl': players, ':s': true, ':empty': {}, ':e': expiresAt(), ':notStarted': false,
+          ...(turnSeconds ? {':ts': turnSeconds} : {}), ...timer.values
         }
       }));
     } catch (err) {
@@ -363,9 +373,10 @@ router.post('/games/:gameId/start', async (req, res) => {
     }))));
 
     const io = getIo(req);
-    io.to(gameId).emit("gameStarted", {turnOrder: shuffled});
+    const timing = timerPayload(timer.deadline);
+    io.to(gameId).emit("gameStarted", {turnOrder: shuffled, ...timing});
     // Returned too so the host doesn't depend on its own socket event to see whose turn it is.
-    res.json({success: true, turnOrder: shuffled});
+    res.json({success: true, turnOrder: shuffled, ...timing});
   } catch (err) {
     console.error(err);
     res.status(500).json({error: 'Start failed'});
@@ -424,12 +435,13 @@ router.post('/games/:gameId/entries/:entryId/guess', async (req, res) => {
     // The turn order is only written if it still equals what was read, so a simultaneous skip,
     // removal or guess can't be overwritten with a stale copy. lastTurn is a single-key write
     // (drives next round's first player).
+    const timer = timerUpdate(game.turnSeconds, nextOrder);
     const gameUpdate = {
       TableName: tables.games, Key: {gameId},
-      UpdateExpression: 'SET lastTurn.#p = :t, turnOrder = :to, expiresAt = :e',
+      UpdateExpression: `SET lastTurn.#p = :t, turnOrder = :to, expiresAt = :e${timer.clause}`,
       ConditionExpression: 'turnOrder = :prev',
       ExpressionAttributeNames: {'#p': guesserName},
-      ExpressionAttributeValues: {':t': Date.now(), ':to': nextOrder, ':e': expiresAt(), ':prev': turnOrder}
+      ExpressionAttributeValues: {':t': Date.now(), ':to': nextOrder, ':e': expiresAt(), ':prev': turnOrder, ...timer.values}
     };
 
     try {
@@ -481,7 +493,7 @@ router.post('/games/:gameId/entries/:entryId/guess', async (req, res) => {
         authorName: item.authorName,
         guess: item.text
       });
-      emitNextTurn(io, gameId, turnOrder);
+      emitNextTurn(io, gameId, turnOrder, timer.deadline);
       io.to(gameId).emit("entriesUpdated");
       return res.json({isCorrect: true});
     }
@@ -491,7 +503,7 @@ router.post('/games/:gameId/entries/:entryId/guess', async (req, res) => {
       playerName: guesserName,
       guess: item.text
     });
-    emitNextTurn(io, gameId, turnOrder);
+    emitNextTurn(io, gameId, turnOrder, timer.deadline);
     return res.json({isCorrect: false});
   } catch (err) {
     console.error(err);
@@ -513,14 +525,13 @@ router.post('/games/:gameId/skip-turn', async (req, res) => {
 
     const turnOrder = rotate(current);
 
-    if (!await writeTurnOrder(gameId, current, turnOrder)) {
-      return res.status(409).json({error: 'The game changed. Try again.'});
-    }
+    const written = await writeTurnOrder(game, current, turnOrder);
+    if (!written) return res.status(409).json({error: 'The game changed. Try again.'});
 
     const io = getIo(req);
-    emitNextTurn(io, gameId, turnOrder);
+    emitNextTurn(io, gameId, turnOrder, written.deadline);
 
-    res.json({success: true, turnOrder});
+    res.json({success: true, turnOrder, ...timerPayload(written.deadline)});
   } catch (err) {
     console.error('Skip turn failed:', err);
     res.status(500).json({error: 'Failed to skip turn'});
@@ -540,15 +551,14 @@ router.delete('/games/:gameId/players/:playerName', async (req, res) => {
     if (!current.includes(playerName)) return res.status(404).json({error: 'Player not found'});
     const turnOrder = current.filter((name: string) => name !== playerName);
 
-    if (!await writeTurnOrder(gameId, current, turnOrder)) {
-      return res.status(409).json({error: 'The game changed. Try again.'});
-    }
+    const written = await writeTurnOrder(game, current, turnOrder);
+    if (!written) return res.status(409).json({error: 'The game changed. Try again.'});
 
     const io = getIo(req);
     io.to(gameId).emit('playerRemoved', {playerName, turnOrder});
-    emitNextTurn(io, gameId, turnOrder);
+    emitNextTurn(io, gameId, turnOrder, written.deadline);
 
-    res.json({success: true, turnOrder});
+    res.json({success: true, turnOrder, ...timerPayload(written.deadline)});
   } catch (err) {
     console.error('Remove player failed:', err);
     res.status(500).json({error: 'Failed to remove player'});
@@ -604,7 +614,11 @@ router.get('/games/:gameId', asyncHandler(async (req, res) => {
   if (!game) return res.status(404).json({error: 'Game not found'});
   // Games created before the rename stored the title as `gameOwner`; they expire within a day.
   const {hostToken: _hostToken, playerTokens: _playerTokens, gameOwner, ...publicGame} = game;
-  const body: Record<string, unknown> = {...publicGame, title: publicGame.title || gameOwner};
+  const body: Record<string, unknown> = {
+    ...publicGame,
+    title: publicGame.title || gameOwner,
+    ...timerPayload(game.turnSeconds ? game.turnDeadline ?? null : undefined)
+  };
   // Lobby (#42): names only, sorted so neither order nor entry ids link a name to an answer.
   if (!game.started) body.answeredNames = answeredNames(await queryEntries(gameId));
   res.json(body);
@@ -674,7 +688,7 @@ router.post('/games/:gameId/reset', async (req, res) => {
     await ddb.send(new UpdateCommand({
       TableName: tables.games,
       Key: {gameId},
-      UpdateExpression: 'SET question = :q, createdAt = :c, started = :started, expiresAt = :e REMOVE turnOrder, players',
+      UpdateExpression: 'SET question = :q, createdAt = :c, started = :started, expiresAt = :e REMOVE turnOrder, players, turnSeconds, turnDeadline',
       ExpressionAttributeValues: {
         ':q': parsed.question,
         ':c': new Date().toISOString(),
