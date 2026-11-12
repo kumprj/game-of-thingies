@@ -30,3 +30,19 @@ The local server uses your own SST stage's tables, not production's.
 xcodebuild test -project apps/ios/GameOfThings.xcodeproj -scheme GameOfThings \
   -destination 'platform=iOS Simulator,name=iPhone 17'
 ```
+
+## Push notifications and Live Activities
+
+Players get a notification when it is their turn or a new round starts, and a Live Activity on the
+lock screen and Dynamic Island shows who is up and who is left. Both are driven by the server
+(`server/push.ts`); the app only registers its tokens. The toggle "Notify me on my turn" in a game
+opts out of that game (and removes the device from it on the server).
+
+- `GameOfThings/Notifications/` holds the APNs registration and the Live Activity controller.
+- `GameOfThingsLiveActivity/` is the widget extension that draws the Live Activity;
+  `GameOfThingsShared/GameActivityAttributes.swift` is compiled into both targets and must match
+  `server/pushPayloads.ts`.
+- Both App IDs (`com.kumprj.GameOfThings` and `com.kumprj.GameOfThings.LiveActivity`) need the Push
+  Notifications capability, which Xcode adds when you sign with your team. Push needs a real device;
+  the Simulator gets no APNs token.
+- Debug builds register against Apple's sandbox gateway, Release builds against production.

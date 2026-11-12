@@ -69,6 +69,29 @@ export function validateStart(body: unknown): {ok: true; turnSeconds?: number} |
   return {ok: true, turnSeconds: raw};
 }
 
+/** APNs tokens are hex (32 bytes for a device; a Live Activity's is longer). */
+const APNS_TOKEN = /^[0-9a-f]{32,256}$/i;
+
+/**
+ * A device registration (#71): a push token, a Live Activity token or both (hex text), and whether
+ * they come from a development build (`sandbox`, default false).
+ */
+export function validateDevice(body: unknown):
+    {ok: true; pushToken?: string; activityToken?: string; sandbox: boolean} | Invalid {
+  const {pushToken, activityToken, sandbox} = asRecord(body);
+  for (const token of [pushToken, activityToken]) {
+    if (token !== undefined && (typeof token !== 'string' || !APNS_TOKEN.test(token))) {
+      return {ok: false, error: 'Tokens must be hex text'};
+    }
+  }
+  if (pushToken === undefined && activityToken === undefined) {
+    return {ok: false, error: 'A push token or a Live Activity token is required'};
+  }
+  if (sandbox !== undefined && typeof sandbox !== 'boolean') return {ok: false, error: 'sandbox must be true or false'};
+  return {ok: true, pushToken: pushToken as string | undefined, activityToken: activityToken as string | undefined,
+    sandbox: sandbox === true};
+}
+
 /** Guess's body: both names must be text within the name limit. Values are not trimmed (they are matched exactly). */
 export function validateGuess(body: unknown): {ok: true; guesserName: string; guess: string} | Invalid {
   const {guesserName, guess} = asRecord(body);

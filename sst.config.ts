@@ -58,6 +58,14 @@ export default $config({
           ttl: "expiresAt",
         });
 
+    // Apple Push Notification service credentials for "it's your turn" pushes and Live Activities on
+    // iOS (#71). Until they are set the server leaves push off and games work as before. The values
+    // stay out of the repo: `npx sst secret set ApnsKey --stage production < AuthKey_XXXXXXXXXX.p8`,
+    // and the same for ApnsKeyId (the key's 10-character id) and ApnsTeamId (your Apple team id).
+    const apnsKey = new sst.Secret("ApnsKey", "unset");
+    const apnsKeyId = new sst.Secret("ApnsKeyId", "unset");
+    const apnsTeamId = new sst.Secret("ApnsTeamId", "unset");
+
     const zone = "gameofthings.fun";
     const webDomain = production ? zone : `${$app.stage}.${zone}`;
     const apiDomain = production ? `api.${zone}` : `api-${$app.stage}.${zone}`;
@@ -93,6 +101,10 @@ export default $config({
         GAMES_TABLE: games.name,
         ENTRIES_TABLE: entries.name,
         SCORES_TABLE: scores.name,
+        APNS_KEY: apnsKey.value,
+        APNS_KEY_ID: apnsKeyId.value,
+        APNS_TEAM_ID: apnsTeamId.value,
+        APNS_TOPIC: "com.kumprj.GameOfThings", // the iOS app's bundle id
       },
       // Lets ECS replace a stuck container, and lets a deploy (and the origin DNS below) wait for
       // the new container to answer before it takes traffic. busybox wget ships with node:alpine.

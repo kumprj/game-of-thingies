@@ -211,5 +211,26 @@ struct APIClientTests {
         StubURLProtocol.respond = { _ in (409, #"{"error":"Already started"}"#) }
         do { try await api.startGame("ABCD") } catch let error as APIError { #expect(error.status == 409) } catch {}
     }
+
+    @Test func registerDeviceSendsTokensAndSandboxFlagWithThePlayerToken() async throws {
+        try await api.registerDevice(gameId: "ABCD", playerName: "Ann Lee", pushToken: "ab12", activityToken: nil, sandbox: true)
+        let request = try #require(StubURLProtocol.requests.first)
+        #expect(request.httpMethod == "PUT")
+        #expect(request.url?.path == "/api/games/ABCD/players/Ann%20Lee/device")
+        #expect(request.value(forHTTPHeaderField: "x-player-token") == api.playerToken())
+        let data = try #require(request.httpBody)
+        let body = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(body["pushToken"] as? String == "ab12")
+        #expect(body["sandbox"] as? Bool == true)
+        #expect(body["activityToken"] == nil)
+    }
+
+    @Test func removeDeviceDeletesWithThePlayerToken() async throws {
+        try await api.removeDevice(gameId: "ABCD", playerName: "Ann")
+        let request = try #require(StubURLProtocol.requests.first)
+        #expect(request.httpMethod == "DELETE")
+        #expect(request.url?.path == "/api/games/ABCD/players/Ann/device")
+        #expect(request.value(forHTTPHeaderField: "x-player-token") == api.playerToken())
+    }
 }
 }
