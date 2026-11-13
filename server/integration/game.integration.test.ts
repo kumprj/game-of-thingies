@@ -1,7 +1,7 @@
-import {afterAll, beforeAll, describe, expect, it, vi} from 'vitest';
+import {afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi} from 'vitest';
 import type {AddressInfo} from 'net';
 import {CreateTableCommand, DeleteTableCommand, DynamoDBClient} from '@aws-sdk/client-dynamodb';
-import {DynamoDBDocumentClient, QueryCommand} from '@aws-sdk/lib-dynamodb';
+import {DynamoDBDocumentClient, GetCommand, QueryCommand} from '@aws-sdk/lib-dynamodb';
 import {io as connect, type Socket} from 'socket.io-client';
 
 // Plays real games through the HTTP API and Socket.IO against DynamoDB Local, so every route,
@@ -33,7 +33,7 @@ const sockets: Socket[] = [];
 // Host tokens by game id, so tests call start/reset as the host without passing the token around
 const hostTokens = new Map<string, string>();
 
-async function api<T = any>(method: 'GET' | 'POST' | 'PATCH' | 'DELETE', path: string, body?: object, headers: Record<string, string> = {}): Promise<{status: number; data: T}> {
+async function api<T = any>(method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE', path: string, body?: object, headers: Record<string, string> = {}): Promise<{status: number; data: T}> {
   const gameId = path.match(/^\/api\/games\/([^/]+)\/(start|reset|skip-turn|players|transfer-host)/)?.[1];
   const token = gameId && hostTokens.get(gameId);
   const response = await fetch(`${baseUrl}${path}`, {
@@ -1298,5 +1298,246 @@ describe('turn timer (#72)', () => {
     expect(status).toBe(400);
     expect(data.error).toContain('Turn timer');
     expect((await game(gameId)).started).toBeFalsy();
+  });
+});
+
+describe('push notifications and Live Activities (#71)', () => {
+  const guessUrl = (gameId: string, entryId: string) => `/api/games/${gameId}/entries/${entryId}/guess`;
+  const deviceUrl = (gameId: string, name: string) => `/api/games/${gameId}/players/${name}/device`;
+  const hex = (seed: string) => seed.repeat(64).slice(0, 64);
+  /** Each player's fixed push token and Live Activity token, told apart by the name's first letter. */
+  const pushTokenFor = (name: string) => hex(name[0].toLowerCase());
+  const activityTokenFor = (name: string) => `f${hex(name[0].toLowerCase()).slice(1)}`;
+  type Sent = {token: string; sandbox: boolean; pushType: string; payload: any; collapseId?: string};
+  let sent: Sent[] = [];
+  let result: 'sent' | 'unregistered' = 'sent';
+  let setApnsSender: (sender: ((message: Sent) => Promise<'sent' | 'unregistered'>) | null) => void;
+
+  beforeEach(async () => {
+    sent = [];
+    result = 'sent';
+    ({setApnsSender} = await import('../apns.js') as any);
+    setApnsSender(async message => { sent.push(message); return result; });
+  });
+  afterEach(() => setApnsSender(null));
+
+  /** Waits for the background pushes (they never delay the response). */
+  async function pushes(count: number) {
+    const deadline = Date.now() + 3000;
+    while (sent.length < count && Date.now() < deadline) await new Promise(r => setTimeout(r, 20));
+    await new Promise(r => setTimeout(r, 50));
+    return sent;
+  }
+  const row = async (gameId: string) => (await DynamoDBDocumentClient.from(dynamo)
+      .send(new GetCommand({TableName: tableNames.games, Key: {gameId}}))).Item as any;
+
+  /** A game with each player's device registered (push token = hex(name's first letter)). */
+  async function lobby(names = ['Ann', 'Ben', 'Cy'], {activity = false} = {}) {
+    const gameId = await createGame('Ann');
+    const ids: Record<string, string> = {};
+    for (const name of names) {
+      const entry = await api('POST', `/api/games/${gameId}/entries`, {authorName: name, text: `${name}'s secret answer`},
+          {'x-player-token': `tok-${name}`});
+      ids[name] = entry.data.entryId;
+      const registered = await api('PUT', deviceUrl(gameId, name), {
+        pushToken: pushTokenFor(name),
+        ...(activity ? {activityToken: activityTokenFor(name)} : {}), sandbox: true
+      }, {'x-player-token': `tok-${name}`});
+      expect(registered).toEqual({status: 200, data: {success: true}});
+    }
+    return {gameId, ids, tokenFor: pushTokenFor};
+  }
+
+  describe('registering a device', () => {
+    it('stores the tokens against the claimed name, and never shows them', async () => {
+      const {gameId} = await lobby(['Ann'], {activity: true});
+      expect((await row(gameId)).pushTokens).toEqual({ann: {token: hex('a'), sandbox: true}});
+      expect((await row(gameId)).activityTokens).toEqual({ann: {token: activityTokenFor('Ann'), sandbox: true}});
+      expect(JSON.stringify(await game(gameId))).not.toContain(hex('a'));
+      expect(await game(gameId)).not.toHaveProperty('pushTokens');
+      expect(await game(gameId)).not.toHaveProperty('activityTokens');
+    });
+
+    it('lets the device replace its token', async () => {
+      const {gameId} = await lobby(['Ann']);
+      await api('PUT', deviceUrl(gameId, 'Ann'), {pushToken: hex('f')}, {'x-player-token': 'tok-Ann'});
+      expect((await row(gameId)).pushTokens.ann).toEqual({token: hex('f'), sandbox: false});
+    });
+
+    it('is only for the device that claimed the name (403)', async () => {
+      const {gameId} = await lobby(['Ann']);
+      for (const headers of [{'x-player-token': 'someone-else'}, {} as Record<string, string>]) {
+        expect(await api('PUT', deviceUrl(gameId, 'Ann'), {pushToken: hex('9')}, headers))
+            .toEqual({status: 403, data: {error: 'Only this player can register a device'}});
+      }
+      expect(await api('PUT', deviceUrl(gameId, 'Nobody'), {pushToken: hex('9')}, {'x-player-token': 'tok-Ann'})).toMatchObject({status: 403});
+      expect((await row(gameId)).pushTokens.ann.token).toBe(hex('a'));
+    });
+
+    it('rejects bad bodies (400) and unknown games (404)', async () => {
+      const {gameId} = await lobby(['Ann']);
+      const headers = {'x-player-token': 'tok-Ann'};
+      expect((await api('PUT', deviceUrl(gameId, 'Ann'), {pushToken: 'not hex'}, headers)).status).toBe(400);
+      expect((await api('PUT', deviceUrl(gameId, 'Ann'), {sandbox: true}, headers)).status).toBe(400);
+      expect(await api('PUT', deviceUrl('ZZZZ-unknown', 'Ann'), {pushToken: hex('9')}, headers))
+          .toEqual({status: 404, data: {error: 'Game not found'}});
+    });
+
+    it('works on a game that predates the token maps', async () => {
+      const gameId = await createGame('Ann');
+      await api('POST', `/api/games/${gameId}/entries`, {authorName: 'Ann', text: 'x'}, {'x-player-token': 'tok-Ann'});
+      const {UpdateCommand} = await import('@aws-sdk/lib-dynamodb');
+      await DynamoDBDocumentClient.from(dynamo).send(new UpdateCommand({
+        TableName: tableNames.games, Key: {gameId}, UpdateExpression: 'REMOVE pushTokens, activityTokens'}));
+      expect((await api('PUT', deviceUrl(gameId, 'Ann'), {pushToken: hex('a')}, {'x-player-token': 'tok-Ann'})).status).toBe(200);
+      expect((await row(gameId)).pushTokens.ann.token).toBe(hex('a'));
+    });
+  });
+
+  describe('notifications', () => {
+    it('tell the player whose turn it is when the game starts, and carry no answers', async () => {
+      const {gameId, tokenFor} = await lobby();
+      await api('POST', `/api/games/${gameId}/start`);
+      const [first] = (await game(gameId)).turnOrder as string[];
+      const [message] = await pushes(1);
+      expect(sent).toHaveLength(1);
+      expect(message).toMatchObject({token: tokenFor(first), sandbox: true, pushType: 'alert', collapseId: gameId});
+      expect(message.payload.aps.alert.title).toBe('Your turn');
+      expect(JSON.stringify(message.payload)).not.toContain('secret answer');
+    });
+
+    it('follow the turn after a wrong guess and a host skip, and skip a player who opted out', async () => {
+      const {gameId, ids, tokenFor} = await lobby();
+      await api('POST', `/api/games/${gameId}/start`);
+      const [first, second, third] = (await game(gameId)).turnOrder as string[];
+      await pushes(1);
+      sent.length = 0;
+
+      const target = Object.keys(ids).find(n => n !== first)!;
+      await api('POST', guessUrl(gameId, ids[target]), {guesserName: first, guess: 'Nobody'}, {'x-player-token': `tok-${first}`});
+      expect((await pushes(1)).map(m => m.token)).toEqual([tokenFor(second)]);
+      sent.length = 0;
+
+      await api('DELETE', deviceUrl(gameId, third), undefined, {'x-player-token': `tok-${third}`});
+      await api('POST', `/api/games/${gameId}/skip-turn`);   // second -> third, who opted out
+      await new Promise(r => setTimeout(r, 200));
+      expect(sent).toEqual([]);
+    });
+
+    it('go to everyone when the host starts a new round', async () => {
+      const {gameId} = await lobby();
+      await api('POST', `/api/games/${gameId}/reset`, {question: 'Next one?'});
+      const messages = await pushes(3);
+      expect(messages.map(m => m.payload.aps.alert.title)).toEqual(['New round', 'New round', 'New round']);
+      expect(new Set(messages.map(m => m.token)).size).toBe(3);
+    });
+
+    it('do nothing, and break nothing, when a game has no registered devices', async () => {
+      const gameId = await createGame('Ann');
+      await addEntry(gameId, 'Ann', 'a');
+      await addEntry(gameId, 'Ben', 'b');
+      expect((await api('POST', `/api/games/${gameId}/start`)).status).toBe(200);
+      await new Promise(r => setTimeout(r, 100));
+      expect(sent).toEqual([]);
+    });
+
+    it('survive a sender that throws', async () => {
+      const {gameId} = await lobby(['Ann', 'Ben']);
+      setApnsSender(async () => { throw new Error('network down'); });
+      const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      try {
+        expect((await api('POST', `/api/games/${gameId}/start`)).status).toBe(200);
+        await new Promise(r => setTimeout(r, 100));
+      } finally {
+        errors.mockRestore();
+      }
+    });
+
+    it('forget a token Apple reports dead', async () => {
+      const {gameId} = await lobby(['Ann', 'Ben']);
+      result = 'unregistered';
+      await api('POST', `/api/games/${gameId}/start`);
+      await pushes(1);
+      await new Promise(r => setTimeout(r, 200));
+      const tokens = (await row(gameId)).pushTokens;
+      const [first] = (await game(gameId)).turnOrder as string[];
+      expect(tokens).not.toHaveProperty(first.toLowerCase());
+      expect(Object.keys(tokens)).toHaveLength(1);
+    });
+  });
+
+  describe('Live Activities', () => {
+    it('update every player\'s activity with who is up and who is left, names only', async () => {
+      const {gameId, ids} = await lobby(['Ann', 'Ben', 'Cy'], {activity: true});
+      await api('POST', `/api/games/${gameId}/start`);
+      const [first, second] = (await game(gameId)).turnOrder as string[];
+      await pushes(4);
+      sent.length = 0;
+      const target = Object.keys(ids).find(n => n !== first)!;
+      await api('POST', guessUrl(gameId, ids[target]), {guesserName: first, guess: 'Nobody'}, {'x-player-token': `tok-${first}`});
+      await pushes(4);
+      const updates = sent.filter(m => m.pushType === 'liveactivity');
+      expect(updates).toHaveLength(3);
+      for (const update of updates) {
+        expect(update.payload.aps.event).toBe('update');
+        expect(update.payload.aps['content-state'].currentPlayer).toBe(second);
+        expect(update.payload.aps['content-state'].remaining).toHaveLength(3);
+        expect(JSON.stringify(update.payload)).not.toContain('secret answer');
+      }
+    });
+
+    it('end when the round ends and when a new round starts', async () => {
+      const {gameId, ids} = await lobby(['Ann', 'Ben'], {activity: true});
+      await api('POST', `/api/games/${gameId}/start`);
+      const [first, second] = (await game(gameId)).turnOrder as string[];
+      await api('POST', guessUrl(gameId, ids[second]), {guesserName: first, guess: second}, {'x-player-token': `tok-${first}`});
+      await api('POST', guessUrl(gameId, ids[first]), {guesserName: first, guess: first}, {'x-player-token': `tok-${first}`});
+      await new Promise(r => setTimeout(r, 300));
+      const ends = sent.filter(m => m.pushType === 'liveactivity' && m.payload.aps.event === 'end');
+      expect(ends.length).toBeGreaterThanOrEqual(2);
+      sent.length = 0;
+      await api('POST', `/api/games/${gameId}/reset`, {question: 'Again?'});
+      await pushes(4);
+      expect(sent.filter(m => m.pushType === 'liveactivity').every(m => m.payload.aps.event === 'end')).toBe(true);
+    });
+  });
+
+  describe('leaving and opting out', () => {
+    it('opting out removes the player\'s tokens (and only theirs)', async () => {
+      const {gameId} = await lobby(['Ann', 'Ben'], {activity: true});
+      expect(await api('DELETE', deviceUrl(gameId, 'Ann'), undefined, {'x-player-token': 'tok-Ann'})).toEqual({status: 200, data: {success: true}});
+      const after = await row(gameId);
+      expect(Object.keys(after.pushTokens)).toEqual(['ben']);
+      expect(Object.keys(after.activityTokens)).toEqual(['ben']);
+    });
+
+    it('opting out is only for that device (403)', async () => {
+      const {gameId} = await lobby(['Ann']);
+      expect((await api('DELETE', deviceUrl(gameId, 'Ann'), undefined, {'x-player-token': 'other'})).status).toBe(403);
+      expect(await api('DELETE', deviceUrl('ZZZZ-unknown', 'Ann'), undefined, {'x-player-token': 'tok-Ann'})).toMatchObject({status: 404});
+      expect((await row(gameId)).pushTokens).toHaveProperty('ann');
+    });
+
+    it('withdrawing an answer removes the tokens', async () => {
+      const {gameId, ids} = await lobby(['Ann', 'Ben']);
+      await api('DELETE', `/api/games/${gameId}/entries/${ids.Ann}`, undefined, {'x-player-token': 'tok-Ann'});
+      expect(Object.keys((await row(gameId)).pushTokens)).toEqual(['ben']);
+    });
+
+    it('the host removing a player removes the tokens, and that player is never notified', async () => {
+      const {gameId} = await lobby(['Ann', 'Ben', 'Cy'], {activity: true});
+      await api('POST', `/api/games/${gameId}/start`);
+      await pushes(1);
+      sent.length = 0;
+      const turnOrder = (await game(gameId)).turnOrder as string[];
+      const removed = turnOrder[0];
+      await api('DELETE', `/api/games/${gameId}/players/${removed}`);
+      await pushes(3);
+      expect(Object.keys((await row(gameId)).pushTokens)).not.toContain(removed.toLowerCase());
+      expect(Object.keys((await row(gameId)).activityTokens)).not.toContain(removed.toLowerCase());
+      const removedPush = pushTokenFor(removed);
+      expect(sent.some(m => m.pushType === 'alert' && m.token === removedPush)).toBe(false);
+      expect(sent.filter(m => m.pushType === 'alert')).toHaveLength(1); // the next player is up
+    });
   });
 });

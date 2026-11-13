@@ -18,7 +18,7 @@ struct GameView: View {
     }
 
     init(gameId: String) {
-        _store = State(initialValue: GameStore(gameId: gameId))
+        _store = State(initialValue: GameStore(gameId: gameId, liveActivity: LiveActivityController()))
     }
 
     var body: some View {
@@ -27,6 +27,7 @@ struct GameView: View {
                 notFoundSection
             } else {
                 header
+                if store.hasSubmitted { notificationsSection }
                 if !store.turnOrder.isEmpty || store.started { turnSection }
                 if store.started { statusSection }
                 if !store.started { answerFormSections }
@@ -67,6 +68,8 @@ struct GameView: View {
             default: break
             }
         }
+        // iOS hands out the push token a moment after permission, so register once it arrives
+        .onChange(of: PushRegistrar.shared.deviceToken) { Task { await store.registerDevice() } }
         .onChange(of: store.toast) { _, toast in
             if let toast { AccessibilityNotification.Announcement(toast.message).post() }
         }
@@ -159,6 +162,16 @@ struct GameView: View {
             }
             .frame(maxWidth: .infinity)
             .listRowBackground(Color.clear)
+        }
+    }
+
+    private var notificationsSection: some View {
+        Section {
+            Toggle("Notify me on my turn", isOn: Binding(
+                get: { store.notificationsEnabled },
+                set: { on in Task { await store.setNotifications(enabled: on) } }))
+        } footer: {
+            Text("A notification when it's your turn or a new round starts. It never includes answers.")
         }
     }
 

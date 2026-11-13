@@ -3,14 +3,16 @@ import express from 'express';
 import {v4 as uuidv4} from 'uuid';
 import type {Server} from 'socket.io';
 import {asyncHandler, getIo} from './http';
-import type {EntryItem, GameItem} from './models';
+import type {ApnsToken, EntryItem, GameItem} from './models';
 import {ddb, expiresAt, tables} from './db';
 import {buildTurnOrder, rotate} from './turnOrder';
 import {timerPayload, timerUpdate} from './turnTimer';
 import {validateGameSetup} from './gameSetup';
 import {answeredNames} from './lobby';
+import {notifyNewRound, notifyTurn} from './push';
 import {
   checkNameLength,
+  validateDevice,
   validateEntryInput,
   validateEntryText,
   validateGuess,
@@ -111,6 +113,50 @@ async function writeTurnOrder(game: GameItem, previous: string[], next: string[]
   }
 }
 
+/** Stores one player's APNs or Live Activity token; the map is created first on games that predate it. */
+async function saveApnsToken(gameId: string, map: 'pushTokens' | 'activityTokens', name: string, value: ApnsToken) {
+  const set = () => ddb.send(new UpdateCommand({
+    TableName: tables.games,
+    Key: {gameId},
+    UpdateExpression: `SET ${map}.#p = :v, expiresAt = :e`,
+    ExpressionAttributeNames: {'#p': name},
+    ExpressionAttributeValues: {':v': value, ':e': expiresAt()}
+  }));
+  try {
+    await set();
+  } catch (err) {
+    if ((err as {name?: string})?.name !== 'ValidationException') throw err;
+    await ddb.send(new UpdateCommand({
+      TableName: tables.games,
+      Key: {gameId},
+      UpdateExpression: `SET ${map} = if_not_exists(${map}, :empty), expiresAt = :e`,
+      ExpressionAttributeValues: {':empty': {}, ':e': expiresAt()}
+    }));
+    await set();
+  }
+}
+
+/** Forgets a player's notification tokens (they left, were removed or opted out). Never throws. */
+async function removeApnsTokens(gameId: string, name: string) {
+  try {
+    await ddb.send(new UpdateCommand({
+      TableName: tables.games,
+      Key: {gameId},
+      UpdateExpression: 'REMOVE pushTokens.#p, activityTokens.#p',
+      ExpressionAttributeNames: {'#p': name.toLowerCase()}
+    }));
+  } catch (err) {
+    // A game from before the token maps existed has nothing to remove
+    if ((err as {name?: string})?.name !== 'ValidationException') console.error('Failed to remove push tokens:', err);
+  }
+}
+
+/** A copy of a name-keyed map without one (case-insensitive) name. */
+function omitKey<T>(map: Record<string, T> | undefined, name: string) {
+  const {[name.toLowerCase()]: _omitted, ...rest} = map ?? {};
+  return rest;
+}
+
 function randomGameId() {
   const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
   let result = "";
@@ -144,6 +190,8 @@ router.post('/createGame', async (req, res) => {
             hostName: name,
             hostToken,
             playerTokens: {},
+            pushTokens: {},
+            activityTokens: {},
             expiresAt: expiresAt()
           },
           ConditionExpression: 'attribute_not_exists(gameId)'
@@ -307,6 +355,7 @@ router.delete('/games/:gameId/entries/:entryId', async (req, res) => {
         console.error('Failed to remove player token:', e);
       }
     }
+    await removeApnsTokens(gameId, authorLower);
 
     const io = getIo(req);
     io.to(gameId).emit('entriesUpdated');
@@ -375,6 +424,7 @@ router.post('/games/:gameId/start', async (req, res) => {
     const io = getIo(req);
     const timing = timerPayload(timer.deadline);
     io.to(gameId).emit("gameStarted", {turnOrder: shuffled, ...timing});
+    notifyTurn(game, shuffled);
     // Returned too so the host doesn't depend on its own socket event to see whose turn it is.
     res.json({success: true, turnOrder: shuffled, ...timing});
   } catch (err) {
@@ -494,6 +544,7 @@ router.post('/games/:gameId/entries/:entryId/guess', async (req, res) => {
         guess: item.text
       });
       emitNextTurn(io, gameId, turnOrder, timer.deadline);
+      notifyTurn(game, turnOrder);
       io.to(gameId).emit("entriesUpdated");
       return res.json({isCorrect: true});
     }
@@ -504,6 +555,7 @@ router.post('/games/:gameId/entries/:entryId/guess', async (req, res) => {
       guess: item.text
     });
     emitNextTurn(io, gameId, turnOrder, timer.deadline);
+    notifyTurn(game, turnOrder);
     return res.json({isCorrect: false});
   } catch (err) {
     console.error(err);
@@ -530,6 +582,7 @@ router.post('/games/:gameId/skip-turn', async (req, res) => {
 
     const io = getIo(req);
     emitNextTurn(io, gameId, turnOrder, written.deadline);
+    notifyTurn(game, turnOrder);
 
     res.json({success: true, turnOrder, ...timerPayload(written.deadline)});
   } catch (err) {
@@ -557,6 +610,9 @@ router.delete('/games/:gameId/players/:playerName', async (req, res) => {
     const io = getIo(req);
     io.to(gameId).emit('playerRemoved', {playerName, turnOrder});
     emitNextTurn(io, gameId, turnOrder, written.deadline);
+    // After the removal's own tokens are gone the leaver is no longer notified
+    await removeApnsTokens(gameId, playerName);
+    notifyTurn({...game, pushTokens: omitKey(game.pushTokens, playerName), activityTokens: omitKey(game.activityTokens, playerName)}, turnOrder);
 
     res.json({success: true, turnOrder, ...timerPayload(written.deadline)});
   } catch (err) {
@@ -607,13 +663,46 @@ router.post('/games/:gameId/transfer-host', async (req, res) => {
   }
 });
 
+// Register this device's push and Live Activity tokens (#71). Only the device that claimed the name may.
+router.put('/games/:gameId/players/:playerName/device', asyncHandler(async (req, res) => {
+  const {gameId, playerName} = req.params;
+  const device = validateDevice(req.body);
+  if (!device.ok) return res.status(400).json({error: device.error});
+  const game = await getGame(gameId);
+  if (!game) return res.status(404).json({error: 'Game not found'});
+  const name = playerName.toLowerCase();
+  if (!tokensMatch(game.playerTokens?.[name], req.header('x-player-token'))) {
+    return res.status(403).json({error: 'Only this player can register a device'});
+  }
+  if (device.pushToken) await saveApnsToken(gameId, 'pushTokens', name, {token: device.pushToken, sandbox: device.sandbox});
+  if (device.activityToken) {
+    await saveApnsToken(gameId, 'activityTokens', name, {token: device.activityToken, sandbox: device.sandbox});
+  }
+  res.json({success: true});
+}));
+
+// Opt out: forget this player's notification tokens.
+router.delete('/games/:gameId/players/:playerName/device', asyncHandler(async (req, res) => {
+  const {gameId, playerName} = req.params;
+  const game = await getGame(gameId);
+  if (!game) return res.status(404).json({error: 'Game not found'});
+  if (!tokensMatch(game.playerTokens?.[playerName.toLowerCase()], req.header('x-player-token'))) {
+    return res.status(403).json({error: 'Only this player can remove their device'});
+  }
+  await removeApnsTokens(gameId, playerName);
+  res.json({success: true});
+}));
+
 router.get('/games/:gameId', asyncHandler(async (req, res) => {
   const {gameId} = req.params;
   // Never expose the host token or player tokens to players.
   const game = await getGame(gameId);
   if (!game) return res.status(404).json({error: 'Game not found'});
   // Games created before the rename stored the title as `gameOwner`; they expire within a day.
-  const {hostToken: _hostToken, playerTokens: _playerTokens, gameOwner, ...publicGame} = game;
+  const {
+    hostToken: _hostToken, playerTokens: _playerTokens, pushTokens: _pushTokens, activityTokens: _activityTokens,
+    gameOwner, ...publicGame
+  } = game;
   const body: Record<string, unknown> = {
     ...publicGame,
     title: publicGame.title || gameOwner,
@@ -701,6 +790,7 @@ router.post('/games/:gameId/reset', async (req, res) => {
     // 3. Emit Reset Event
     const io = getIo(req);
     io.to(gameId).emit("gameReset");
+    notifyNewRound(game);
 
     res.json({success: true, message: 'Game reset with fresh slate'});
   } catch (error) {

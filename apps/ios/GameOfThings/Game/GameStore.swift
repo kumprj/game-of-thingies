@@ -23,8 +23,8 @@ final class GameStore {
     private(set) var gameQuestion: String?
     private(set) var entries: [Entry] = []
     private(set) var scores: [Score] = []
-    private(set) var turnOrder: [String] = []
-    private(set) var players: [String] = []
+    private(set) var turnOrder: [String] = [] { didSet { publishActivity() } }
+    private(set) var players: [String] = [] { didSet { publishActivity() } }
     /// Who has answered so far, for the lobby line before the game starts.
     private(set) var answeredNames: [String] = []
     var currentPlayer: String? { turnOrder.first }
@@ -33,7 +33,7 @@ final class GameStore {
     private(set) var turnEndsAt: Date?
     /// Seconds per turn the host picked for the next start; 0 is off.
     var turnSecondsChoice = 0
-    private(set) var started = false
+    private(set) var started = false { didSet { publishActivity() } }
     /// The server has no game with this code (404); polling stops and the view shows a way back.
     private(set) var gameNotFound = false
 
@@ -49,8 +49,11 @@ final class GameStore {
         didSet {
             if authorName.count > Self.maxNameLength { authorName = String(authorName.prefix(Self.maxNameLength)) }
             if !authorName.trimmed.isEmpty { defaults.set(authorName, forKey: Self.authorNameKey) }
+            publishActivity()
         }
     }
+    /// Whether this game may send this device "it's your turn" notifications (#71). On until turned off.
+    private(set) var notificationsEnabled: Bool
     var newQuestion = ""
     /// This device already answered the current round's question.
     private(set) var hasSubmitted: Bool {
@@ -76,6 +79,9 @@ final class GameStore {
     @ObservationIgnored private let api: APIClient
     @ObservationIgnored private let realtime: RealtimeClient
     @ObservationIgnored private let defaults: UserDefaults
+    @ObservationIgnored private let push: PushRegistrar
+    @ObservationIgnored private let liveActivity: (any TurnActivityPublishing)?
+    @ObservationIgnored private var lastActivity: TurnActivityState?
     @ObservationIgnored private var pollTask: Task<Void, Never>?
     @ObservationIgnored private var toastTask: Task<Void, Never>?
     // Overlapping fetches (socket bursts, polling) apply only the newest response.
@@ -83,15 +89,20 @@ final class GameStore {
     @ObservationIgnored private var scoresRequest = 0
 
     private var submittedKey: String { "submitted_\(gameId)" }
+    private var notificationsKey: String { "pushEnabled_\(gameId)" }
 
     init(gameId: String, api: APIClient = APIClient(), realtime: RealtimeClient = RealtimeClient(),
-         defaults: UserDefaults = .standard) {
+         defaults: UserDefaults = .standard, push: PushRegistrar = .shared,
+         liveActivity: (any TurnActivityPublishing)? = nil) {
         self.gameId = gameId
         self.api = api
         self.realtime = realtime
         self.defaults = defaults
+        self.push = push
+        self.liveActivity = liveActivity
         authorName = defaults.string(forKey: Self.authorNameKey) ?? ""
         hasSubmitted = defaults.bool(forKey: "submitted_\(gameId)")
+        notificationsEnabled = defaults.object(forKey: "pushEnabled_\(gameId)") as? Bool ?? true
     }
 
     // MARK: - Lifecycle
@@ -99,14 +110,23 @@ final class GameStore {
     func start() {
         realtime.onConnectionChange = { [weak self] in self?.connectionChanged($0) }
         realtime.onEvent = { [weak self] in self?.handle(event: $0, payload: $1) }
+        liveActivity?.onPushToken = { [weak self] token in
+            guard let self else { return }
+            Task { await self.registerDevice(activityToken: token) }
+        }
         realtime.connect()
-        Task { await sync() }
+        Task {
+            await sync()
+            await registerDevice()
+        }
     }
 
     func stop() {
         realtime.disconnect()
         stopPolling()
         toastTask?.cancel()
+        liveActivity?.publish(nil)
+        lastActivity = nil
     }
 
     /// iOS suspends sockets in the background, so drop it there and reconnect on return.
@@ -207,6 +227,50 @@ final class GameStore {
             }
         default:
             break
+        }
+    }
+
+    // MARK: - Notifications and Live Activity (#71)
+
+    /// The Live Activity while I'm playing this round: whose turn it is and who is left. Nil (no
+    /// activity) before the start, for spectators, and once the round is over.
+    private var activityState: TurnActivityState? {
+        guard started, !turnOrder.isEmpty, players.contains(authorName) else { return nil }
+        return TurnActivityState(gameId: gameId, playerName: authorName,
+                                 content: .init(currentPlayer: turnOrder.first, remaining: turnOrder))
+    }
+
+    private func publishActivity() {
+        let state = activityState
+        guard state != lastActivity else { return }
+        lastActivity = state
+        liveActivity?.publish(state)
+    }
+
+    /// Tells the server where to notify me, once I've answered (that is what claims my name) and
+    /// this game's notifications are on. Safe to call whenever something it needs changes.
+    func registerDevice(activityToken: String? = nil) async {
+        let name = authorName.trimmed
+        let pushToken = push.deviceToken
+        guard notificationsEnabled, hasSubmitted, !name.isEmpty, pushToken != nil || activityToken != nil else { return }
+        try? await api.registerDevice(gameId: gameId, playerName: name, pushToken: activityToken == nil ? pushToken : nil,
+                                      activityToken: activityToken, sandbox: PushRegistrar.isSandbox)
+    }
+
+    /// The toggle in the game screen. Off also removes this device from the game on the server.
+    func setNotifications(enabled: Bool) async {
+        notificationsEnabled = enabled
+        defaults.set(enabled, forKey: notificationsKey)
+        if enabled {
+            guard await push.requestAndRegister() else {
+                notificationsEnabled = false
+                defaults.set(false, forKey: notificationsKey)
+                show("Turn notifications are turned off for Game of Things in Settings", .error)
+                return
+            }
+            await registerDevice()
+        } else if hasSubmitted {
+            try? await api.removeDevice(gameId: gameId, playerName: authorName.trimmed)
         }
     }
 
@@ -315,6 +379,8 @@ final class GameStore {
             await fetchEntries()
             hasSubmitted = true
             show("Entry added!")
+            // My name is claimed now, so this is the moment to ask for notifications
+            if notificationsEnabled, await push.requestAndRegister() { await registerDevice() }
         } catch {
             if let message = (error as? APIError)?.serverMessage {
                 show(message, .error)

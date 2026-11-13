@@ -105,6 +105,22 @@ struct APIClient {
                                        headers: hostHeaders(gameId))
     }
 
+    /// Tells the server where to push this player's turn notifications and Live Activity updates (#71).
+    /// Either token may be nil; the server keeps the other as it was.
+    func registerDevice(gameId: String, playerName: String, pushToken: String?, activityToken: String?,
+                        sandbox: Bool) async throws {
+        struct Body: Encodable { let pushToken: String?; let activityToken: String?; let sandbox: Bool }
+        try await sendIgnoringResponse("PUT", "api/games/\(gameId)/players/\(encoded(playerName))/device",
+                                       body: Body(pushToken: pushToken, activityToken: activityToken, sandbox: sandbox),
+                                       headers: playerHeaders())
+    }
+
+    /// Opt out: the server forgets this player's tokens.
+    func removeDevice(gameId: String, playerName: String) async throws {
+        try await sendIgnoringResponse("DELETE", "api/games/\(gameId)/players/\(encoded(playerName))/device",
+                                       headers: playerHeaders())
+    }
+
     private func encoded(_ name: String) -> String {
         name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? name
     }

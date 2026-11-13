@@ -80,6 +80,16 @@ Base path: /api
   Shuffles players, sets game as started, reveals entries, and emits gameStarted with the turn
   order.
 
+- PUT /games/:gameId/players/:playerName/device
+  Headers: x-player-token (the device that claimed the name)
+  Body: { pushToken?: string, activityToken?: string, sandbox?: boolean } (hex APNs tokens)
+  Registers where to send this player's "it's your turn" notifications and Live Activity updates.
+
+- DELETE /games/:gameId/players/:playerName/device
+  Headers: x-player-token
+  Opts out: forgets the player's tokens. Tokens are also forgotten when the player withdraws their
+  answer or the host removes them.
+
 ### Turn timer
 
 The host can start a game with a per-turn timer. The server stores `turnSeconds` and, on every turn
@@ -88,6 +98,26 @@ change, a `turnDeadline` (epoch ms). `GET /games/:gameId`, the start/skip respon
 clients count down against the server's clock instead of their own. The server never ends a turn
 itself: at 0:00 clients show "Hurry up!" and the turn waits. With no timer none of these fields
 exist.
+
+### Push notifications (iOS)
+
+The server sends APNs pushes (no answers in them, only the game code) when it becomes a player's
+turn and when the host starts a new round, and updates each player's Live Activity (who is up and
+who is left). It needs credentials, which stay out of the repo as SST secrets; until they are set
+push is simply off:
+
+```sh
+npx sst secret set ApnsKey --stage production < AuthKey_XXXXXXXXXX.p8
+npx sst secret set ApnsKeyId --stage production XXXXXXXXXX
+npx sst secret set ApnsTeamId --stage production YYYYYYYYYY
+```
+
+Create the key in the Apple Developer portal (Keys, with Apple Push Notifications service
+enabled). The iOS app and its Live Activity extension need the Push Notifications capability on
+their App IDs (Xcode adds it when you sign with your team).
+
+- GET /health
+  Returns OK. The container health check (ECS) and the deploy workflow's check.
 
 ## WEBSOCKET EVENTS
 

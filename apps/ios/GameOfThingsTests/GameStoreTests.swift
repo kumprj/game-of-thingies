@@ -8,6 +8,8 @@ extension StubbedNetworkTests {
 struct GameStoreTests {
     let defaults: UserDefaults
     let api: APIClient
+    /// Never prompts for notification permission in a test run.
+    let push = PushRegistrar(authorize: { false })
 
     init() {
         let d = UserDefaults(suiteName: "GameStoreTests")!
@@ -27,7 +29,7 @@ struct GameStoreTests {
             }
         }
         defaults.set(me, forKey: GameStore.authorNameKey)
-        let store = GameStore(gameId: "ABCD", api: api, realtime: RealtimeClient(baseURL: api.baseURL), defaults: defaults)
+        let store = GameStore(gameId: "ABCD", api: api, realtime: RealtimeClient(baseURL: api.baseURL), defaults: defaults, push: push)
         await store.sync()
         return store
     }
@@ -174,7 +176,7 @@ struct GameStoreTests {
 
     @Test func missingGameIsFlaggedAndStopsSyncing() async {
         StubURLProtocol.respond = { _ in (404, #"{"error":"Game not found"}"#) }
-        let store = GameStore(gameId: "ABCD", api: api, realtime: RealtimeClient(baseURL: api.baseURL), defaults: defaults)
+        let store = GameStore(gameId: "ABCD", api: api, realtime: RealtimeClient(baseURL: api.baseURL), defaults: defaults, push: push)
         await store.sync()
         #expect(store.gameNotFound)
         StubURLProtocol.requests = []
@@ -184,7 +186,7 @@ struct GameStoreTests {
 
     @Test func otherFetchFailuresAreNotNotFound() async {
         StubURLProtocol.respond = { _ in (500, "{}") }
-        let store = GameStore(gameId: "ABCD", api: api, realtime: RealtimeClient(baseURL: api.baseURL), defaults: defaults)
+        let store = GameStore(gameId: "ABCD", api: api, realtime: RealtimeClient(baseURL: api.baseURL), defaults: defaults, push: push)
         await store.sync()
         #expect(!store.gameNotFound)
         StubURLProtocol.requests = []
@@ -513,6 +515,157 @@ struct GameStoreTests {
         #expect(post.httpBody == nil)
     }
 }
+}
+
+/// Records what the store asked the Live Activity to show.
+final class ActivitySpy: TurnActivityPublishing {
+    var onPushToken: ((String) -> Void)?
+    private(set) var published: [TurnActivityState?] = []
+    func publish(_ state: TurnActivityState?) { published.append(state) }
+}
+
+extension StubbedNetworkTests.GameStoreTests {
+    // MARK: - Notifications and Live Activity (#71)
+
+    private func makeNotifyStore(me: String = "Ann", game: String = "{}", activity: ActivitySpy? = nil,
+                                 token: String? = "abcd1234") async -> GameStore {
+        // The store takes "started" from revealed answers, so a started game needs one
+        let entries = game.contains(#""started":true"#) ? "[\(Self.entry("1", "Bo", "a"))]" : "[]"
+        StubURLProtocol.respond = { request in
+            switch (request.httpMethod, request.url!.path) {
+            case ("GET", "/api/games/ABCD"): (200, game)
+            case ("GET", "/api/games/ABCD/entries"): (200, entries)
+            default: (200, "[]")
+            }
+        }
+        defaults.set(me, forKey: GameStore.authorNameKey)
+        if let token { push.didRegister(deviceToken: Data(token.utf8)) }
+        let store = GameStore(gameId: "ABCD", api: api, realtime: RealtimeClient(baseURL: api.baseURL),
+                              defaults: defaults, push: push, liveActivity: activity)
+        await store.sync()
+        return store
+    }
+
+    private func registrations() -> [URLRequest] {
+        StubURLProtocol.requests.filter { $0.url?.path.hasSuffix("/device") == true }
+    }
+
+    @Test func registersTheDeviceOnceIAnswered() async throws {
+        let store = await makeNotifyStore()
+        defaults.set(true, forKey: "submitted_ABCD")
+        let answered = GameStore(gameId: "ABCD", api: api, realtime: RealtimeClient(baseURL: api.baseURL),
+                                 defaults: defaults, push: push)
+        await answered.registerDevice()
+        let put = try #require(registrations().first)
+        #expect(put.httpMethod == "PUT")
+        #expect(put.url?.path == "/api/games/ABCD/players/Ann/device")
+        #expect(put.value(forHTTPHeaderField: "x-player-token") != nil)
+        let body = try JSONDecoder().decode([String: String].self, from: try #require(put.httpBody).filteringBool())
+        #expect(body["pushToken"] == PushRegistrar.hex(Data("abcd1234".utf8)))
+        #expect(store.notificationsEnabled)
+    }
+
+    @Test func registersNothingBeforeIAnswered() async {
+        let store = await makeNotifyStore()
+        await store.registerDevice()
+        #expect(registrations().isEmpty)
+    }
+
+    @Test func registersNothingWithoutAToken() async {
+        defaults.set(true, forKey: "submitted_ABCD")
+        let store = await makeNotifyStore(token: nil)
+        await store.registerDevice()
+        #expect(registrations().isEmpty)
+    }
+
+    @Test func turningNotificationsOffRemovesTheDeviceAndStaysOff() async throws {
+        defaults.set(true, forKey: "submitted_ABCD")
+        let store = await makeNotifyStore()
+        await store.setNotifications(enabled: false)
+        let delete = try #require(registrations().first)
+        #expect(delete.httpMethod == "DELETE")
+        #expect(delete.url?.path == "/api/games/ABCD/players/Ann/device")
+        #expect(!store.notificationsEnabled)
+        #expect(defaults.bool(forKey: "pushEnabled_ABCD") == false)
+
+        StubURLProtocol.requests = []
+        await store.registerDevice()   // e.g. a new token arrives: still opted out
+        #expect(registrations().isEmpty)
+        let reopened = GameStore(gameId: "ABCD", api: api, realtime: RealtimeClient(baseURL: api.baseURL),
+                                 defaults: defaults, push: push)
+        #expect(!reopened.notificationsEnabled)
+    }
+
+    @Test func turningNotificationsOnWithPermissionDeniedStaysOffAndSaysWhy() async {
+        let store = await makeNotifyStore()   // the suite's PushRegistrar refuses permission
+        await store.setNotifications(enabled: true)
+        #expect(!store.notificationsEnabled)
+        #expect(store.toast?.style == .error)
+    }
+
+    @Test func aLiveActivityTokenIsRegisteredWithoutTheDeviceToken() async throws {
+        defaults.set(true, forKey: "submitted_ABCD")
+        let store = await makeNotifyStore()
+        await store.registerDevice(activityToken: "ff00ee")
+        let put = try #require(registrations().first)
+        let body = try JSONDecoder().decode([String: String].self, from: try #require(put.httpBody).filteringBool())
+        #expect(body["activityToken"] == "ff00ee")
+        #expect(body["pushToken"] == nil)
+    }
+
+    @Test func activityFollowsTheTurnOrderWhileIPlay() async throws {
+        let spy = ActivitySpy()
+        let store = await makeNotifyStore(game: #"{"started":true,"players":["Ann","Bo","Cy"],"turnOrder":["Bo","Ann","Cy"]}"#,
+                                          activity: spy)
+        let first = try #require(spy.published.last ?? nil)
+        #expect(first.gameId == "ABCD" && first.playerName == "Ann")
+        #expect(first.content.currentPlayer == "Bo")
+        #expect(first.content.remaining == ["Bo", "Ann", "Cy"])
+
+        store.handle(event: "nextTurn", payload: Data(#"{"currentPlayer":"Ann","turnOrder":["Ann","Cy"]}"#.utf8))
+        let next = try #require(spy.published.last ?? nil)
+        #expect(next.content.currentPlayer == "Ann")
+        #expect(next.content.remaining == ["Ann", "Cy"])
+    }
+
+    @Test func activityEndsWhenTheRoundIsOverAndWhenILeave() async throws {
+        let spy = ActivitySpy()
+        let store = await makeNotifyStore(game: #"{"started":true,"players":["Ann","Bo"],"turnOrder":["Bo","Ann"]}"#, activity: spy)
+        store.handle(event: "nextTurn", payload: Data(#"{"currentPlayer":null,"turnOrder":[]}"#.utf8))
+        #expect(spy.published.last! == nil)
+
+        store.handle(event: "nextTurn", payload: Data(#"{"currentPlayer":"Ann","turnOrder":["Ann"]}"#.utf8))
+        #expect(spy.published.last! != nil)
+        store.stop()
+        #expect(spy.published.last! == nil)
+    }
+
+    @Test func noActivityForSpectatorsOrBeforeTheStart() async {
+        let spy = ActivitySpy()
+        _ = await makeNotifyStore(me: "Watcher", game: #"{"started":true,"players":["Ann","Bo"],"turnOrder":["Bo","Ann"]}"#, activity: spy)
+        #expect(spy.published.allSatisfy { $0 == nil })
+        let lobby = ActivitySpy()
+        _ = await makeNotifyStore(game: #"{"started":false,"turnOrder":[]}"#, activity: lobby)
+        #expect(lobby.published.allSatisfy { $0 == nil })
+    }
+
+    @Test func activityIsNotRepublishedWhenNothingChanged() async {
+        let spy = ActivitySpy()
+        let store = await makeNotifyStore(game: #"{"started":true,"players":["Ann","Bo"],"turnOrder":["Bo","Ann"]}"#, activity: spy)
+        let count = spy.published.count
+        await store.sync()
+        await store.sync()
+        #expect(spy.published.count == count)
+    }
+}
+
+private extension Data {
+    /// The registration body has a Bool (`sandbox`); drop it so the rest decodes as strings.
+    func filteringBool() throws -> Data {
+        var object = (try JSONSerialization.jsonObject(with: self) as? [String: Any]) ?? [:]
+        object["sandbox"] = nil
+        return try JSONSerialization.data(withJSONObject: object)
+    }
 }
 
 struct TurnClockTests {

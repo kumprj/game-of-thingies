@@ -2,7 +2,7 @@ import {describe, expect, it} from 'vitest';
 import {MAX_QUESTION_LENGTH} from './gameSetup';
 import {
   checkNameLength, checkParam, DEFAULT_QUESTION, MAX_ANSWER_LENGTH, MAX_ID_LENGTH, MAX_NAME_LENGTH, MAX_TOKEN_LENGTH,
-  validateEntryInput, validateEntryText, validateGuess, validateParam, validateReset, validateStart, validateTokenHeaders
+  validateEntryInput, validateEntryText, validateGuess, validateParam, validateDevice, validateReset, validateStart, validateTokenHeaders
 } from './validation';
 
 const fakeRes = () => {
@@ -138,6 +138,30 @@ describe('validateStart', () => {
 
   it.each([9, 601, 0, -5, 30.5, '30', NaN, true])('rejects %s', value => {
     expect(validateStart({turnSeconds: value})).toEqual({ok: false, error: expect.stringContaining('Turn timer')});
+  });
+});
+
+describe('validateDevice', () => {
+  const hex = 'ab12'.repeat(16);
+
+  it('accepts a push token, a Live Activity token or both', () => {
+    expect(validateDevice({pushToken: hex})).toEqual({ok: true, pushToken: hex, activityToken: undefined, sandbox: false});
+    expect(validateDevice({activityToken: hex, sandbox: true}))
+        .toEqual({ok: true, pushToken: undefined, activityToken: hex, sandbox: true});
+    expect(validateDevice({pushToken: hex, activityToken: hex}).ok).toBe(true);
+  });
+
+  it.each([{}, undefined, {sandbox: true}])('needs a token: %j', body => {
+    expect(validateDevice(body)).toEqual({ok: false, error: expect.stringContaining('required')});
+  });
+
+  it.each(['nothex!', 'ab12', 'ab12'.repeat(65), 7, null])('rejects the token %j', token => {
+    expect(validateDevice({pushToken: token}).ok).toBe(false);
+    expect(validateDevice({activityToken: token}).ok).toBe(false);
+  });
+
+  it('rejects a non-boolean sandbox flag', () => {
+    expect(validateDevice({pushToken: hex, sandbox: 'yes'}).ok).toBe(false);
   });
 });
 
