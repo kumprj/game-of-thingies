@@ -1,5 +1,6 @@
 import type {NextFunction, Request, Response} from 'express';
 import {MAX_QUESTION_LENGTH} from './gameSetup';
+import {MAX_TURN_SECONDS, MIN_TURN_SECONDS} from './turnTimer';
 
 export const MAX_NAME_LENGTH = 30;
 export const MAX_ANSWER_LENGTH = 200;
@@ -56,6 +57,16 @@ export function validateReset(body: unknown): {ok: true; question: string} | Inv
     return {ok: false, error: `Question must be ${MAX_QUESTION_LENGTH} characters or fewer`};
   }
   return {ok: true, question: question || DEFAULT_QUESTION};
+}
+
+/** Start's body: `turnSeconds` optionally turns on the per-turn timer (a whole number of seconds); missing or null leaves it off. */
+export function validateStart(body: unknown): {ok: true; turnSeconds?: number} | Invalid {
+  const raw = asRecord(body).turnSeconds;
+  if (raw === undefined || raw === null) return {ok: true};
+  if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < MIN_TURN_SECONDS || raw > MAX_TURN_SECONDS) {
+    return {ok: false, error: `Turn timer must be ${MIN_TURN_SECONDS} to ${MAX_TURN_SECONDS} seconds`};
+  }
+  return {ok: true, turnSeconds: raw};
 }
 
 /** Guess's body: both names must be text within the name limit. Values are not trimmed (they are matched exactly). */

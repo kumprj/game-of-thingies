@@ -444,5 +444,83 @@ struct GameStoreTests {
         #expect(text?.contains("Question: \"Favorite food?\"") == true)
         #expect(text?.contains("🏆 Overall leader: Ann (3)") == true)
     }
+
+    // MARK: - Turn timer (#72)
+
+    @Test func noTimerWhenTheGameHasNone() async {
+        let store = await makeStore(game: #"{"started":true,"turnOrder":["Ann","Bo"]}"#)
+        #expect(store.turnEndsAt == nil)
+    }
+
+    @Test func deadlineIsMeasuredAgainstTheServerClock() {
+        let now = Date(timeIntervalSince1970: 1_000)
+        // The server's clock is years ahead of this device's; only the 30s gap matters.
+        let local = GameStore.localDeadline(turnDeadline: 5_000_030_000, serverTime: 5_000_000_000, now: now)
+        #expect(local == now.addingTimeInterval(30))
+        #expect(GameStore.localDeadline(turnDeadline: nil, serverTime: 5, now: now) == nil)
+        #expect(GameStore.localDeadline(turnDeadline: 5, serverTime: nil, now: now) == nil)
+    }
+
+    @Test func syncReadsTheDeadlineFromTheGame() async throws {
+        let store = await makeStore(
+            game: #"{"started":true,"turnOrder":["Ann","Bo"],"turnDeadline":2030000,"serverTime":2000000}"#)
+        let left = try #require(store.turnEndsAt).timeIntervalSinceNow
+        #expect(left > 28 && left <= 30)
+    }
+
+    @Test func nextTurnRestartsTheCountdownAndClearsItWithoutATimer() async throws {
+        let store = await makeStore(game: #"{"turnOrder":["Ann","Bo"]}"#)
+        store.handle(event: "nextTurn", payload: Data(
+            #"{"currentPlayer":"Bo","turnOrder":["Bo","Ann"],"turnDeadline":2045000,"serverTime":2000000}"#.utf8))
+        let left = try #require(store.turnEndsAt).timeIntervalSinceNow
+        #expect(left > 43 && left <= 45)
+        store.handle(event: "nextTurn", payload: Data(#"{"currentPlayer":"Ann","turnOrder":["Ann"]}"#.utf8))
+        #expect(store.turnEndsAt == nil)
+    }
+
+    @Test func gameStartedEventStartsTheCountdown() async throws {
+        let store = await makeStore()
+        store.handle(event: "gameStarted", payload: Data(
+            #"{"turnOrder":["Ann","Bo"],"turnDeadline":1060000,"serverTime":1000000}"#.utf8))
+        let left = try #require(store.turnEndsAt).timeIntervalSinceNow
+        #expect(left > 58 && left <= 60)
+    }
+
+    @Test func startGameSendsTheChosenTimerAndPicksUpTheFirstDeadline() async throws {
+        let store = await makeStore(entries: "[\(Self.entry("1", "Bo", "a", revealed: false))]")
+        defaults.set("tok", forKey: "hostToken.ABCD")
+        store.turnSecondsChoice = 60
+        StubURLProtocol.respond = { request in
+            switch (request.httpMethod, request.url!.path) {
+            case ("POST", "/api/games/ABCD/start"): (200, #"{"success":true,"turnOrder":["Bo","Ann"]}"#)
+            case ("GET", "/api/games/ABCD"):
+                (200, #"{"started":true,"turnOrder":["Bo","Ann"],"turnDeadline":1060000,"serverTime":1000000}"#)
+            case ("GET", _) where request.url!.path.hasSuffix("/entries"): (200, "[\(Self.entry("1", "Bo", "a"))]")
+            default: (200, "[]")
+            }
+        }
+        await store.startGame()
+        let post = try #require(StubURLProtocol.requests.first { $0.httpMethod == "POST" })
+        #expect(try JSONDecoder().decode([String: Int].self, from: try #require(post.httpBody)) == ["turnSeconds": 60])
+        #expect(try #require(store.turnEndsAt).timeIntervalSinceNow > 58)
+    }
+
+    @Test func startGameWithoutATimerSendsNoBody() async throws {
+        let store = await makeStore(entries: "[\(Self.entry("1", "Bo", "a", revealed: false))]")
+        defaults.set("tok", forKey: "hostToken.ABCD")
+        await store.startGame()
+        let post = try #require(StubURLProtocol.requests.first { $0.httpMethod == "POST" })
+        #expect(post.httpBody == nil)
+    }
 }
+}
+
+struct TurnClockTests {
+    @Test func formatsMinutesAndSeconds() {
+        #expect(clockText(0) == "0:00")
+        #expect(clockText(9) == "0:09")
+        #expect(clockText(75) == "1:15")
+        #expect(clockText(600) == "10:00")
+        #expect(clockText(-3) == "0:00")
+    }
 }

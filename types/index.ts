@@ -35,6 +35,19 @@ export interface Game {
   answeredNames?: string[];
   /** Player name -> epoch ms of their last guess; picks the first player next round. Set when the game starts. */
   lastTurn?: Record<string, number>;
+  /**
+   * The per-turn timer length in seconds, set when the host starts the game with one; absent when
+   * the timer is off.
+   */
+  turnSeconds?: number;
+  /**
+   * With the timer on: epoch ms when the current turn is due (null once nobody is left to play).
+   * Compare it with `serverTime`, not the device clock. Nothing happens at the deadline: clients
+   * show 0:00 and nudge the player.
+   */
+  turnDeadline?: number | null;
+  /** The server's clock (epoch ms) when this was sent; sent with `turnDeadline`. */
+  serverTime?: number;
 }
 
 export interface Score {

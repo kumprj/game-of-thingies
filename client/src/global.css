@@ -283,6 +283,9 @@ input:disabled { opacity: 0.6; }
 .turn.done { background: var(--accent-green); }
 .turn-eyebrow { font-size: 13px; font-weight: 600; text-transform: uppercase; opacity: 0.75; letter-spacing: 0.02em; }
 .turn-name { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
+.turn-timer { margin-top: 4px; font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.turn-timer.expired [role="status"] { font-size: 14px; padding: 2px 8px; border-radius: 999px; background: var(--accent-red); color: #fff; }
+.timer-choice { display: flex; flex-direction: column; gap: 6px; margin: 12px 0; text-align: left; font-size: 15px; }
 .turn-dot {
     flex: none;
     width: 40px;

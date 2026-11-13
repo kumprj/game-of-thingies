@@ -180,6 +180,11 @@ struct GameView: View {
                         Text(inProgress ? "\(store.currentPlayer ?? "")'s turn!" : "All answers guessed!")
                             .font(.title2.bold())
                             .contentTransition(.opacity)
+                        if inProgress, let endsAt = store.turnEndsAt {
+                            TurnTimerLabel(endsAt: endsAt,
+                                           hurry: store.isMyTurn ? "Time's up, hurry up!"
+                                               : "Time's up. Hurry up, \(store.currentPlayer ?? "")!")
+                        }
                     }
                     Spacer(minLength: 0)
                     if store.isHost && inProgress && !store.allGuessed {
@@ -274,7 +279,16 @@ struct GameView: View {
             }
             .listRowInsets(EdgeInsets())
             .listRowBackground(Color.clear)
-            if !store.isHost {
+            if store.isHost {
+                Picker("Turn timer", selection: $store.turnSecondsChoice) {
+                    Text("Off").tag(0)
+                    Text("30 seconds").tag(30)
+                    Text("1 minute").tag(60)
+                    Text("1 minute 30").tag(90)
+                    Text("2 minutes").tag(120)
+                }
+                .disabled(store.isStarting)
+            } else {
                 Text("Waiting for the host to start the game.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
@@ -340,7 +354,8 @@ struct GameView: View {
                     .foregroundStyle(.secondary)
             }
             // Before the start only my own answers are listed; everyone else shows up in the lobby line.
-            ForEach(store.sortedEntriesForDisplay.filter { store.started || $0.mine }) { entry in
+            ForEach(Array(store.sortedEntriesForDisplay.filter { store.started || $0.mine }.enumerated()),
+                    id: \.element.id) { index, entry in
                 if store.started {
                     Button { store.guessingEntry = entry } label: {
                         HStack {
@@ -362,6 +377,7 @@ struct GameView: View {
                     .buttonStyle(.plain)
                     .disabled(!store.canGuess(entry))
                     .accessibilityHint(store.canGuess(entry) ? "Guess who wrote this" : "")
+                    .modifier(RevealModifier(index: index))
                 } else if entry.mine {
                     // Pre-game: my own entry is visible to me only
                     VStack(alignment: .leading, spacing: 6) {
