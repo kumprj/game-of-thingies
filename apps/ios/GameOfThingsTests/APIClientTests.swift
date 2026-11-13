@@ -60,6 +60,7 @@ struct APIClientTests {
         api = APIClient(baseURL: URL(string: "http://test.local")!, session: StubURLProtocol.session(),
                         defaults: defaults)
         StubURLProtocol.requests = []
+        StubURLProtocol.respond = { _ in (200, "{}") }
     }
 
     private func jsonBody(_ request: URLRequest) throws -> [String: String] {
