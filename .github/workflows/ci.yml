@@ -85,3 +85,18 @@ jobs:
       - run: npm ci
       - name: Server integration tests
         run: npm run test:integration -- --coverage
+
+  # Keep the legacy job id because it is a required branch-protection check. It now verifies the
+  # deployable Lambda boundary instead of the retired container image.
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Verify Lambda request handling
+        run: npm test -- server/lambda.test.ts
