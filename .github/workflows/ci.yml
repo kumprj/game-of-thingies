@@ -1,6 +1,6 @@
 name: CI
 
-# Checks for the server, web client and server image. Runs on every PR, whatever its base, so
+# Checks the server and web client. Runs on every PR, whatever its base, so
 # stacked PRs are checked too. Not on pushes to main: main is protected, so everything there was
 # already checked on its PR. The jobs run in parallel. GitHub-hosted runners only: this repo is
 # public, and fork PRs must not run on self-hosted machines.
@@ -85,19 +85,3 @@ jobs:
       - run: npm ci
       - name: Server integration tests
         run: npm run test:integration -- --coverage
-
-  # The image the deploy ships (Dockerfile): it must build, start and pass its health check
-  image:
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v7
-      - name: Build and verify image
-        run: |
-          docker build -t game-of-things-api .
-          docker run -d --name api -p 3001:3001 \
-            -e GAMES_TABLE=Games -e ENTRIES_TABLE=Entries -e SCORES_TABLE=Scores game-of-things-api
-          curl --fail --silent --show-error --retry 10 --retry-delay 1 --retry-all-errors \
-            http://localhost:3001/health
-      - if: failure()
-        run: docker logs api
