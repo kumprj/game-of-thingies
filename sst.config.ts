@@ -95,6 +95,9 @@ export default $config({
       cluster,
       architecture: "arm64",
       image: { context: ".", dockerfile: "Dockerfile" },
+      // The service must stay at one task while Socket.IO state is in-memory. SST otherwise
+      // creates target-tracking policies (and four managed CloudWatch alarms) even at min=max=1.
+      scaling: { min: 1, max: 1, cpuUtilization: false, memoryUtilization: false },
       // The link grants the task role access; the names reach the server as plain env vars.
       link: [games, entries, scores],
       environment: {
