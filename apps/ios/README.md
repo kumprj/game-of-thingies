@@ -1,8 +1,9 @@
 # Game of Things — iOS
 
-Native SwiftUI client for the same Express + Socket.IO server the web app uses.
-No third-party dependencies: REST goes through `URLSession`, and realtime updates use a
-small Socket.IO v4 client over `URLSessionWebSocketTask` (`Networking/RealtimeClient.swift`).
+Native SwiftUI client for the same Express API the web app uses. No third-party dependencies:
+REST goes through `URLSession`, and local realtime updates use a small Socket.IO v4 client over
+`URLSessionWebSocketTask` (`Networking/RealtimeClient.swift`). Against the production Lambda API,
+it falls back to syncing state every three seconds.
 
 ## Requirements
 

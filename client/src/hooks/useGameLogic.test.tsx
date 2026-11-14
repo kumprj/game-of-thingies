@@ -21,6 +21,7 @@ vi.mock('../gameConfig', () => ({
     emit: vi.fn(),
     on: vi.fn(),
     off: vi.fn(),
+    disconnect: vi.fn(),
   }
 }));
 
@@ -170,7 +171,7 @@ describe('useGameLogic socket events', () => {
     unmount();
     // Each listener is removed by its own handler, never by event name alone
     for (const name of ['entriesUpdated', 'gameStarted', 'wrongAnswer', 'gameReset', 'scoreUpdated', 'nextTurn',
-      'playerRemoved', 'hostTransferred', 'connect', 'disconnect']) {
+      'playerRemoved', 'hostTransferred', 'connect', 'disconnect', 'connect_error']) {
       expect(socket.off).toHaveBeenCalledWith(name, handler(name));
     }
     expect((socket.off as any).mock.calls.every((call: unknown[]) => call.length === 2)).toBe(true);
@@ -181,6 +182,18 @@ describe('useGameLogic socket events', () => {
     (socket.emit as any).mockClear();
     await act(async () => handler('connect')());
     expect(socket.emit).toHaveBeenCalledWith('joinGame', 'test-room-1');
+  });
+
+  it('stops reconnecting and polls when the API has no WebSocket endpoint', async () => {
+    await mount();
+    vi.useFakeTimers();
+    (axios.get as any).mockClear();
+
+    act(() => handler('connect_error')());
+    expect(socket.disconnect).toHaveBeenCalledOnce();
+    await act(async () => { await vi.advanceTimersByTimeAsync(3000); });
+    expect(axios.get).toHaveBeenCalledWith('/api/games/test-room-1');
+    vi.useRealTimers();
   });
 
   it('queues socket toasts instead of replacing the one on screen (#89)', async () => {

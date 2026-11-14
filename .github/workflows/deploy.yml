@@ -24,8 +24,7 @@ permissions:
 
 jobs:
   deploy:
-    # arm64, like the server image (sst.config.ts), so Docker builds it natively
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     # No `environment:` on purpose. It would change the OIDC subject to
     # repo:kumprj/game-of-thingies:environment:production, which the role doesn't trust; it trusts

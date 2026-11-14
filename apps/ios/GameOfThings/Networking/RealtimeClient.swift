@@ -120,13 +120,9 @@ final class RealtimeClient {
         teardown()
         report(connected: false)
         guard wantsConnection else { return }
-        failedAttempts += 1
-        let delay = min(5.0, pow(2.0, Double(failedAttempts - 1))) // 1s, 2s, 4s, 5s...
-        reconnect = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(delay))
-            guard !Task.isCancelled, let self, self.wantsConnection, self.task == nil else { return }
-            self.open()
-        }
+        // The production Lambda API has no WebSocket endpoint. Polling becomes the durable
+        // fallback after one failed attempt; foregrounding the app may try the socket once again.
+        wantsConnection = false
     }
 
     private func teardown() {

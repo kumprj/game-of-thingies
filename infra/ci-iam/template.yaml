@@ -16,7 +16,7 @@ Parameters:
 Resources:
   # Trusted only from main. The repo is public: pull request runs, including from forks, must never
   # get AWS credentials, so no pull_request subject here. main is protected, so only merged PRs run.
-  # AdministratorAccess because an SST deploy touches many services (ECS, ELB, CloudFront, S3,
+  # AdministratorAccess because an SST deploy touches many services (Lambda, API Gateway, CloudFront, S3,
   # Route 53, ACM, IAM, DynamoDB); narrow it later from CloudTrail history if wanted.
   DeployRole:
     Type: AWS::IAM::Role

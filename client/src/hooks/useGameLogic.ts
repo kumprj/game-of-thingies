@@ -301,6 +301,13 @@ export function useGameLogic() {
     // Attach Connection Listeners
     socket.on("connect", stopPolling);
     socket.on("disconnect", startPolling);
+    // API Gateway does not accept Socket.IO connections. Stop its reconnect loop and use the
+    // existing state polling path when the first connection cannot be established.
+    const onConnectError = () => {
+      socket.disconnect();
+      startPolling();
+    };
+    socket.on("connect_error", onConnectError);
 
     return () => {
       // Pass each handler: off(event) alone would also remove other components' listeners.
@@ -314,6 +321,7 @@ export function useGameLogic() {
       socket.off("hostTransferred", onHostTransferred);
       socket.off("connect", stopPolling);
       socket.off("disconnect", startPolling);
+      socket.off("connect_error", onConnectError);
       if (pollInterval) clearInterval(pollInterval);
     };
   }, [gameId]);

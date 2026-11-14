@@ -45,10 +45,10 @@ updates.
 
 Everything is defined in `sst.config.ts` (SST v4) and runs in AWS us-east-1:
 
-- **Server:** the `Dockerfile` image on ECS Fargate (one arm64 container) behind CloudFront at
-  https://api.gameofthings.fun. There's no load balancer: CloudFront reaches the container by
-  `origin-api.gameofthings.fun`, which a small Lambda (`infra/origin-dns/`) keeps pointed at the
-  running task's public IP.
+- **Server:** an arm64 Lambda behind API Gateway and the existing CloudFront distribution at
+  https://api.gameofthings.fun. It scales to zero between requests instead of paying for an
+  always-on container. API Gateway does not host Socket.IO, so clients use their three-second
+  polling fallback; actions still write directly to the REST API.
 - **Web client:** S3 + CloudFront at https://gameofthings.fun (www redirects to it).
 - **Tables:** production uses the existing Games / Entries / Scores tables (the `GameOfThings`
   CloudFormation stack in `cfn_tables.yml`); other stages get their own. Every write sets
@@ -117,12 +117,13 @@ enabled). The iOS app and its Live Activity extension need the Push Notification
 their App IDs (Xcode adds it when you sign with your team).
 
 - GET /health
-  Returns OK. The container health check (ECS) and the deploy workflow's check.
+  Returns OK for the deploy workflow's post-deploy check.
 
 ## WEBSOCKET EVENTS
 
-- Clients should join a room by emitting joinGame with the gameId (server calls socket.join(
-  gameId)).
+- The local Node server still supports Socket.IO for development and integration coverage. The
+  production Lambda API uses client polling because API Gateway HTTP APIs do not keep Socket.IO
+  connections.
 - Server emits:
     - entriesUpdated when entries change
     - gameStarted with payload { turnOrder: string[] } when a game starts (plus turnDeadline and
