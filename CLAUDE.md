@@ -1,5 +1,11 @@
 # Project notes
 
+## Prefer the lowest-cost AWS design
+For AWS architecture and deployment changes, choose the lowest recurring-cost option that meets
+the current requirements for correctness, security, reliability, and maintainability. Prefer
+request-priced or scale-to-zero services for intermittent workloads, and document any material
+cost-versus-experience tradeoff in the PR.
+
 ## Keep Web and iOS in sync
 Always make updates for both iOS and Web. When implementing game features, UI changes, networking, or bug fixes, keep the web client (`client/`) and iOS client (`apps/ios/`) aligned and supported across both platforms.
 
